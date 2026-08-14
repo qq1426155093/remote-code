@@ -133,6 +133,10 @@ const (
 	ProcessState_PROCESS_STATE_STARTING    ProcessState = 1
 	ProcessState_PROCESS_STATE_RUNNING     ProcessState = 2
 	ProcessState_PROCESS_STATE_EXITED      ProcessState = 3
+	// The executable never started; the persistent audit record remains.
+	ProcessState_PROCESS_STATE_FAILED ProcessState = 4
+	// A previous controller stopped while the record was active.
+	ProcessState_PROCESS_STATE_LOST ProcessState = 5
 )
 
 // Enum value maps for ProcessState.
@@ -142,12 +146,16 @@ var (
 		1: "PROCESS_STATE_STARTING",
 		2: "PROCESS_STATE_RUNNING",
 		3: "PROCESS_STATE_EXITED",
+		4: "PROCESS_STATE_FAILED",
+		5: "PROCESS_STATE_LOST",
 	}
 	ProcessState_value = map[string]int32{
 		"PROCESS_STATE_UNSPECIFIED": 0,
 		"PROCESS_STATE_STARTING":    1,
 		"PROCESS_STATE_RUNNING":     2,
 		"PROCESS_STATE_EXITED":      3,
+		"PROCESS_STATE_FAILED":      4,
+		"PROCESS_STATE_LOST":        5,
 	}
 )
 
@@ -290,11 +298,9 @@ type GetInfoResponse struct {
 	ApiVersion        string                 `protobuf:"bytes,2,opt,name=api_version,json=apiVersion,proto3" json:"api_version,omitempty"`
 	WorkspaceName     string                 `protobuf:"bytes,3,opt,name=workspace_name,json=workspaceName,proto3" json:"workspace_name,omitempty"`
 	MaxUploadBytes    int64                  `protobuf:"varint,4,opt,name=max_upload_bytes,json=maxUploadBytes,proto3" json:"max_upload_bytes,omitempty"`
-	// Server-configured command aliases accepted by StartProcess.
-	ProcessCommands []string `protobuf:"bytes,5,rep,name=process_commands,json=processCommands,proto3" json:"process_commands,omitempty"`
-	MaxProcesses    uint32   `protobuf:"varint,6,opt,name=max_processes,json=maxProcesses,proto3" json:"max_processes,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	MaxProcesses      uint32                 `protobuf:"varint,6,opt,name=max_processes,json=maxProcesses,proto3" json:"max_processes,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *GetInfoResponse) Reset() {
@@ -353,13 +359,6 @@ func (x *GetInfoResponse) GetMaxUploadBytes() int64 {
 		return x.MaxUploadBytes
 	}
 	return 0
-}
-
-func (x *GetInfoResponse) GetProcessCommands() []string {
-	if x != nil {
-		return x.ProcessCommands
-	}
-	return nil
 }
 
 func (x *GetInfoResponse) GetMaxProcesses() uint32 {
@@ -1649,9 +1648,12 @@ type ProcessInfo struct {
 	ExitedAt         *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=exited_at,json=exitedAt,proto3" json:"exited_at,omitempty"`
 	ExitCode         *int32                 `protobuf:"varint,11,opt,name=exit_code,json=exitCode,proto3,oneof" json:"exit_code,omitempty"`
 	// Native POSIX signal number when the process was terminated by a signal.
-	ExitSignal    *int32 `protobuf:"varint,12,opt,name=exit_signal,json=exitSignal,proto3,oneof" json:"exit_signal,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	ExitSignal *int32                 `protobuf:"varint,12,opt,name=exit_signal,json=exitSignal,proto3,oneof" json:"exit_signal,omitempty"`
+	CreatedAt  *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// Only names are exposed; environment values may contain secrets.
+	EnvironmentKeys []string `protobuf:"bytes,14,rep,name=environment_keys,json=environmentKeys,proto3" json:"environment_keys,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *ProcessInfo) Reset() {
@@ -1768,6 +1770,20 @@ func (x *ProcessInfo) GetExitSignal() int32 {
 	return 0
 }
 
+func (x *ProcessInfo) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *ProcessInfo) GetEnvironmentKeys() []string {
+	if x != nil {
+		return x.EnvironmentKeys
+	}
+	return nil
+}
+
 type ProcessReference struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Value:
@@ -1869,13 +1885,15 @@ func (*ProcessReference_Pid) isProcessReference_Value() {}
 type StartProcessRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Name  string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	// Command is an alias from GetInfoResponse.process_commands, never a path.
+	// Concrete executable name or path. It is executed directly, without a shell.
 	Command          string        `protobuf:"bytes,2,opt,name=command,proto3" json:"command,omitempty"`
 	Arguments        []string      `protobuf:"bytes,3,rep,name=arguments,proto3" json:"arguments,omitempty"`
 	WorkingDirectory string        `protobuf:"bytes,4,opt,name=working_directory,json=workingDirectory,proto3" json:"working_directory,omitempty"`
 	IoMode           ProcessIOMode `protobuf:"varint,5,opt,name=io_mode,json=ioMode,proto3,enum=remote.code.v1.ProcessIOMode" json:"io_mode,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Overrides applied after inheriting the controller environment.
+	Environment   map[string]string `protobuf:"bytes,6,rep,name=environment,proto3" json:"environment,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *StartProcessRequest) Reset() {
@@ -1943,6 +1961,13 @@ func (x *StartProcessRequest) GetIoMode() ProcessIOMode {
 	return ProcessIOMode_PROCESS_IO_MODE_UNSPECIFIED
 }
 
+func (x *StartProcessRequest) GetEnvironment() map[string]string {
+	if x != nil {
+		return x.Environment
+	}
+	return nil
+}
+
 type StartProcessResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Process       *ProcessInfo           `protobuf:"bytes,1,opt,name=process,proto3" json:"process,omitempty"`
@@ -1988,7 +2013,9 @@ func (x *StartProcessResponse) GetProcess() *ProcessInfo {
 }
 
 type ListProcessesRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Include exited, failed and controller-lost persistent history.
+	All           bool `protobuf:"varint,1,opt,name=all,proto3" json:"all,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2021,6 +2048,13 @@ func (x *ListProcessesRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use ListProcessesRequest.ProtoReflect.Descriptor instead.
 func (*ListProcessesRequest) Descriptor() ([]byte, []int) {
 	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *ListProcessesRequest) GetAll() bool {
+	if x != nil {
+		return x.All
+	}
+	return false
 }
 
 type ListProcessesResponse struct {
@@ -2177,15 +2211,14 @@ var File_remote_code_v1_remote_code_proto protoreflect.FileDescriptor
 const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	"\n" +
 	" remote/code/v1/remote_code.proto\x12\x0eremote.code.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x10\n" +
-	"\x0eGetInfoRequest\"\x82\x02\n" +
+	"\x0eGetInfoRequest\"\xdd\x01\n" +
 	"\x0fGetInfoResponse\x12-\n" +
 	"\x12controller_version\x18\x01 \x01(\tR\x11controllerVersion\x12\x1f\n" +
 	"\vapi_version\x18\x02 \x01(\tR\n" +
 	"apiVersion\x12%\n" +
 	"\x0eworkspace_name\x18\x03 \x01(\tR\rworkspaceName\x12(\n" +
-	"\x10max_upload_bytes\x18\x04 \x01(\x03R\x0emaxUploadBytes\x12)\n" +
-	"\x10process_commands\x18\x05 \x03(\tR\x0fprocessCommands\x12#\n" +
-	"\rmax_processes\x18\x06 \x01(\rR\fmaxProcesses\"\xec\x01\n" +
+	"\x10max_upload_bytes\x18\x04 \x01(\x03R\x0emaxUploadBytes\x12#\n" +
+	"\rmax_processes\x18\x06 \x01(\rR\fmaxProcessesJ\x04\b\x05\x10\x06\"\xec\x01\n" +
 	"\bFileInfo\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12,\n" +
@@ -2257,7 +2290,7 @@ const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	"\x04mode\x18\x02 \x01(\rR\x04mode\x12\x18\n" +
 	"\aparents\x18\x03 \x01(\bR\aparents\"=\n" +
 	"\rMkdirResponse\x12,\n" +
-	"\x04file\x18\x01 \x01(\v2\x18.remote.code.v1.FileInfoR\x04file\"\xee\x03\n" +
+	"\x04file\x18\x01 \x01(\v2\x18.remote.code.v1.FileInfoR\x04file\"\xd4\x04\n" +
 	"\vProcessInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x10\n" +
@@ -2273,7 +2306,10 @@ const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	" \x01(\v2\x1a.google.protobuf.TimestampR\bexitedAt\x12 \n" +
 	"\texit_code\x18\v \x01(\x05H\x00R\bexitCode\x88\x01\x01\x12$\n" +
 	"\vexit_signal\x18\f \x01(\x05H\x01R\n" +
-	"exitSignal\x88\x01\x01B\f\n" +
+	"exitSignal\x88\x01\x01\x129\n" +
+	"\n" +
+	"created_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12)\n" +
+	"\x10environment_keys\x18\x0e \x03(\tR\x0fenvironmentKeysB\f\n" +
 	"\n" +
 	"_exit_codeB\x0e\n" +
 	"\f_exit_signal\"W\n" +
@@ -2281,16 +2317,21 @@ const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x12\x14\n" +
 	"\x04name\x18\x02 \x01(\tH\x00R\x04name\x12\x12\n" +
 	"\x03pid\x18\x03 \x01(\x03H\x00R\x03pidB\a\n" +
-	"\x05value\"\xc6\x01\n" +
+	"\x05value\"\xde\x02\n" +
 	"\x13StartProcessRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\acommand\x18\x02 \x01(\tR\acommand\x12\x1c\n" +
 	"\targuments\x18\x03 \x03(\tR\targuments\x12+\n" +
 	"\x11working_directory\x18\x04 \x01(\tR\x10workingDirectory\x126\n" +
-	"\aio_mode\x18\x05 \x01(\x0e2\x1d.remote.code.v1.ProcessIOModeR\x06ioMode\"M\n" +
+	"\aio_mode\x18\x05 \x01(\x0e2\x1d.remote.code.v1.ProcessIOModeR\x06ioMode\x12V\n" +
+	"\venvironment\x18\x06 \x03(\v24.remote.code.v1.StartProcessRequest.EnvironmentEntryR\venvironment\x1a>\n" +
+	"\x10EnvironmentEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"M\n" +
 	"\x14StartProcessResponse\x125\n" +
-	"\aprocess\x18\x01 \x01(\v2\x1b.remote.code.v1.ProcessInfoR\aprocess\"\x16\n" +
-	"\x14ListProcessesRequest\"R\n" +
+	"\aprocess\x18\x01 \x01(\v2\x1b.remote.code.v1.ProcessInfoR\aprocess\"(\n" +
+	"\x14ListProcessesRequest\x12\x10\n" +
+	"\x03all\x18\x01 \x01(\bR\x03all\"R\n" +
 	"\x15ListProcessesResponse\x129\n" +
 	"\tprocesses\x18\x01 \x03(\v2\x1b.remote.code.v1.ProcessInfoR\tprocesses\"\x9d\x01\n" +
 	"\x14SignalProcessRequest\x12:\n" +
@@ -2308,12 +2349,14 @@ const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	"\rProcessIOMode\x12\x1f\n" +
 	"\x1bPROCESS_IO_MODE_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14PROCESS_IO_MODE_PIPE\x10\x01\x12\x17\n" +
-	"\x13PROCESS_IO_MODE_PTY\x10\x02*~\n" +
+	"\x13PROCESS_IO_MODE_PTY\x10\x02*\xb0\x01\n" +
 	"\fProcessState\x12\x1d\n" +
 	"\x19PROCESS_STATE_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16PROCESS_STATE_STARTING\x10\x01\x12\x19\n" +
 	"\x15PROCESS_STATE_RUNNING\x10\x02\x12\x18\n" +
-	"\x14PROCESS_STATE_EXITED\x10\x03*\x8e\x02\n" +
+	"\x14PROCESS_STATE_EXITED\x10\x03\x12\x18\n" +
+	"\x14PROCESS_STATE_FAILED\x10\x04\x12\x16\n" +
+	"\x12PROCESS_STATE_LOST\x10\x05*\x8e\x02\n" +
 	"\rProcessSignal\x12\x1e\n" +
 	"\x1aPROCESS_SIGNAL_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12PROCESS_SIGNAL_HUP\x10\x01\x12\x16\n" +
@@ -2355,7 +2398,7 @@ func file_remote_code_v1_remote_code_proto_rawDescGZIP() []byte {
 }
 
 var file_remote_code_v1_remote_code_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_remote_code_v1_remote_code_proto_msgTypes = make([]protoimpl.MessageInfo, 33)
+var file_remote_code_v1_remote_code_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
 var file_remote_code_v1_remote_code_proto_goTypes = []any{
 	(FileType)(0),                 // 0: remote.code.v1.FileType
 	(ProcessIOMode)(0),            // 1: remote.code.v1.ProcessIOMode
@@ -2394,11 +2437,12 @@ var file_remote_code_v1_remote_code_proto_goTypes = []any{
 	(*ListProcessesResponse)(nil), // 34: remote.code.v1.ListProcessesResponse
 	(*SignalProcessRequest)(nil),  // 35: remote.code.v1.SignalProcessRequest
 	(*SignalProcessResponse)(nil), // 36: remote.code.v1.SignalProcessResponse
-	(*timestamppb.Timestamp)(nil), // 37: google.protobuf.Timestamp
+	nil,                           // 37: remote.code.v1.StartProcessRequest.EnvironmentEntry
+	(*timestamppb.Timestamp)(nil), // 38: google.protobuf.Timestamp
 }
 var file_remote_code_v1_remote_code_proto_depIdxs = []int32{
 	0,  // 0: remote.code.v1.FileInfo.type:type_name -> remote.code.v1.FileType
-	37, // 1: remote.code.v1.FileInfo.modified_at:type_name -> google.protobuf.Timestamp
+	38, // 1: remote.code.v1.FileInfo.modified_at:type_name -> google.protobuf.Timestamp
 	6,  // 2: remote.code.v1.StatResponse.file:type_name -> remote.code.v1.FileInfo
 	6,  // 3: remote.code.v1.ListResponse.files:type_name -> remote.code.v1.FileInfo
 	6,  // 4: remote.code.v1.TreeNode.file:type_name -> remote.code.v1.FileInfo
@@ -2414,45 +2458,47 @@ var file_remote_code_v1_remote_code_proto_depIdxs = []int32{
 	6,  // 14: remote.code.v1.MkdirResponse.file:type_name -> remote.code.v1.FileInfo
 	1,  // 15: remote.code.v1.ProcessInfo.io_mode:type_name -> remote.code.v1.ProcessIOMode
 	2,  // 16: remote.code.v1.ProcessInfo.state:type_name -> remote.code.v1.ProcessState
-	37, // 17: remote.code.v1.ProcessInfo.started_at:type_name -> google.protobuf.Timestamp
-	37, // 18: remote.code.v1.ProcessInfo.exited_at:type_name -> google.protobuf.Timestamp
-	1,  // 19: remote.code.v1.StartProcessRequest.io_mode:type_name -> remote.code.v1.ProcessIOMode
-	29, // 20: remote.code.v1.StartProcessResponse.process:type_name -> remote.code.v1.ProcessInfo
-	29, // 21: remote.code.v1.ListProcessesResponse.processes:type_name -> remote.code.v1.ProcessInfo
-	30, // 22: remote.code.v1.SignalProcessRequest.process:type_name -> remote.code.v1.ProcessReference
-	3,  // 23: remote.code.v1.SignalProcessRequest.signal:type_name -> remote.code.v1.ProcessSignal
-	29, // 24: remote.code.v1.SignalProcessResponse.process:type_name -> remote.code.v1.ProcessInfo
-	4,  // 25: remote.code.v1.ControllerService.GetInfo:input_type -> remote.code.v1.GetInfoRequest
-	7,  // 26: remote.code.v1.FileService.Stat:input_type -> remote.code.v1.StatRequest
-	9,  // 27: remote.code.v1.FileService.List:input_type -> remote.code.v1.ListRequest
-	12, // 28: remote.code.v1.FileService.Tree:input_type -> remote.code.v1.TreeRequest
-	15, // 29: remote.code.v1.FileService.Upload:input_type -> remote.code.v1.UploadRequest
-	17, // 30: remote.code.v1.FileService.Download:input_type -> remote.code.v1.DownloadRequest
-	21, // 31: remote.code.v1.FileService.Remove:input_type -> remote.code.v1.RemoveRequest
-	23, // 32: remote.code.v1.FileService.Move:input_type -> remote.code.v1.MoveRequest
-	25, // 33: remote.code.v1.FileService.Chmod:input_type -> remote.code.v1.ChmodRequest
-	27, // 34: remote.code.v1.FileService.Mkdir:input_type -> remote.code.v1.MkdirRequest
-	31, // 35: remote.code.v1.ProcessService.StartProcess:input_type -> remote.code.v1.StartProcessRequest
-	33, // 36: remote.code.v1.ProcessService.ListProcesses:input_type -> remote.code.v1.ListProcessesRequest
-	35, // 37: remote.code.v1.ProcessService.SignalProcess:input_type -> remote.code.v1.SignalProcessRequest
-	5,  // 38: remote.code.v1.ControllerService.GetInfo:output_type -> remote.code.v1.GetInfoResponse
-	8,  // 39: remote.code.v1.FileService.Stat:output_type -> remote.code.v1.StatResponse
-	10, // 40: remote.code.v1.FileService.List:output_type -> remote.code.v1.ListResponse
-	13, // 41: remote.code.v1.FileService.Tree:output_type -> remote.code.v1.TreeResponse
-	16, // 42: remote.code.v1.FileService.Upload:output_type -> remote.code.v1.UploadResponse
-	20, // 43: remote.code.v1.FileService.Download:output_type -> remote.code.v1.DownloadResponse
-	22, // 44: remote.code.v1.FileService.Remove:output_type -> remote.code.v1.RemoveResponse
-	24, // 45: remote.code.v1.FileService.Move:output_type -> remote.code.v1.MoveResponse
-	26, // 46: remote.code.v1.FileService.Chmod:output_type -> remote.code.v1.ChmodResponse
-	28, // 47: remote.code.v1.FileService.Mkdir:output_type -> remote.code.v1.MkdirResponse
-	32, // 48: remote.code.v1.ProcessService.StartProcess:output_type -> remote.code.v1.StartProcessResponse
-	34, // 49: remote.code.v1.ProcessService.ListProcesses:output_type -> remote.code.v1.ListProcessesResponse
-	36, // 50: remote.code.v1.ProcessService.SignalProcess:output_type -> remote.code.v1.SignalProcessResponse
-	38, // [38:51] is the sub-list for method output_type
-	25, // [25:38] is the sub-list for method input_type
-	25, // [25:25] is the sub-list for extension type_name
-	25, // [25:25] is the sub-list for extension extendee
-	0,  // [0:25] is the sub-list for field type_name
+	38, // 17: remote.code.v1.ProcessInfo.started_at:type_name -> google.protobuf.Timestamp
+	38, // 18: remote.code.v1.ProcessInfo.exited_at:type_name -> google.protobuf.Timestamp
+	38, // 19: remote.code.v1.ProcessInfo.created_at:type_name -> google.protobuf.Timestamp
+	1,  // 20: remote.code.v1.StartProcessRequest.io_mode:type_name -> remote.code.v1.ProcessIOMode
+	37, // 21: remote.code.v1.StartProcessRequest.environment:type_name -> remote.code.v1.StartProcessRequest.EnvironmentEntry
+	29, // 22: remote.code.v1.StartProcessResponse.process:type_name -> remote.code.v1.ProcessInfo
+	29, // 23: remote.code.v1.ListProcessesResponse.processes:type_name -> remote.code.v1.ProcessInfo
+	30, // 24: remote.code.v1.SignalProcessRequest.process:type_name -> remote.code.v1.ProcessReference
+	3,  // 25: remote.code.v1.SignalProcessRequest.signal:type_name -> remote.code.v1.ProcessSignal
+	29, // 26: remote.code.v1.SignalProcessResponse.process:type_name -> remote.code.v1.ProcessInfo
+	4,  // 27: remote.code.v1.ControllerService.GetInfo:input_type -> remote.code.v1.GetInfoRequest
+	7,  // 28: remote.code.v1.FileService.Stat:input_type -> remote.code.v1.StatRequest
+	9,  // 29: remote.code.v1.FileService.List:input_type -> remote.code.v1.ListRequest
+	12, // 30: remote.code.v1.FileService.Tree:input_type -> remote.code.v1.TreeRequest
+	15, // 31: remote.code.v1.FileService.Upload:input_type -> remote.code.v1.UploadRequest
+	17, // 32: remote.code.v1.FileService.Download:input_type -> remote.code.v1.DownloadRequest
+	21, // 33: remote.code.v1.FileService.Remove:input_type -> remote.code.v1.RemoveRequest
+	23, // 34: remote.code.v1.FileService.Move:input_type -> remote.code.v1.MoveRequest
+	25, // 35: remote.code.v1.FileService.Chmod:input_type -> remote.code.v1.ChmodRequest
+	27, // 36: remote.code.v1.FileService.Mkdir:input_type -> remote.code.v1.MkdirRequest
+	31, // 37: remote.code.v1.ProcessService.StartProcess:input_type -> remote.code.v1.StartProcessRequest
+	33, // 38: remote.code.v1.ProcessService.ListProcesses:input_type -> remote.code.v1.ListProcessesRequest
+	35, // 39: remote.code.v1.ProcessService.SignalProcess:input_type -> remote.code.v1.SignalProcessRequest
+	5,  // 40: remote.code.v1.ControllerService.GetInfo:output_type -> remote.code.v1.GetInfoResponse
+	8,  // 41: remote.code.v1.FileService.Stat:output_type -> remote.code.v1.StatResponse
+	10, // 42: remote.code.v1.FileService.List:output_type -> remote.code.v1.ListResponse
+	13, // 43: remote.code.v1.FileService.Tree:output_type -> remote.code.v1.TreeResponse
+	16, // 44: remote.code.v1.FileService.Upload:output_type -> remote.code.v1.UploadResponse
+	20, // 45: remote.code.v1.FileService.Download:output_type -> remote.code.v1.DownloadResponse
+	22, // 46: remote.code.v1.FileService.Remove:output_type -> remote.code.v1.RemoveResponse
+	24, // 47: remote.code.v1.FileService.Move:output_type -> remote.code.v1.MoveResponse
+	26, // 48: remote.code.v1.FileService.Chmod:output_type -> remote.code.v1.ChmodResponse
+	28, // 49: remote.code.v1.FileService.Mkdir:output_type -> remote.code.v1.MkdirResponse
+	32, // 50: remote.code.v1.ProcessService.StartProcess:output_type -> remote.code.v1.StartProcessResponse
+	34, // 51: remote.code.v1.ProcessService.ListProcesses:output_type -> remote.code.v1.ListProcessesResponse
+	36, // 52: remote.code.v1.ProcessService.SignalProcess:output_type -> remote.code.v1.SignalProcessResponse
+	40, // [40:53] is the sub-list for method output_type
+	27, // [27:40] is the sub-list for method input_type
+	27, // [27:27] is the sub-list for extension type_name
+	27, // [27:27] is the sub-list for extension extendee
+	0,  // [0:27] is the sub-list for field type_name
 }
 
 func init() { file_remote_code_v1_remote_code_proto_init() }
@@ -2481,7 +2527,7 @@ func file_remote_code_v1_remote_code_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_remote_code_v1_remote_code_proto_rawDesc), len(file_remote_code_v1_remote_code_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   33,
+			NumMessages:   34,
 			NumExtensions: 0,
 			NumServices:   3,
 		},

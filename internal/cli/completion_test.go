@@ -14,7 +14,6 @@ import (
 type fakeCompletionClient struct {
 	files     map[string][]*codev1.FileInfo
 	requests  []string
-	info      *codev1.GetInfoResponse
 	processes []*codev1.ProcessInfo
 }
 
@@ -23,11 +22,7 @@ func (f *fakeCompletionClient) List(_ context.Context, remotePath string) ([]*co
 	return f.files[remotePath], nil
 }
 
-func (f *fakeCompletionClient) Info() *codev1.GetInfoResponse {
-	return f.info
-}
-
-func (f *fakeCompletionClient) ListProcesses(context.Context) ([]*codev1.ProcessInfo, error) {
+func (f *fakeCompletionClient) ListProcesses(context.Context, ...bool) ([]*codev1.ProcessInfo, error) {
 	return f.processes, nil
 }
 
@@ -38,7 +33,7 @@ func TestCompleterSuggestsCommandsOptionsAndArguments(t *testing.T) {
 			{Name: "docs", Type: codev1.FileType_FILE_TYPE_DIRECTORY},
 			{Name: "hello world.txt", Type: codev1.FileType_FILE_TYPE_REGULAR},
 		},
-	}, info: &codev1.GetInfoResponse{ProcessCommands: []string{"helper"}}, processes: []*codev1.ProcessInfo{
+	}, processes: []*codev1.ProcessInfo{
 		{Name: "worker", State: codev1.ProcessState_PROCESS_STATE_RUNNING},
 		{Name: "finished", State: codev1.ProcessState_PROCESS_STATE_EXITED},
 	}}
@@ -56,8 +51,8 @@ func TestCompleterSuggestsCommandsOptionsAndArguments(t *testing.T) {
 		{name: "escaped remote file", line: "cat he", want: []string{"llo\\ world.txt "}, wantOffset: 2},
 		{name: "quoted remote file", line: "cat \"hello", want: []string{" world.txt\" "}, wantOffset: 6},
 		{name: "mode hints", line: "chmod 064", want: []string{"0 ", "4 "}, wantOffset: 3},
-		{name: "run options", line: "run --p", want: []string{"ipe ", "ty "}, wantOffset: 3},
-		{name: "configured command", line: "run --name job he", want: []string{"lper "}, wantOffset: 2},
+		{name: "exec options", line: "exec --p", want: []string{"ipe ", "ty "}, wantOffset: 3},
+		{name: "ps all", line: "ps -", want: []string{"a "}, wantOffset: 1},
 		{name: "signal", line: "kill -s T", want: []string{"ERM "}, wantOffset: 1},
 		{name: "running process", line: "kill wor", want: []string{"ker "}, wantOffset: 3},
 	}

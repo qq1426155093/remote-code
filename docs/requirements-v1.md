@@ -7,7 +7,7 @@
 - `remote-code-controller`：运行在远端机器，限制在一个启动时指定的工作区中，通过 gRPC 提供文件服务。
 - `remote-code`：运行在本地，连接 controller 后进入类似 MySQL client 的长期交互式命令行。
 
-本版本打通文件管理以及受控进程的“启动、浏览、发信号、等待退出和回收”闭环。CLI 运行在用户当前终端或 PTY 中，读取命令并展示结果；终端退出前保持 gRPC 连接。controller 只启动服务端通过 `--process-command NAME=EXECUTABLE` 明确配置的命令，不接受客户端提供任意可执行路径。
+本版本打通文件管理以及通用进程的“启动、浏览、发信号、等待退出、回收和持久化”闭环。CLI 运行在用户当前终端或 PTY 中，读取命令并展示结果；终端退出前保持 gRPC 连接。完整进程契约见[通用进程管理需求 v1](process-management-requirements-v1.md)。
 
 ## 2. 用户流程
 
@@ -15,7 +15,7 @@
 
 ```bash
 remote-code-controller --workspace /srv/project --listen-addr 127.0.0.1:9443 \
-  --process-command claude=/usr/local/bin/claude --max-processes 16
+  --runtime-dir /var/run/remote-code-controller --max-processes 16
 ```
 
 连接并进入交互环境：
@@ -55,8 +55,8 @@ remote-code:/docs> exit
 | `rm [-r] REMOTE_PATH` | 删除文件或空目录；`-r` 递归删除目录 |
 | `mv [-f] SOURCE DESTINATION` | 移动或重命名；`-f` 允许覆盖目标 |
 | `chmod OCTAL_MODE REMOTE_PATH` | 修改权限，例如 `chmod 640 configs/app.yaml` |
-| `run --name NAME [--pipe\|--pty] [--cwd REMOTE_DIR] COMMAND [ARG ...]` | 以配置的命令别名启动受管进程 |
-| `ps` | 浏览运行中及保留的已退出进程 |
+| `exec [--name NAME] [--pipe\|--pty] [--cwd REMOTE_DIR] [-e KEY=VALUE ...] [--] CMD [ARG ...]` | 直接启动通用受管进程 |
+| `ps` / `ps -a` | 分别浏览活动进程，或活动及历史进程 |
 | `kill [-s SIGNAL] [-w] PROCESS` | 向进程组发信号；`-w` 等待进程回收 |
 | `clear` | 清理本地终端显示 |
 | `exit` / `quit` | 关闭连接并退出 CLI |
@@ -74,7 +74,7 @@ REPL 内按 `Tab` 可补全内部命令、选项和参数。远端路径候选�
 | `--workspace` | 无 | 必填，允许访问的工作区目录 |
 | `--listen-addr` | `127.0.0.1:9443` | gRPC 监听地址 |
 | `--max-upload-bytes` | `1073741824` | 单个上传文件最大字节数 |
-| `--process-command` | 空 | 允许的 `NAME=EXECUTABLE`，可重复配置 |
+| `--runtime-dir` | `/var/run/remote-code-controller` | 持久化进程元数据、状态和输出日志的根目录 |
 | `--max-processes` | `16` | 最大并发活动进程数 |
 | `--tls-cert` / `--tls-key` | 空 | 同时提供时启用 TLS |
 | `--token-file` | 空 | 可选 bearer token 文件，内容不会写日志 |
@@ -118,8 +118,9 @@ CLI 只有在 `GetInfo` 调用成功后才进入提示符，因此“连接成�
 - controller 收到 `SIGINT` 或 `SIGTERM` 时停止接受新请求并优雅关闭。
 - 每个进程运行在独立进程组；PTY 模式还使用独立 session 和控制终端。信号发送到整个进程组，而不是只发送给父进程。
 - controller 为每个成功启动的直接子进程调用一次 `Wait`，记录退出码或退出信号并避免僵尸进程。关闭时先发送 `TERM`，超时后对尚未退出的进程组发送 `KILL`。
-- 进程名称在当前保留记录中唯一；进程具有服务端生成的 UUID 和 OS PID，可按 UUID、名称或 PID 定位。
-- 活动进程数、参数数量/长度和保留的进程历史均有固定上限。RPC 不接收环境变量或任意可执行路径。
+- 活动进程名称唯一；终态名称可复用。进程具有服务端生成的 UUID 和 OS PID，可按 UUID、名称或 PID 定位。
+- 活动进程数、参数、环境覆盖和保留的进程历史均有固定上限。通过认证的调用者可执行具体命令，因此此 API 等同于远程执行权限。
+- 进程元数据、原子状态和带 Unix 纳秒时间戳的 stdout/stderr 二进制帧持久化在 runtime 目录；环境变量 value 不落盘。
 - 日志不得记录 token、文件内容或上传内容。
 - token 比较采用常量时间比较；启用 token 后，所有业务 RPC 均需认证。
 

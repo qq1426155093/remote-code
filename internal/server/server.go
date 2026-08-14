@@ -30,7 +30,7 @@ type Config struct {
 	TLSKeyFile          string
 	Token               string
 	AllowInsecureRemote bool
-	ProcessCommands     map[string]string
+	RuntimeDirectory    string
 	MaxProcesses        int
 }
 
@@ -60,7 +60,7 @@ func New(config Config) (*Server, error) {
 		return nil, err
 	}
 	processService, err := processservice.New(processservice.Config{
-		Workspace: config.Workspace, Commands: config.ProcessCommands, MaxProcesses: config.MaxProcesses,
+		Workspace: config.Workspace, RuntimeDirectory: config.RuntimeDirectory, MaxProcesses: config.MaxProcesses,
 	})
 	if err != nil {
 		_ = fileService.Close()
@@ -154,7 +154,6 @@ func (s *controllerService) GetInfo(context.Context, *codev1.GetInfoRequest) (*c
 		ApiVersion:        version.APIVersion,
 		WorkspaceName:     s.files.WorkspaceName(),
 		MaxUploadBytes:    s.files.MaxUploadBytes(),
-		ProcessCommands:   s.processes.AllowedCommands(),
 		MaxProcesses:      uint32(s.processes.MaxProcesses()),
 	}, nil
 }

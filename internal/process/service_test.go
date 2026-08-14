@@ -69,6 +69,18 @@ func TestProcessHelper(t *testing.T) {
 			os.Exit(98)
 		}
 		os.Exit(code)
+	case "output":
+		if len(arguments) != 1 || os.Getenv("REMOTE_CODE_TEST_SECRET") == "" {
+			os.Exit(109)
+		}
+		secret := os.Getenv("REMOTE_CODE_TEST_SECRET")
+		_, _ = os.Stdout.Write(append([]byte("stdout:\x00"), []byte(secret)...))
+		_, _ = os.Stderr.Write(append([]byte("stderr:\xff"), []byte(secret)...))
+		os.Exit(0)
+	case "pty-output":
+		_, _ = os.Stdout.Write([]byte("pty-stdout\n"))
+		_, _ = os.Stderr.Write([]byte("pty-stderr\n"))
+		os.Exit(0)
 	case "sleep":
 		for {
 			time.Sleep(time.Second)
@@ -156,16 +168,18 @@ func TestServiceStartsPipeAndPTYProcesses(t *testing.T) {
 		t.Fatalf("pty exit = %+v, want code 0", terminalExit)
 	}
 
-	listed, err := service.ListProcesses(ctx, &codev1.ListProcessesRequest{})
+	listed, err := service.ListProcesses(ctx, &codev1.ListProcessesRequest{All: true})
 	if err != nil {
 		t.Fatalf("ListProcesses() error = %v", err)
 	}
 	if len(listed.GetProcesses()) != 2 || listed.GetProcesses()[0].GetName() != "pipe-check" || listed.GetProcesses()[1].GetName() != "pty-check" {
 		t.Fatalf("ListProcesses() = %+v, want stable start order", listed.GetProcesses())
 	}
-	_, err = service.StartProcess(ctx, helperStartRequest("pipe-check", ".", codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE, "exit", "0"))
-	if status.Code(err) != codes.AlreadyExists {
-		t.Errorf("StartProcess(duplicate name) code = %s, want AlreadyExists", status.Code(err))
+	reused, err := service.StartProcess(ctx, helperStartRequest("pipe-check", ".", codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE, "exit", "0"))
+	if err != nil {
+		t.Errorf("StartProcess(reused exited name) error = %v", err)
+	} else {
+		_ = waitForProcessExit(t, service, reused.GetProcess().GetId())
 	}
 }
 
@@ -231,6 +245,23 @@ func TestServiceSignalsByNameIDAndPIDAndReaps(t *testing.T) {
 	}
 }
 
+func TestServiceRejectsDuplicateActiveName(t *testing.T) {
+	t.Setenv(helperEnvironment, "1")
+	service := newTestProcessService(t, t.TempDir(), 2)
+	started, err := service.StartProcess(context.Background(), helperStartRequest(
+		"duplicate", ".", codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE, "sleep",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.StartProcess(context.Background(), helperStartRequest(
+		"duplicate", ".", codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE, "sleep",
+	)); status.Code(err) != codes.AlreadyExists {
+		t.Fatalf("StartProcess(duplicate active name) code = %s", status.Code(err))
+	}
+	stopProcess(t, service, started.GetProcess())
+}
+
 func TestServiceValidatesStartsAndActiveLimit(t *testing.T) {
 	t.Setenv(helperEnvironment, "1")
 	workspace := t.TempDir()
@@ -243,9 +274,10 @@ func TestServiceValidatesStartsAndActiveLimit(t *testing.T) {
 
 	invalid := []*codev1.StartProcessRequest{
 		helperStartRequest("bad name", ".", codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE, "exit", "0"),
-		{Name: "missing-command", Command: "not-configured", IoMode: codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE},
+		{Name: "missing-command", Command: "", IoMode: codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE},
 		helperStartRequest("absolute-cwd", "/tmp", codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE, "exit", "0"),
 		helperStartRequest("parent-cwd", "../outside", codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE, "exit", "0"),
+		{Name: "bad-env", Command: os.Args[0], Environment: map[string]string{"BAD=KEY": "value"}},
 	}
 	for _, request := range invalid {
 		if _, err := service.StartProcess(ctx, request); status.Code(err) != codes.InvalidArgument && status.Code(err) != codes.FailedPrecondition {
@@ -415,23 +447,24 @@ func TestNewRejectsInvalidProcessConfiguration(t *testing.T) {
 	if _, err := New(Config{}); err == nil {
 		t.Fatal("New(empty config) succeeded")
 	}
-	if _, err := New(Config{Workspace: t.TempDir(), MaxProcesses: -1}); err == nil {
+	if _, err := New(Config{Workspace: t.TempDir(), RuntimeDirectory: t.TempDir(), MaxProcesses: -1}); err == nil {
 		t.Fatal("New(negative max) succeeded")
 	}
-	if _, err := New(Config{Workspace: t.TempDir(), MaxProcesses: maxTrackedProcesses + 1}); err == nil {
+	if _, err := New(Config{Workspace: t.TempDir(), RuntimeDirectory: t.TempDir(), MaxProcesses: maxTrackedProcesses + 1}); err == nil {
 		t.Fatal("New(over history max) succeeded")
 	}
-	if _, err := New(Config{Workspace: t.TempDir(), Commands: map[string]string{"bad name": os.Args[0]}}); err == nil {
-		t.Fatal("New(invalid alias) succeeded")
+	file := filepath.Join(t.TempDir(), "runtime-file")
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := New(Config{Workspace: t.TempDir(), Commands: map[string]string{"missing": filepath.Join(t.TempDir(), "missing")}}); err == nil {
-		t.Fatal("New(missing executable) succeeded")
+	if _, err := New(Config{Workspace: t.TempDir(), RuntimeDirectory: file}); err == nil {
+		t.Fatal("New(runtime file) succeeded")
 	}
 }
 
 func newTestProcessService(t *testing.T, workspace string, maxProcesses int) *Service {
 	t.Helper()
-	service, err := New(Config{Workspace: workspace, Commands: map[string]string{"helper": os.Args[0]}, MaxProcesses: maxProcesses})
+	service, err := New(Config{Workspace: workspace, RuntimeDirectory: t.TempDir(), MaxProcesses: maxProcesses})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -450,7 +483,7 @@ func helperStartRequest(name, workingDirectory string, ioMode codev1.ProcessIOMo
 	helperArguments := []string{"-test.run=^TestProcessHelper$", "--"}
 	helperArguments = append(helperArguments, arguments...)
 	return &codev1.StartProcessRequest{
-		Name: name, Command: "helper", Arguments: helperArguments, WorkingDirectory: workingDirectory, IoMode: ioMode,
+		Name: name, Command: os.Args[0], Arguments: helperArguments, WorkingDirectory: workingDirectory, IoMode: ioMode,
 	}
 }
 
@@ -465,7 +498,7 @@ func waitForProcessExit(t *testing.T, service *Service, id string) *codev1.Proce
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		response, err := service.ListProcesses(context.Background(), &codev1.ListProcessesRequest{})
+		response, err := service.ListProcesses(context.Background(), &codev1.ListProcessesRequest{All: true})
 		if err != nil {
 			t.Fatalf("ListProcesses() error = %v", err)
 		}

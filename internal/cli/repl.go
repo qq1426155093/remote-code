@@ -116,7 +116,7 @@ func (r *REPL) execute(arguments []string) error {
 		return r.list(arguments[1:])
 	case "tree":
 		return r.tree(arguments[1:])
-	case "run":
+	case "exec":
 		return r.startProcess(arguments[1:])
 	case "ps":
 		return r.listProcesses(arguments[1:])
@@ -161,7 +161,7 @@ func (r *REPL) help(arguments []string) error {
 		fmt.Fprintln(r.stdout, usage)
 		return nil
 	}
-	commands := []string{"help [command]", "pwd", "cd [REMOTE_DIR]", "ls [-l] [REMOTE_PATH]", "tree [REMOTE_PATH]", "stat REMOTE_PATH", "cat REMOTE_FILE", "upload LOCAL_FILE [REMOTE_FILE]", "download REMOTE_FILE [LOCAL_FILE]", "mkdir [-p] REMOTE_DIR", "rm [-r] REMOTE_PATH", "mv [-f] SOURCE DESTINATION", "chmod OCTAL_MODE REMOTE_PATH", "run --name NAME [--pipe|--pty] [--cwd REMOTE_DIR] COMMAND [ARG ...]", "ps", "kill [-s SIGNAL] [-w] PROCESS", "clear", "exit | quit"}
+	commands := []string{"help [command]", "pwd", "cd [REMOTE_DIR]", "ls [-l] [REMOTE_PATH]", "tree [REMOTE_PATH]", "stat REMOTE_PATH", "cat REMOTE_FILE", "upload LOCAL_FILE [REMOTE_FILE]", "download REMOTE_FILE [LOCAL_FILE]", "mkdir [-p] REMOTE_DIR", "rm [-r] REMOTE_PATH", "mv [-f] SOURCE DESTINATION", "chmod OCTAL_MODE REMOTE_PATH", "exec [--name NAME] [--pipe|--pty] [--cwd REMOTE_DIR] [-e KEY=VALUE ...] [--] CMD [ARG ...]", "ps [-a]", "kill [-s SIGNAL] [-w] PROCESS", "clear", "exit | quit"}
 	for _, command := range commands {
 		fmt.Fprintln(r.stdout, command)
 	}
@@ -182,8 +182,8 @@ var commandUsage = map[string]string{
 	"rm":       "usage: rm [-r] REMOTE_PATH",
 	"mv":       "usage: mv [-f] SOURCE DESTINATION",
 	"chmod":    "usage: chmod OCTAL_MODE REMOTE_PATH",
-	"run":      "usage: run --name NAME [--pipe|--pty] [--cwd REMOTE_DIR] COMMAND [ARG ...]",
-	"ps":       "usage: ps",
+	"exec":     "usage: exec [--name NAME] [--pipe|--pty] [--cwd REMOTE_DIR] [-e KEY=VALUE ...] [--] CMD [ARG ...]",
+	"ps":       "usage: ps [-a]",
 	"kill":     "usage: kill [-s SIGNAL] [-w] PROCESS",
 	"clear":    "usage: clear",
 	"exit":     "usage: exit",

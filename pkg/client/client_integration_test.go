@@ -7,7 +7,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -175,16 +174,16 @@ func TestSymlinkEscapeAndAuthenticationOverGRPC(t *testing.T) {
 func TestClientProcessLifecycleOverGRPC(t *testing.T) {
 	t.Setenv("REMOTE_CODE_CLIENT_PROCESS_HELPER", "1")
 	workspace := t.TempDir()
-	address := startControllerWithProcesses(t, workspace, map[string]string{"helper": os.Args[0]}, 2)
+	address := startControllerWithProcesses(t, workspace, 2)
 	remote := connectClient(t, address, "")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	info := remote.Info()
-	if !reflect.DeepEqual(info.GetProcessCommands(), []string{"helper"}) || info.GetMaxProcesses() != 2 {
-		t.Fatalf("Info() process capabilities = %v, %d; want helper, 2", info.GetProcessCommands(), info.GetMaxProcesses())
+	if info.GetMaxProcesses() != 2 {
+		t.Fatalf("Info().MaxProcesses = %d, want 2", info.GetMaxProcesses())
 	}
-	started, err := remote.StartProcess(ctx, "grpc-process", "helper", []string{"-test.run=^TestClientProcessHelper$", "--", "sleep"}, ".", codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE)
+	started, err := remote.StartProcess(ctx, "grpc-process", os.Args[0], []string{"-test.run=^TestClientProcessHelper$", "--", "sleep"}, ".", codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE)
 	if err != nil {
 		t.Fatalf("StartProcess() error = %v", err)
 	}
@@ -207,6 +206,12 @@ func TestClientProcessLifecycleOverGRPC(t *testing.T) {
 	if stopped.GetState() != codev1.ProcessState_PROCESS_STATE_EXITED || stopped.ExitSignal == nil {
 		t.Fatalf("SignalProcess() = %+v, want signal exit", stopped)
 	}
+	if active, err := remote.ListProcesses(ctx); err != nil || len(active) != 0 {
+		t.Fatalf("ListProcesses(active after exit) = %+v, %v", active, err)
+	}
+	if all, err := remote.ListProcesses(ctx, true); err != nil || len(all) != 1 || all[0].GetId() != started.GetId() {
+		t.Fatalf("ListProcesses(all after exit) = %+v, %v", all, err)
+	}
 }
 
 func TestClientProcessHelper(t *testing.T) {
@@ -221,7 +226,7 @@ func TestClientProcessHelper(t *testing.T) {
 func startController(t *testing.T, workspace string, maxUploadBytes int64, token string) string {
 	t.Helper()
 	controller, err := server.New(server.Config{
-		ListenAddress: "127.0.0.1:0", Workspace: workspace, MaxUploadBytes: maxUploadBytes, Token: token,
+		ListenAddress: "127.0.0.1:0", Workspace: workspace, RuntimeDirectory: t.TempDir(), MaxUploadBytes: maxUploadBytes, Token: token,
 	})
 	if err != nil {
 		t.Fatalf("server.New() error = %v", err)
@@ -243,10 +248,10 @@ func startController(t *testing.T, workspace string, maxUploadBytes int64, token
 	return controller.Address()
 }
 
-func startControllerWithProcesses(t *testing.T, workspace string, commands map[string]string, maxProcesses int) string {
+func startControllerWithProcesses(t *testing.T, workspace string, maxProcesses int) string {
 	t.Helper()
 	controller, err := server.New(server.Config{
-		ListenAddress: "127.0.0.1:0", Workspace: workspace, ProcessCommands: commands, MaxProcesses: maxProcesses,
+		ListenAddress: "127.0.0.1:0", Workspace: workspace, RuntimeDirectory: t.TempDir(), MaxProcesses: maxProcesses,
 	})
 	if err != nil {
 		t.Fatalf("server.New() error = %v", err)

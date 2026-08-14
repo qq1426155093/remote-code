@@ -10,71 +10,80 @@ import (
 	"os/exec"
 	"strconv"
 	"syscall"
+	"time"
 
 	"github.com/creack/pty"
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
 )
 
+const ptyDrainWait = 250 * time.Millisecond
+
 type runningCommand struct {
-	cmd     *exec.Cmd
-	closers []io.Closer
+	cmd      *exec.Cmd
+	terminal *os.File
+	copyDone chan struct{}
 }
 
-func startCommand(directory *os.File, executable string, arguments []string, ioMode codev1.ProcessIOMode) (*runningCommand, error) {
+func startCommand(directory *os.File, executable string, arguments, environment []string, ioMode codev1.ProcessIOMode, output *recordOutput) (*runningCommand, error) {
 	command := exec.Command(executable, arguments...)
 	command.Dir = "/proc/self/fd/" + strconv.FormatUint(uint64(directory.Fd()), 10)
+	command.Env = append([]string(nil), environment...)
 	switch ioMode {
 	case codev1.ProcessIOMode_PROCESS_IO_MODE_PTY:
-		command.Env = os.Environ()
-		if os.Getenv("TERM") == "" {
-			command.Env = append(command.Env, "TERM=xterm-256color")
-		}
 		terminal, err := pty.StartWithSize(command, &pty.Winsize{Rows: 24, Cols: 80})
 		if err != nil {
 			return nil, err
 		}
+		copyDone := make(chan struct{})
 		go func() {
-			_, _ = io.Copy(io.Discard, terminal)
+			_, _ = io.CopyBuffer(output.stdout, terminal, make([]byte, maxLogFrameBytes))
+			close(copyDone)
 		}()
-		return &runningCommand{cmd: command, closers: []io.Closer{terminal}}, nil
+		return &runningCommand{cmd: command, terminal: terminal, copyDone: copyDone}, nil
 	case codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE:
 		command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		command.Stdout = output.stdout
+		command.Stderr = output.stderr
 		stdin, err := command.StdinPipe()
 		if err != nil {
 			return nil, err
 		}
-		stdout, err := command.StdoutPipe()
-		if err != nil {
-			_ = stdin.Close()
-			return nil, err
-		}
-		stderr, err := command.StderrPipe()
-		if err != nil {
-			_ = stdin.Close()
-			_ = stdout.Close()
-			return nil, err
-		}
 		if err := command.Start(); err != nil {
 			_ = stdin.Close()
-			_ = stdout.Close()
-			_ = stderr.Close()
 			return nil, err
 		}
-		go func() {
-			_, _ = io.Copy(io.Discard, stdout)
-		}()
-		go func() {
-			_, _ = io.Copy(io.Discard, stderr)
-		}()
-		return &runningCommand{cmd: command, closers: []io.Closer{stdin, stdout, stderr}}, nil
+		// v1 has no attach/input RPC. Closing the pipe gives the child immediate
+		// EOF while preserving the requested pipe I/O semantics.
+		_ = stdin.Close()
+		return &runningCommand{cmd: command}, nil
 	default:
 		return nil, fmt.Errorf("%w: I/O mode %s", errUnsupportedPlatform, ioMode)
 	}
 }
 
+func (c *runningCommand) wait() error {
+	err := c.cmd.Wait()
+	if c.copyDone != nil {
+		timer := time.NewTimer(ptyDrainWait)
+		select {
+		case <-c.copyDone:
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+		case <-timer.C:
+			_ = c.terminal.Close()
+			<-c.copyDone
+		}
+	}
+	return err
+}
+
 func (c *runningCommand) close() {
-	for _, closer := range c.closers {
-		_ = closer.Close()
+	if c != nil && c.terminal != nil {
+		_ = c.terminal.Close()
 	}
 }
 

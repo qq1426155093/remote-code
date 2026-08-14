@@ -35,8 +35,7 @@ message GetInfoResponse {
   string api_version = 2;
   string workspace_name = 3;
   int64 max_upload_bytes = 4;
-  // Server-configured command aliases accepted by StartProcess.
-  repeated string process_commands = 5;
+  reserved 5;
   uint32 max_processes = 6;
 }
 
@@ -180,6 +179,10 @@ enum ProcessState {
   PROCESS_STATE_STARTING = 1;
   PROCESS_STATE_RUNNING = 2;
   PROCESS_STATE_EXITED = 3;
+  // The executable never started; the persistent audit record remains.
+  PROCESS_STATE_FAILED = 4;
+  // A previous controller stopped while the record was active.
+  PROCESS_STATE_LOST = 5;
 }
 
 enum ProcessSignal {
@@ -209,6 +212,9 @@ message ProcessInfo {
   optional int32 exit_code = 11;
   // Native POSIX signal number when the process was terminated by a signal.
   optional int32 exit_signal = 12;
+  google.protobuf.Timestamp created_at = 13;
+  // Only names are exposed; environment values may contain secrets.
+  repeated string environment_keys = 14;
 }
 
 message ProcessReference {
@@ -221,18 +227,23 @@ message ProcessReference {
 
 message StartProcessRequest {
   string name = 1;
-  // Command is an alias from GetInfoResponse.process_commands, never a path.
+  // Concrete executable name or path. It is executed directly, without a shell.
   string command = 2;
   repeated string arguments = 3;
   string working_directory = 4;
   ProcessIOMode io_mode = 5;
+  // Overrides applied after inheriting the controller environment.
+  map<string, string> environment = 6;
 }
 
 message StartProcessResponse {
   ProcessInfo process = 1;
 }
 
-message ListProcessesRequest {}
+message ListProcessesRequest {
+  // Include exited, failed and controller-lost persistent history.
+  bool all = 1;
+}
 
 message ListProcessesResponse {
   repeated ProcessInfo processes = 1;

@@ -3,7 +3,6 @@
 package process
 
 import (
-	"io"
 	"os"
 	"os/exec"
 
@@ -11,19 +10,15 @@ import (
 )
 
 type runningCommand struct {
-	cmd     *exec.Cmd
-	closers []io.Closer
+	cmd *exec.Cmd
 }
 
-func startCommand(*os.File, string, []string, codev1.ProcessIOMode) (*runningCommand, error) {
+func startCommand(*os.File, string, []string, []string, codev1.ProcessIOMode, *recordOutput) (*runningCommand, error) {
 	return nil, errUnsupportedPlatform
 }
 
-func (c *runningCommand) close() {
-	for _, closer := range c.closers {
-		_ = closer.Close()
-	}
-}
+func (c *runningCommand) wait() error { return errUnsupportedPlatform }
+func (c *runningCommand) close()      {}
 
 func nativeSignal(codev1.ProcessSignal) (int, error) {
 	return 0, errUnsupportedPlatform

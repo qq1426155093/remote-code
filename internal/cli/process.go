@@ -10,6 +10,7 @@ import (
 	"time"
 
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
+	remoteclient "github.com/qq1426155093/remote-code/pkg/client"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -21,6 +22,7 @@ type processStartOptions struct {
 	arguments        []string
 	workingDirectory string
 	ioMode           codev1.ProcessIOMode
+	environment      map[string]string
 }
 
 type processSignalOptions struct {
@@ -40,21 +42,29 @@ func (r *REPL) startProcess(arguments []string) error {
 	}
 	ctx, cancel := r.commandContext()
 	defer cancel()
-	info, err := r.client.StartProcess(ctx, options.name, options.command, options.arguments, workingDirectory, options.ioMode)
+	info, err := r.client.StartProcessWithOptions(ctx, remoteclient.ProcessStartOptions{
+		Name: options.name, Command: options.command, Arguments: options.arguments,
+		WorkingDirectory: workingDirectory, IOMode: options.ioMode, Environment: options.environment,
+	})
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(r.stdout, "started %s (%s), pid %d, %s mode\n", info.GetName(), info.GetId(), info.GetPid(), processIOModeName(info.GetIoMode()))
+	fmt.Fprintf(r.stdout, "started %s (%s), pid %d, %s mode, cwd %s\n", info.GetName(), info.GetId(), info.GetPid(), processIOModeName(info.GetIoMode()), info.GetWorkingDirectory())
 	return nil
 }
 
 func (r *REPL) listProcesses(arguments []string) error {
-	if len(arguments) != 0 {
-		return errors.New("usage: ps")
+	all := false
+	for _, argument := range arguments {
+		if argument == "-a" || argument == "--all" {
+			all = true
+			continue
+		}
+		return fmt.Errorf("unknown ps option %q; %s", argument, commandUsage["ps"])
 	}
 	ctx, cancel := r.commandContext()
 	defer cancel()
-	processes, err := r.client.ListProcesses(ctx)
+	processes, err := r.client.ListProcesses(ctx, all)
 	if err != nil {
 		return err
 	}
@@ -89,47 +99,73 @@ func (r *REPL) signalProcess(arguments []string) error {
 }
 
 func parseProcessStartOptions(arguments []string) (processStartOptions, error) {
-	options := processStartOptions{ioMode: codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE}
+	options := processStartOptions{ioMode: codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE, environment: make(map[string]string)}
+	modeSet := false
+	nameSet := false
+	cwdSet := false
 	for index := 0; index < len(arguments); {
 		argument := arguments[index]
 		switch argument {
 		case "--name":
-			if index+1 >= len(arguments) || options.name != "" {
-				return processStartOptions{}, errors.New(commandUsage["run"])
+			if index+1 >= len(arguments) || arguments[index+1] == "" || nameSet {
+				return processStartOptions{}, errors.New(commandUsage["exec"])
 			}
 			options.name = arguments[index+1]
+			nameSet = true
 			index += 2
 		case "--cwd":
-			if index+1 >= len(arguments) || options.workingDirectory != "" {
-				return processStartOptions{}, errors.New(commandUsage["run"])
+			if index+1 >= len(arguments) || cwdSet {
+				return processStartOptions{}, errors.New(commandUsage["exec"])
 			}
 			options.workingDirectory = arguments[index+1]
+			cwdSet = true
+			index += 2
+		case "-e", "--env":
+			if index+1 >= len(arguments) {
+				return processStartOptions{}, errors.New(commandUsage["exec"])
+			}
+			key, value, ok := strings.Cut(arguments[index+1], "=")
+			if !ok || key == "" {
+				return processStartOptions{}, errors.New("environment override must use KEY=VALUE")
+			}
+			if _, exists := options.environment[key]; exists {
+				return processStartOptions{}, fmt.Errorf("environment key %q is specified more than once", key)
+			}
+			options.environment[key] = value
 			index += 2
 		case "--pipe":
+			if modeSet {
+				return processStartOptions{}, errors.New("only one of --pipe and --pty may be specified")
+			}
 			options.ioMode = codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE
+			modeSet = true
 			index++
 		case "--pty":
+			if modeSet {
+				return processStartOptions{}, errors.New("only one of --pipe and --pty may be specified")
+			}
 			options.ioMode = codev1.ProcessIOMode_PROCESS_IO_MODE_PTY
+			modeSet = true
 			index++
 		case "--":
 			index++
 			if index >= len(arguments) {
-				return processStartOptions{}, errors.New(commandUsage["run"])
+				return processStartOptions{}, errors.New(commandUsage["exec"])
 			}
 			options.command = arguments[index]
 			options.arguments = append([]string(nil), arguments[index+1:]...)
 			index = len(arguments)
 		default:
 			if strings.HasPrefix(argument, "-") {
-				return processStartOptions{}, fmt.Errorf("unknown run option %q; %s", argument, commandUsage["run"])
+				return processStartOptions{}, fmt.Errorf("unknown exec option %q; %s", argument, commandUsage["exec"])
 			}
 			options.command = argument
 			options.arguments = append([]string(nil), arguments[index+1:]...)
 			index = len(arguments)
 		}
 	}
-	if options.name == "" || options.command == "" {
-		return processStartOptions{}, errors.New(commandUsage["run"])
+	if options.command == "" {
+		return processStartOptions{}, errors.New(commandUsage["exec"])
 	}
 	return options, nil
 }

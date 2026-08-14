@@ -8,11 +8,11 @@ import (
 )
 
 func TestParseProcessStartOptions(t *testing.T) {
-	options, err := parseProcessStartOptions([]string{"--name", "worker", "--pty", "--cwd", "docs", "helper", "--flag", "value"})
+	options, err := parseProcessStartOptions([]string{"--name", "worker", "--pty", "--cwd", "docs", "-e", "MODE=test", "helper", "--flag", "value"})
 	if err != nil {
 		t.Fatalf("parseProcessStartOptions() error = %v", err)
 	}
-	if options.name != "worker" || options.command != "helper" || options.workingDirectory != "docs" || options.ioMode != codev1.ProcessIOMode_PROCESS_IO_MODE_PTY || !reflect.DeepEqual(options.arguments, []string{"--flag", "value"}) {
+	if options.name != "worker" || options.command != "helper" || options.workingDirectory != "docs" || options.ioMode != codev1.ProcessIOMode_PROCESS_IO_MODE_PTY || !reflect.DeepEqual(options.arguments, []string{"--flag", "value"}) || !reflect.DeepEqual(options.environment, map[string]string{"MODE": "test"}) {
 		t.Fatalf("parseProcessStartOptions() = %+v", options)
 	}
 
@@ -26,9 +26,12 @@ func TestParseProcessStartOptions(t *testing.T) {
 
 	for _, arguments := range [][]string{
 		{},
-		{"helper"},
 		{"--name", "worker"},
 		{"--unknown", "worker", "helper"},
+		{"-e", "invalid", "helper"},
+		{"--pipe", "--pty", "helper"},
+		{"--name", "", "helper"},
+		{"--name", "one", "--name", "two", "helper"},
 	} {
 		if _, err := parseProcessStartOptions(arguments); err == nil {
 			t.Errorf("parseProcessStartOptions(%q) succeeded", arguments)

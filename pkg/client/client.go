@@ -50,6 +50,16 @@ type DownloadResult struct {
 	SHA256 []byte
 }
 
+// ProcessStartOptions describes one generic remote command invocation.
+type ProcessStartOptions struct {
+	Name             string
+	Command          string
+	Arguments        []string
+	WorkingDirectory string
+	IOMode           codev1.ProcessIOMode
+	Environment      map[string]string
+}
+
 // New creates a connection and verifies it with GetInfo before returning.
 func New(ctx context.Context, config Config) (*Client, error) {
 	if config.Address == "" {
@@ -126,10 +136,20 @@ func (c *Client) Tree(ctx context.Context, remotePath string) (*codev1.TreeNode,
 	return response.GetRoot(), nil
 }
 
-// StartProcess launches a configured command alias in the remote workspace.
+// StartProcess launches a concrete command. It is kept as a convenience
+// wrapper for callers that do not need environment overrides.
 func (c *Client) StartProcess(ctx context.Context, name, command string, arguments []string, workingDirectory string, ioMode codev1.ProcessIOMode) (*codev1.ProcessInfo, error) {
+	return c.StartProcessWithOptions(ctx, ProcessStartOptions{
+		Name: name, Command: command, Arguments: arguments, WorkingDirectory: workingDirectory, IOMode: ioMode,
+	})
+}
+
+// StartProcessWithOptions launches a concrete command directly, without shell
+// interpretation, and applies the supplied environment overrides.
+func (c *Client) StartProcessWithOptions(ctx context.Context, options ProcessStartOptions) (*codev1.ProcessInfo, error) {
 	response, err := c.processes.StartProcess(ctx, &codev1.StartProcessRequest{
-		Name: name, Command: command, Arguments: arguments, WorkingDirectory: workingDirectory, IoMode: ioMode,
+		Name: options.Name, Command: options.Command, Arguments: options.Arguments,
+		WorkingDirectory: options.WorkingDirectory, IoMode: options.IOMode, Environment: options.Environment,
 	})
 	if err != nil {
 		return nil, err
@@ -140,9 +160,11 @@ func (c *Client) StartProcess(ctx context.Context, name, command string, argumen
 	return response.GetProcess(), nil
 }
 
-// ListProcesses returns running and retained exited processes.
-func (c *Client) ListProcesses(ctx context.Context) ([]*codev1.ProcessInfo, error) {
-	response, err := c.processes.ListProcesses(ctx, &codev1.ListProcessesRequest{})
+// ListProcesses returns active processes by default. Passing true includes
+// persistent exited, failed, and lost history.
+func (c *Client) ListProcesses(ctx context.Context, all ...bool) ([]*codev1.ProcessInfo, error) {
+	includeAll := len(all) > 0 && all[0]
+	response, err := c.processes.ListProcesses(ctx, &codev1.ListProcessesRequest{All: includeAll})
 	if err != nil {
 		return nil, err
 	}

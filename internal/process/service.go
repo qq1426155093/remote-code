@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -25,25 +24,32 @@ import (
 )
 
 const (
-	defaultMaxProcesses = 16
-	maxTrackedProcesses = 4096
-	maxProcessArguments = 256
-	maxArgumentBytes    = 4096
-	maxArgumentsBytes   = 64 << 10
-	maxWorkingPathBytes = 4096
-	forcedShutdownWait  = 5 * time.Second
+	defaultMaxProcesses      = 16
+	maxTrackedProcesses      = 4096
+	maxProcessArguments      = 256
+	maxArgumentBytes         = 4096
+	maxArgumentsBytes        = 64 << 10
+	maxWorkingPathBytes      = 4096
+	maxCommandBytes          = 4096
+	maxEnvironmentVariables  = 256
+	maxEnvironmentEntryBytes = 4096
+	maxEnvironmentBytes      = 64 << 10
+	forcedShutdownWait       = 5 * time.Second
 )
 
 var (
 	identifierPattern      = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+	uuidPattern            = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+	environmentKeyPattern  = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	nonIdentifierCharacter = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 	errUnsupportedPlatform = errors.New("process management is not supported on this platform")
 )
 
-// Config controls one in-memory process registry.
+// Config controls the persistent process registry.
 type Config struct {
-	Workspace    string
-	Commands     map[string]string
-	MaxProcesses int
+	Workspace        string
+	RuntimeDirectory string
+	MaxProcesses     int
 }
 
 // Service manages process lifecycle and implements the gRPC process API.
@@ -51,26 +57,38 @@ type Service struct {
 	codev1.UnimplementedProcessServiceServer
 
 	root         *os.Root
-	commands     map[string]string
-	commandNames []string
+	store        *recordStore
 	maxProcesses int
 
-	mu        sync.Mutex
-	closing   bool
-	active    int
-	processes map[string]*managedProcess
-	byName    map[string]string
-	byPID     map[int64]string
-	order     []string
+	mu          sync.Mutex
+	starts      sync.WaitGroup
+	closing     bool
+	active      int
+	processes   map[string]*managedProcess
+	activeNames map[string]string
+	byName      map[string]string
+	byPID       map[int64]string
+	order       []string
 }
 
 type managedProcess struct {
 	info    *codev1.ProcessInfo
 	command *runningCommand
+	output  *recordOutput
 	done    chan struct{}
 }
 
-// New validates the workspace and configured command allowlist.
+type validatedStart struct {
+	name             string
+	command          string
+	arguments        []string
+	workingDirectory string
+	ioMode           codev1.ProcessIOMode
+	environment      []string
+	environmentKeys  []string
+}
+
+// New validates the workspace/runtime roots and recovers persistent history.
 func New(config Config) (*Service, error) {
 	if config.Workspace == "" {
 		return nil, errors.New("workspace is required")
@@ -90,23 +108,11 @@ func New(config Config) (*Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open workspace: %w", err)
 	}
-
-	commands := make(map[string]string, len(config.Commands))
-	commandNames := make([]string, 0, len(config.Commands))
-	for name, executable := range config.Commands {
-		if !identifierPattern.MatchString(name) {
-			_ = root.Close()
-			return nil, fmt.Errorf("process command name %q must match %s", name, identifierPattern)
-		}
-		resolved, err := resolveExecutable(executable)
-		if err != nil {
-			_ = root.Close()
-			return nil, fmt.Errorf("resolve process command %q: %w", name, err)
-		}
-		commands[name] = resolved
-		commandNames = append(commandNames, name)
+	store, err := openRecordStore(config.RuntimeDirectory)
+	if err != nil {
+		_ = root.Close()
+		return nil, err
 	}
-	sort.Strings(commandNames)
 	maxProcesses := config.MaxProcesses
 	if maxProcesses == 0 {
 		maxProcesses = defaultMaxProcesses
@@ -115,15 +121,23 @@ func New(config Config) (*Service, error) {
 		_ = root.Close()
 		return nil, fmt.Errorf("max processes must be between 1 and %d", maxTrackedProcesses)
 	}
-	return &Service{
-		root: root, commands: commands, commandNames: commandNames, maxProcesses: maxProcesses,
-		processes: make(map[string]*managedProcess), byName: make(map[string]string), byPID: make(map[int64]string),
-	}, nil
-}
-
-// AllowedCommands returns a sorted copy of configured command aliases.
-func (s *Service) AllowedCommands() []string {
-	return append([]string(nil), s.commandNames...)
+	service := &Service{
+		root: root, store: store, maxProcesses: maxProcesses,
+		processes: make(map[string]*managedProcess), activeNames: make(map[string]string),
+		byName: make(map[string]string), byPID: make(map[int64]string),
+	}
+	loaded, err := store.load()
+	if err != nil {
+		_ = root.Close()
+		return nil, err
+	}
+	for _, info := range loaded {
+		record := &managedProcess{info: info, done: closedChannel()}
+		service.processes[info.GetId()] = record
+		service.byName[info.GetName()] = info.GetId()
+		service.order = append(service.order, info.GetId())
+	}
+	return service, nil
 }
 
 // MaxProcesses returns the active process limit.
@@ -131,16 +145,16 @@ func (s *Service) MaxProcesses() int {
 	return s.maxProcesses
 }
 
-// StartProcess launches one command in its own process group.
+// StartProcess launches a concrete command in its own process group.
 func (s *Service) StartProcess(ctx context.Context, request *codev1.StartProcessRequest) (*codev1.StartProcessResponse, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, status.FromContextError(err).Err()
 	}
-	name, commandName, arguments, workingDirectory, ioMode, err := s.validateStartRequest(request)
+	start, err := s.validateStartRequest(request)
 	if err != nil {
 		return nil, err
 	}
-	directory, err := s.openWorkingDirectory(workingDirectory)
+	directory, err := s.openWorkingDirectory(start.workingDirectory)
 	if err != nil {
 		return nil, err
 	}
@@ -149,10 +163,15 @@ func (s *Service) StartProcess(ctx context.Context, request *codev1.StartProcess
 	if err != nil {
 		return nil, status.Error(codes.Internal, "allocate process id failed")
 	}
+	if start.name == "" {
+		start.name = automaticProcessName(start.command, id)
+	}
 	record := &managedProcess{
 		info: &codev1.ProcessInfo{
-			Id: id, Name: name, IoMode: ioMode, State: codev1.ProcessState_PROCESS_STATE_STARTING,
-			Command: commandName, Arguments: append([]string(nil), arguments...), WorkingDirectory: displayWorkingDirectory(workingDirectory),
+			Id: id, Name: start.name, IoMode: start.ioMode, State: codev1.ProcessState_PROCESS_STATE_STARTING,
+			Command: start.command, Arguments: append([]string(nil), start.arguments...),
+			WorkingDirectory: displayWorkingDirectory(start.workingDirectory),
+			CreatedAt:        timestamppb.Now(), EnvironmentKeys: append([]string(nil), start.environmentKeys...),
 		},
 		done: make(chan struct{}),
 	}
@@ -166,59 +185,102 @@ func (s *Service) StartProcess(ctx context.Context, request *codev1.StartProcess
 		s.mu.Unlock()
 		return nil, status.Errorf(codes.ResourceExhausted, "active process limit of %d reached", s.maxProcesses)
 	}
-	if _, exists := s.byName[name]; exists {
+	if _, exists := s.activeNames[start.name]; exists {
 		s.mu.Unlock()
-		return nil, status.Errorf(codes.AlreadyExists, "process name %q already exists", name)
+		return nil, status.Errorf(codes.AlreadyExists, "active process name %q already exists", start.name)
 	}
 	if err := s.makeHistorySpaceLocked(); err != nil {
 		s.mu.Unlock()
 		return nil, err
 	}
 	s.processes[id] = record
-	s.byName[name] = id
+	s.activeNames[start.name] = id
+	s.byName[start.name] = id
 	s.order = append(s.order, id)
 	s.active++
+	s.starts.Add(1)
+	s.mu.Unlock()
+	defer s.starts.Done()
 
-	running, startErr := startCommand(directory, s.commands[commandName], arguments, ioMode)
-	if startErr != nil {
+	output, err := s.store.create(record.info)
+	if err != nil {
+		s.mu.Lock()
 		s.removeLocked(record)
 		s.active--
 		s.mu.Unlock()
-		if errors.Is(startErr, errUnsupportedPlatform) {
-			return nil, status.Error(codes.Unimplemented, startErr.Error())
-		}
-		return nil, status.Errorf(codes.Internal, "start process %q failed", name)
+		return nil, status.Error(codes.Internal, "create persistent process record failed")
 	}
+	record.output = output
+	running, startErr := startCommand(directory, start.command, start.arguments, start.environment, start.ioMode, output)
+	if startErr != nil {
+		output.close()
+		s.mu.Lock()
+		failed := cloneProcessInfo(record.info)
+		s.mu.Unlock()
+		failed.State = codev1.ProcessState_PROCESS_STATE_FAILED
+		failed.ExitedAt = timestamppb.Now()
+		_ = s.store.writeStatus(failed, "executable could not be started")
+
+		s.mu.Lock()
+		record.info = failed
+		if s.active > 0 {
+			s.active--
+		}
+		if s.activeNames[start.name] == id {
+			delete(s.activeNames, start.name)
+		}
+		close(record.done)
+		s.mu.Unlock()
+		if errors.Is(startErr, errUnsupportedPlatform) {
+			return nil, status.Errorf(codes.Unimplemented, "process %s: %s", id, startErr)
+		}
+		return nil, status.Errorf(codes.Internal, "start process failed; record id %s", id)
+	}
+
+	s.mu.Lock()
 	record.command = running
-	record.info.Pid = int64(running.cmd.Process.Pid)
-	record.info.State = codev1.ProcessState_PROCESS_STATE_RUNNING
-	record.info.StartedAt = timestamppb.Now()
-	s.byPID[record.info.Pid] = id
-	response := &codev1.StartProcessResponse{Process: cloneProcessInfo(record.info)}
-	go s.reap(record)
+	runningInfo := cloneProcessInfo(record.info)
 	s.mu.Unlock()
-	return response, nil
+	runningInfo.Pid = int64(running.cmd.Process.Pid)
+	runningInfo.State = codev1.ProcessState_PROCESS_STATE_RUNNING
+	runningInfo.StartedAt = timestamppb.Now()
+	if err := s.store.writeStatus(runningInfo, ""); err != nil {
+		s.mu.Lock()
+		record.info = runningInfo
+		s.byPID[runningInfo.GetPid()] = id
+		s.mu.Unlock()
+		_ = signalProcessGroup(int(runningInfo.GetPid()), codev1.ProcessSignal_PROCESS_SIGNAL_KILL)
+		go s.reap(record)
+		return nil, status.Errorf(codes.Internal, "persist running process %s failed", id)
+	}
+	s.mu.Lock()
+	record.info = runningInfo
+	s.byPID[runningInfo.GetPid()] = id
+	s.mu.Unlock()
+	go s.reap(record)
+	return &codev1.StartProcessResponse{Process: runningInfo}, nil
 }
 
-// ListProcesses returns successful starts in stable creation order, including
-// exited processes retained in the bounded in-memory history.
-func (s *Service) ListProcesses(ctx context.Context, _ *codev1.ListProcessesRequest) (*codev1.ListProcessesResponse, error) {
+// ListProcesses returns active processes unless all history was requested.
+func (s *Service) ListProcesses(ctx context.Context, request *codev1.ListProcessesRequest) (*codev1.ListProcessesResponse, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, status.FromContextError(err).Err()
 	}
+	all := request.GetAll()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	processes := make([]*codev1.ProcessInfo, 0, len(s.order))
 	for _, id := range s.order {
-		if record := s.processes[id]; record != nil {
-			processes = append(processes, cloneProcessInfo(record.info))
+		record := s.processes[id]
+		if record == nil || (!all && !isActiveState(record.info.GetState())) {
+			continue
 		}
+		processes = append(processes, cloneProcessInfo(record.info))
 	}
 	return &codev1.ListProcessesResponse{Processes: processes}, nil
 }
 
 // SignalProcess sends an allowed signal to the entire managed process group.
-// When wait is true, the RPC waits for the process leader to be reaped.
 func (s *Service) SignalProcess(ctx context.Context, request *codev1.SignalProcessRequest) (*codev1.SignalProcessResponse, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, status.FromContextError(err).Err()
@@ -237,7 +299,7 @@ func (s *Service) SignalProcess(ctx context.Context, request *codev1.SignalProce
 		s.mu.Unlock()
 		return nil, err
 	}
-	if record.info.GetState() != codev1.ProcessState_PROCESS_STATE_RUNNING {
+	if record.info.GetState() != codev1.ProcessState_PROCESS_STATE_RUNNING || record.command == nil {
 		info := cloneProcessInfo(record.info)
 		s.mu.Unlock()
 		return nil, status.Errorf(codes.FailedPrecondition, "process %q is %s", info.GetName(), processStateName(info.GetState()))
@@ -264,12 +326,15 @@ func (s *Service) SignalProcess(ctx context.Context, request *codev1.SignalProce
 	return &codev1.SignalProcessResponse{Process: s.snapshot(record)}, nil
 }
 
-// Shutdown rejects new starts, asks every running group to terminate, then
-// force-kills remaining groups when ctx expires. Direct children are always
-// waited by their reaper goroutines.
+// Shutdown rejects starts, waits for starts already in progress, terminates
+// running groups, and force-kills groups remaining when ctx expires.
 func (s *Service) Shutdown(ctx context.Context) error {
 	s.mu.Lock()
 	s.closing = true
+	s.mu.Unlock()
+	s.starts.Wait()
+
+	s.mu.Lock()
 	records := s.runningLocked()
 	s.mu.Unlock()
 	for _, record := range records {
@@ -296,47 +361,122 @@ func (s *Service) Close() error {
 	return s.root.Close()
 }
 
-func (s *Service) validateStartRequest(request *codev1.StartProcessRequest) (string, string, []string, string, codev1.ProcessIOMode, error) {
+func (s *Service) validateStartRequest(request *codev1.StartProcessRequest) (validatedStart, error) {
+	if request == nil {
+		return validatedStart{}, status.Error(codes.InvalidArgument, "start process request is required")
+	}
 	name := request.GetName()
-	if !identifierPattern.MatchString(name) {
-		return "", "", nil, "", 0, status.Errorf(codes.InvalidArgument, "process name must match %s", identifierPattern)
+	if name != "" && !identifierPattern.MatchString(name) {
+		return validatedStart{}, status.Errorf(codes.InvalidArgument, "process name must match %s", identifierPattern)
 	}
-	commandName := request.GetCommand()
-	if !identifierPattern.MatchString(commandName) {
-		return "", "", nil, "", 0, status.Error(codes.InvalidArgument, "process command alias is invalid")
+	command := request.GetCommand()
+	if command == "" {
+		return validatedStart{}, status.Error(codes.InvalidArgument, "process command is required")
 	}
-	if _, ok := s.commands[commandName]; !ok {
-		return "", "", nil, "", 0, status.Errorf(codes.FailedPrecondition, "process command %q is not configured", commandName)
+	if len(command) > maxCommandBytes {
+		return validatedStart{}, status.Errorf(codes.InvalidArgument, "process command exceeds %d bytes", maxCommandBytes)
+	}
+	if strings.IndexByte(command, 0) >= 0 {
+		return validatedStart{}, status.Error(codes.InvalidArgument, "process command contains a NUL byte")
 	}
 	arguments := request.GetArguments()
 	if len(arguments) > maxProcessArguments {
-		return "", "", nil, "", 0, status.Errorf(codes.InvalidArgument, "process accepts at most %d arguments", maxProcessArguments)
+		return validatedStart{}, status.Errorf(codes.InvalidArgument, "process accepts at most %d arguments", maxProcessArguments)
 	}
 	totalBytes := 0
 	for _, argument := range arguments {
 		if strings.IndexByte(argument, 0) >= 0 {
-			return "", "", nil, "", 0, status.Error(codes.InvalidArgument, "process argument contains a NUL byte")
+			return validatedStart{}, status.Error(codes.InvalidArgument, "process argument contains a NUL byte")
 		}
 		if len(argument) > maxArgumentBytes {
-			return "", "", nil, "", 0, status.Errorf(codes.InvalidArgument, "process argument exceeds %d bytes", maxArgumentBytes)
+			return validatedStart{}, status.Errorf(codes.InvalidArgument, "process argument exceeds %d bytes", maxArgumentBytes)
 		}
 		totalBytes += len(argument)
 	}
 	if totalBytes > maxArgumentsBytes {
-		return "", "", nil, "", 0, status.Errorf(codes.InvalidArgument, "process arguments exceed %d bytes", maxArgumentsBytes)
+		return validatedStart{}, status.Errorf(codes.InvalidArgument, "process arguments exceed %d bytes", maxArgumentsBytes)
 	}
 	workingDirectory, err := cleanWorkingDirectory(request.GetWorkingDirectory())
 	if err != nil {
-		return "", "", nil, "", 0, err
+		return validatedStart{}, err
 	}
 	ioMode := request.GetIoMode()
 	if ioMode == codev1.ProcessIOMode_PROCESS_IO_MODE_UNSPECIFIED {
 		ioMode = codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE
 	}
 	if ioMode != codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE && ioMode != codev1.ProcessIOMode_PROCESS_IO_MODE_PTY {
-		return "", "", nil, "", 0, status.Errorf(codes.InvalidArgument, "unsupported process I/O mode %q", ioMode)
+		return validatedStart{}, status.Errorf(codes.InvalidArgument, "unsupported process I/O mode %q", ioMode)
 	}
-	return name, commandName, append([]string(nil), arguments...), workingDirectory, ioMode, nil
+	environment, environmentKeys, err := buildEnvironment(request.GetEnvironment(), ioMode)
+	if err != nil {
+		return validatedStart{}, err
+	}
+	return validatedStart{
+		name: name, command: command, arguments: append([]string(nil), arguments...), workingDirectory: workingDirectory,
+		ioMode: ioMode, environment: environment, environmentKeys: environmentKeys,
+	}, nil
+}
+
+func buildEnvironment(overrides map[string]string, ioMode codev1.ProcessIOMode) ([]string, []string, error) {
+	if len(overrides) > maxEnvironmentVariables {
+		return nil, nil, status.Errorf(codes.InvalidArgument, "process accepts at most %d environment overrides", maxEnvironmentVariables)
+	}
+	total := 0
+	keys := make([]string, 0, len(overrides))
+	for key, value := range overrides {
+		if !environmentKeyPattern.MatchString(key) {
+			return nil, nil, status.Errorf(codes.InvalidArgument, "environment key %q is invalid", key)
+		}
+		if strings.IndexByte(value, 0) >= 0 {
+			return nil, nil, status.Errorf(codes.InvalidArgument, "environment value for %q contains a NUL byte", key)
+		}
+		if len(key)+len(value) > maxEnvironmentEntryBytes {
+			return nil, nil, status.Errorf(codes.InvalidArgument, "environment entry %q exceeds %d bytes", key, maxEnvironmentEntryBytes)
+		}
+		total += len(key) + len(value)
+		keys = append(keys, key)
+	}
+	if total > maxEnvironmentBytes {
+		return nil, nil, status.Errorf(codes.InvalidArgument, "environment overrides exceed %d bytes", maxEnvironmentBytes)
+	}
+	sort.Strings(keys)
+	values := make(map[string]string)
+	for _, entry := range os.Environ() {
+		key, value, ok := strings.Cut(entry, "=")
+		if ok {
+			values[key] = value
+		}
+	}
+	for key, value := range overrides {
+		values[key] = value
+	}
+	if ioMode == codev1.ProcessIOMode_PROCESS_IO_MODE_PTY {
+		if _, ok := values["TERM"]; !ok {
+			values["TERM"] = "xterm-256color"
+		}
+	}
+	allKeys := make([]string, 0, len(values))
+	for key := range values {
+		allKeys = append(allKeys, key)
+	}
+	sort.Strings(allKeys)
+	environment := make([]string, 0, len(allKeys))
+	for _, key := range allKeys {
+		environment = append(environment, key+"="+values[key])
+	}
+	return environment, keys, nil
+}
+
+func automaticProcessName(command, id string) string {
+	base := nonIdentifierCharacter.ReplaceAllString(filepath.Base(command), "-")
+	base = strings.Trim(base, ".-_")
+	if base == "" || base[0] < '0' || (base[0] > '9' && base[0] < 'A') || (base[0] > 'Z' && base[0] < 'a') || base[0] > 'z' {
+		base = "process"
+	}
+	if len(base) > 54 {
+		base = base[:54]
+	}
+	return base + "-" + id[:8]
 }
 
 func (s *Service) openWorkingDirectory(rel string) (*os.File, error) {
@@ -357,17 +497,27 @@ func (s *Service) openWorkingDirectory(rel string) (*os.File, error) {
 }
 
 func (s *Service) reap(record *managedProcess) {
-	waitErr := record.command.cmd.Wait()
+	waitErr := record.command.wait()
 	record.command.close()
+	record.output.close()
 	exitCode, exitSignal := processExit(record.command.cmd.ProcessState, waitErr)
 
 	s.mu.Lock()
-	record.info.State = codev1.ProcessState_PROCESS_STATE_EXITED
-	record.info.ExitedAt = timestamppb.Now()
-	record.info.ExitCode = exitCode
-	record.info.ExitSignal = exitSignal
+	exited := cloneProcessInfo(record.info)
+	s.mu.Unlock()
+	exited.State = codev1.ProcessState_PROCESS_STATE_EXITED
+	exited.ExitedAt = timestamppb.Now()
+	exited.ExitCode = exitCode
+	exited.ExitSignal = exitSignal
+	_ = s.store.writeStatus(exited, "")
+
+	s.mu.Lock()
+	record.info = exited
 	if s.active > 0 {
 		s.active--
+	}
+	if s.activeNames[record.info.GetName()] == record.info.GetId() {
+		delete(s.activeNames, record.info.GetName())
 	}
 	close(record.done)
 	s.mu.Unlock()
@@ -414,7 +564,7 @@ func (s *Service) runningLocked() []*managedProcess {
 	records := make([]*managedProcess, 0, s.active)
 	for _, id := range s.order {
 		record := s.processes[id]
-		if record != nil && record.info.GetState() == codev1.ProcessState_PROCESS_STATE_RUNNING {
+		if record != nil && record.info.GetState() == codev1.ProcessState_PROCESS_STATE_RUNNING && record.command != nil {
 			records = append(records, record)
 		}
 	}
@@ -426,7 +576,7 @@ func (s *Service) makeHistorySpaceLocked() error {
 		removed := false
 		for _, id := range s.order {
 			record := s.processes[id]
-			if record != nil && record.info.GetState() == codev1.ProcessState_PROCESS_STATE_EXITED {
+			if record != nil && !isActiveState(record.info.GetState()) {
 				s.removeLocked(record)
 				removed = true
 				break
@@ -442,8 +592,18 @@ func (s *Service) makeHistorySpaceLocked() error {
 func (s *Service) removeLocked(record *managedProcess) {
 	id := record.info.GetId()
 	delete(s.processes, id)
+	if s.activeNames[record.info.GetName()] == id {
+		delete(s.activeNames, record.info.GetName())
+	}
 	if s.byName[record.info.GetName()] == id {
 		delete(s.byName, record.info.GetName())
+		for index := len(s.order) - 1; index >= 0; index-- {
+			candidate := s.processes[s.order[index]]
+			if candidate != nil && candidate.info.GetName() == record.info.GetName() {
+				s.byName[record.info.GetName()] = candidate.info.GetId()
+				break
+			}
+		}
 	}
 	if s.byPID[record.info.GetPid()] == id {
 		delete(s.byPID, record.info.GetPid())
@@ -456,26 +616,8 @@ func (s *Service) removeLocked(record *managedProcess) {
 	}
 }
 
-func resolveExecutable(executable string) (string, error) {
-	if executable == "" {
-		return "", errors.New("executable is required")
-	}
-	resolved, err := exec.LookPath(executable)
-	if err != nil {
-		return "", err
-	}
-	resolved, err = filepath.Abs(resolved)
-	if err != nil {
-		return "", err
-	}
-	info, err := os.Stat(resolved)
-	if err != nil {
-		return "", err
-	}
-	if !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
-		return "", errors.New("executable must be an executable regular file")
-	}
-	return resolved, nil
+func isActiveState(state codev1.ProcessState) bool {
+	return state == codev1.ProcessState_PROCESS_STATE_STARTING || state == codev1.ProcessState_PROCESS_STATE_RUNNING
 }
 
 func cleanWorkingDirectory(raw string) (string, error) {
@@ -554,6 +696,12 @@ func waitForRecords(ctx context.Context, records []*managedProcess) bool {
 		}
 	}
 	return true
+}
+
+func closedChannel() chan struct{} {
+	result := make(chan struct{})
+	close(result)
+	return result
 }
 
 func newUUID() (string, error) {

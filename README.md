@@ -1,11 +1,12 @@
 # Remote Code
 
 Remote Code 是一个面向远程开发任务的 Code Agent 控制平面。它在远程机器上运行
-`controller`，通过 gRPC 接受本地 `remote-code` CLI 的请求，管理工作区文件以及一个
-或多个 Claude Code 进程。
+`controller`，通过 gRPC 接受本地 `remote-code` CLI 的请求，管理工作区文件以及通用
+受管进程。Claude Code 接入将建立在这套通用进程能力之上，目前不需要 Claude 凭据。
 
 > 项目状态：文件与基础进程控制已可运行，包含带 Tab 补全的交互式 CLI、结构化目录树、
-> gRPC controller、流式上传/下载、PTY/pipe 启动、进程列表、信号和自动回收。远程 attach 与 Agent 语义仍是后续版本计划。
+> gRPC controller、流式上传/下载、PTY/pipe 启动、持久化输出日志、进程列表、信号、
+> 自动回收和重启历史恢复。远程 attach、日志回放 RPC 与 Agent 语义仍是后续版本计划。
 
 ## 快速开始
 
@@ -17,7 +18,7 @@ go test ./...
 make build
 
 ./bin/remote-code-controller --workspace /path/to/workspace \
-  --process-command claude=/usr/local/bin/claude
+  --runtime-dir ./var/run/remote-code-controller
 ```
 
 在另一个终端连接：
@@ -26,21 +27,24 @@ make build
 ./bin/remote-code --controller-addr 127.0.0.1:9443
 ```
 
-连接后可使用文件命令以及 `run`、`ps`、`kill` 进程命令，输入 `help` 查看完整说明。例如：
+连接后可使用文件命令以及 `exec`、`ps`、`kill` 进程命令，输入 `help` 查看完整说明。例如：
 
 ```text
 remote-code:/> mkdir -p docs/input
 remote-code:/> upload ./requirements.md docs/input/requirements.md
 remote-code:/> ls -l docs/input
 remote-code:/> download docs/input/requirements.md ./requirements.copy.md
-remote-code:/> run --name designer --pty --cwd / claude
+remote-code:/> cd docs/input
+remote-code:/docs/input> exec --name listing -e LANG=C ls -la
 remote-code:/> ps
-remote-code:/> kill -s TERM -w designer
+remote-code:/> ps -a
+remote-code:/> kill -s TERM -w listing
 ```
 
 默认仅允许 loopback 明文监听。远程部署应配置 `--tls-cert`、`--tls-key` 和
 `--token-file`；完整参数、行为与安全限制见
-[首版需求](docs/requirements-v1.md)和[技术方案](docs/technical-design-v1.md)。
+[首版需求](docs/requirements-v1.md)、[通用进程需求](docs/process-management-requirements-v1.md)、
+[技术方案](docs/technical-design-v1.md)和[通用进程详细设计](docs/process-management-design-v1.md)。
 
 ## 使用场景
 
@@ -87,7 +91,8 @@ controller 是唯一的远程入口，负责认证、路径校验、进程注册
 ## 核心概念
 
 - **Workspace**：controller 启动时指定的根目录。所有文件操作和 agent 工作目录都必须位于该目录内。
-- **Agent**：一个受管的 Claude Code 进程，拥有稳定 ID、名称、角色、启动参数和生命周期状态。
+- **Process**：一个通用受管进程，拥有稳定 UUID、逻辑名称、PID、启动参数和持久化生命周期状态。
+- **Agent**：后续建立在 Process 之上的 Claude Code 语义层。
 - **Attachment**：CLI 与 agent PTY 的一次连接。网络断开不等同于终止 agent，之后可以重新接入。
 - **Event**：带递增序号和时间戳的输出、状态变化或错误，可用于断线续传和审计。
 
@@ -110,7 +115,7 @@ remote-code --controller-addr devbox.example.com:9443 \
   --token-file ~/.config/remote-code/devbox.token
 ```
 
-当前 REPL 已提供通用的 `run`、`ps` 和 `kill`；下面的 context、agent attach 与日志命令是后续版本的产品形态草案：
+当前 REPL 已提供通用的 `exec`、`ps`、`ps -a` 和 `kill`；下面的 context、agent attach 与日志命令是后续版本的产品形态草案：
 
 以下命令用于约定产品形态，并不表示已经实现：
 
@@ -173,8 +178,14 @@ Linux `tree` 的文本。文件上传和下载采用分块流并用 SHA-256 校�
 [`remote_code.proto`](api/remote/code/v1/remote_code.proto)。后续的 `Attach` 将使用双向流承载
 stdin、stdout/stderr、终端 resize、心跳和 detach。
 
-进程只能通过 controller 的 `--process-command NAME=EXECUTABLE` allowlist 启动。每个进程具有 UUID、
-唯一名称和 OS PID；pipe 与 PTY 模式都使用独立进程组，`SignalProcess` 可按 UUID、名称或 PID 向整个组发送 HUP、INT、QUIT、TERM、KILL、USR1、USR2、STOP 或 CONT。直接子进程始终由 controller `Wait` 回收。
+`StartProcess` 接受具体命令、参数、工作区内 cwd、PIPE/PTY 模式和环境覆盖；它不经 shell
+解释。每个进程具有 UUID、逻辑名称和 OS PID；pipe 与 PTY 模式都使用独立进程组，
+`SignalProcess` 可按 UUID、名称或 PID 向整个组发送 HUP、INT、QUIT、TERM、KILL、
+USR1、USR2、STOP 或 CONT。直接子进程始终由 controller `Wait` 回收。
+
+进程记录位于 `--runtime-dir/<uuid>/`。`metadata.json` 与 `status.json` 保存元数据和状态，
+`stdout.log`/`stderr.log` 使用 `[8-byte Unix 纳秒时间戳][4-byte 大端长度][原始输出]`
+帧格式。PIPE 分开记录双流，PTY 合并记录到 stdout。环境变量仅持久化 key，不持久化 value。
 
 ## 多 Agent 协作
 

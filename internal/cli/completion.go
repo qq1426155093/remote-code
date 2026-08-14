@@ -19,11 +19,7 @@ type completionFileClient interface {
 }
 
 type completionProcessClient interface {
-	ListProcesses(context.Context) ([]*codev1.ProcessInfo, error)
-}
-
-type completionInfoClient interface {
-	Info() *codev1.GetInfoResponse
+	ListProcesses(context.Context, ...bool) ([]*codev1.ProcessInfo, error)
 }
 
 type commandCompleter struct {
@@ -130,20 +126,24 @@ func (c *commandCompleter) Do(line []rune, pos int) ([][]rune, int) {
 		case 1:
 			candidates = c.completeRemotePath(current, completeAnyPath)
 		}
-	case "run":
-		candidates = c.completeRun(previous, current)
+	case "exec":
+		candidates = c.completeExec(previous, current)
+	case "ps":
+		if len(previous) == 0 && (current == "" || strings.HasPrefix(current, "-")) {
+			candidates = []completionCandidate{{value: "-a", finish: true}}
+		}
 	case "kill":
 		candidates = c.completeKill(previous, current)
 	}
 	return formatCompletions(input, candidates)
 }
 
-func (c *commandCompleter) completeRun(previous []string, current string) []completionCandidate {
+func (c *commandCompleter) completeExec(previous []string, current string) []completionCandidate {
 	if len(previous) > 0 {
 		switch previous[len(previous)-1] {
 		case "--cwd":
 			return c.completeRemotePath(current, completeDirectories)
-		case "--name":
+		case "--name", "-e", "--env":
 			return nil
 		}
 	}
@@ -159,8 +159,10 @@ func (c *commandCompleter) completeRun(previous []string, current string) []comp
 		switch {
 		case optionsEnded:
 			commandStarted = true
-		case argument == "--name" || argument == "--cwd":
-			used[argument] = true
+		case argument == "--name" || argument == "--cwd" || argument == "-e" || argument == "--env":
+			if argument == "--name" || argument == "--cwd" {
+				used[argument] = true
+			}
 			expectValue = true
 		case argument == "--pipe" || argument == "--pty":
 			used[argument] = true
@@ -178,16 +180,9 @@ func (c *commandCompleter) completeRun(previous []string, current string) []comp
 	}
 	candidates := make([]completionCandidate, 0)
 	if !optionsEnded && (current == "" || strings.HasPrefix(current, "-")) {
-		for _, option := range []string{"--cwd", "--name", "--pipe", "--pty"} {
-			if !used[option] {
+		for _, option := range []string{"--cwd", "--name", "--pipe", "--pty", "-e"} {
+			if option == "-e" || !used[option] {
 				candidates = append(candidates, completionCandidate{value: option, finish: true})
-			}
-		}
-	}
-	if current == "" || !strings.HasPrefix(current, "-") {
-		if infoClient, ok := c.client.(completionInfoClient); ok {
-			for _, command := range infoClient.Info().GetProcessCommands() {
-				candidates = append(candidates, completionCandidate{value: command, finish: true})
 			}
 		}
 	}
