@@ -4,7 +4,40 @@ Remote Code 是一个面向远程开发任务的 Code Agent 控制平面。它�
 `controller`，通过 gRPC 接受本地 `remote-code` CLI 的请求，管理工作区文件以及一个
 或多个 Claude Code 进程。
 
-> 项目状态：设计与初始化阶段，下面的命令和 API 是计划中的接口，当前尚不可用。
+> 项目状态：文件控制 v0.1 已可运行，包含交互式 CLI、gRPC controller、工作区安全边界、
+> 流式上传/下载以及文件管理。Agent/PTY 生命周期管理仍是后续版本计划。
+
+## 快速开始
+
+本项目当前要求 Go 1.26。构建并启动本地 controller：
+
+```bash
+go build ./...
+go test ./...
+make build
+
+./bin/remote-code-controller --workspace /path/to/workspace
+```
+
+在另一个终端连接：
+
+```bash
+./bin/remote-code --controller-addr 127.0.0.1:9443
+```
+
+连接后可使用 `ls`、`stat`、`cat`、`upload`、`download`、`mkdir`、`rm`、`mv`、
+`chmod`、`cd` 和 `pwd`，输入 `help` 查看完整说明。例如：
+
+```text
+remote-code:/> mkdir -p docs/input
+remote-code:/> upload ./requirements.md docs/input/requirements.md
+remote-code:/> ls -l docs/input
+remote-code:/> download docs/input/requirements.md ./requirements.copy.md
+```
+
+默认仅允许 loopback 明文监听。远程部署应配置 `--tls-cert`、`--tls-key` 和
+`--token-file`；完整参数、行为与安全限制见
+[首版需求](docs/requirements-v1.md)和[技术方案](docs/technical-design-v1.md)。
 
 ## 使用场景
 
@@ -64,7 +97,17 @@ CREATED -> STARTING -> RUNNING -> STOPPING -> EXITED
                        +------------------> LOST
 ```
 
-## CLI 体验草案
+## CLI 体验
+
+当前文件控制版本使用一个长期运行的交互会话：
+
+```bash
+remote-code --controller-addr devbox.example.com:9443 \
+  --tls-ca ~/.config/remote-code/ca.pem \
+  --token-file ~/.config/remote-code/devbox.token
+```
+
+下面的 context 与 agent 子命令是后续版本的产品形态草案：
 
 以下命令用于约定产品形态，并不表示已经实现：
 
@@ -93,37 +136,31 @@ remote-code agent stop implementer --grace-period 10s
 
 CLI 应同时支持面向人的表格输出和供自动化使用的 `--output json`。
 
-## gRPC API 草案
+## gRPC API
 
-API 放在版本化包 `remote.code.v1` 中，首版可拆分为三个服务：
+API 放在版本化包 `remote.code.v1` 中。当前实现 `ControllerService.GetInfo` 与完整的
+`FileService`；Agent API 为后续规划。当前文件接口如下：
 
 ```protobuf
 service ControllerService {
   rpc GetInfo(GetInfoRequest) returns (GetInfoResponse);
-  rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
-}
-
-service AgentService {
-  rpc Start(StartAgentRequest) returns (Agent);
-  rpc Get(GetAgentRequest) returns (Agent);
-  rpc List(ListAgentsRequest) returns (ListAgentsResponse);
-  rpc Stop(StopAgentRequest) returns (Agent);
-  rpc Attach(stream AttachRequest) returns (stream AttachEvent);
-  rpc StreamEvents(StreamEventsRequest) returns (stream AgentEvent);
 }
 
 service FileService {
-  rpc Stat(StatRequest) returns (FileInfo);
-  rpc List(ListFilesRequest) returns (ListFilesResponse);
-  rpc Upload(stream UploadRequest) returns (FileInfo);
-  rpc Download(DownloadRequest) returns (stream DownloadChunk);
+  rpc Stat(StatRequest) returns (StatResponse);
+  rpc List(ListRequest) returns (ListResponse);
+  rpc Upload(stream UploadRequest) returns (UploadResponse);
+  rpc Download(DownloadRequest) returns (stream DownloadResponse);
   rpc Remove(RemoveRequest) returns (RemoveResponse);
+  rpc Move(MoveRequest) returns (MoveResponse);
+  rpc Chmod(ChmodRequest) returns (ChmodResponse);
+  rpc Mkdir(MkdirRequest) returns (MkdirResponse);
 }
 ```
 
-`Attach` 使用双向流承载 stdin、stdout/stderr、终端 resize、心跳和 detach。每条输出事件应包含
-agent ID 与单调递增的序号，使客户端可以在重连时请求缺失的输出。大文件上传和下载采用分块流，
-并用 SHA-256 校验完整性。
+文件上传和下载采用分块流并用 SHA-256 校验完整性。实际 message 与流帧定义见
+[`remote_code.proto`](api/remote/code/v1/remote_code.proto)。后续的 `Attach` 将使用双向流承载
+stdin、stdout/stderr、终端 resize、心跳和 detach。
 
 ## 多 Agent 协作
 
@@ -180,22 +217,30 @@ SQLite 或 bbolt 持久化 agent 元数据和事件游标；仍在运行的子�
 
 ## 实现路线
 
-### Milestone 1：单 Agent 闭环
+### Milestone 1：文件控制闭环（已完成）
 
-- 定义 v1 protobuf 并生成 Go 代码；
+- 版本化 v1 protobuf 与固定版本生成链；
+- 安全工作区、文件浏览、原子分块上传与校验下载；
+- 长期运行的交互式 CLI；
+- 移动、删除、建目录和权限修改；
+- 可选 TLS/token、优雅关闭、单元与 gRPC 集成测试。
+
+### Milestone 2：单 Agent 闭环
+
+- 扩展 v1 Agent protobuf 并生成 Go 代码；
 - 启动 controller，校验单一工作区；
 - 启动、列出、接入和停止一个 Claude Code 进程；
 - PTY 双向流、窗口 resize、退出码和信号处理；
 - CLI context、超时、结构化错误和基础 TLS/token 认证。
 
-### Milestone 2：文件与可靠性
+### Milestone 3：Agent 可靠性
 
 - 安全的文件浏览、分块上传和下载；
 - 输出环形缓冲、断线重连和按事件序号续传；
 - controller 优雅关闭、孤儿进程清理、并发与资源上限；
 - 单元测试、gRPC 集成测试和 Linux PTY 端到端测试。
 
-### Milestone 3：多 Agent 协作
+### Milestone 4：多 Agent 协作
 
 - agent 角色、只读/可写策略和并发控制；
 - Git worktree 隔离与任务产物交接；

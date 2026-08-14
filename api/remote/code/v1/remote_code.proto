@@ -1,0 +1,146 @@
+syntax = "proto3";
+
+package remote.code.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/qq1426155093/remote-code/api/remote/code/v1;codev1";
+
+service ControllerService {
+  rpc GetInfo(GetInfoRequest) returns (GetInfoResponse);
+}
+
+service FileService {
+  rpc Stat(StatRequest) returns (StatResponse);
+  rpc List(ListRequest) returns (ListResponse);
+  rpc Upload(stream UploadRequest) returns (UploadResponse);
+  rpc Download(DownloadRequest) returns (stream DownloadResponse);
+  rpc Remove(RemoveRequest) returns (RemoveResponse);
+  rpc Move(MoveRequest) returns (MoveResponse);
+  rpc Chmod(ChmodRequest) returns (ChmodResponse);
+  rpc Mkdir(MkdirRequest) returns (MkdirResponse);
+}
+
+message GetInfoRequest {}
+
+message GetInfoResponse {
+  string controller_version = 1;
+  string api_version = 2;
+  string workspace_name = 3;
+  int64 max_upload_bytes = 4;
+}
+
+enum FileType {
+  FILE_TYPE_UNSPECIFIED = 0;
+  FILE_TYPE_REGULAR = 1;
+  FILE_TYPE_DIRECTORY = 2;
+  FILE_TYPE_SYMLINK = 3;
+  FILE_TYPE_OTHER = 4;
+}
+
+message FileInfo {
+  string path = 1;
+  string name = 2;
+  FileType type = 3;
+  int64 size = 4;
+  uint32 mode = 5;
+  google.protobuf.Timestamp modified_at = 6;
+  string symlink_target = 7;
+}
+
+message StatRequest {
+  string path = 1;
+}
+
+message StatResponse {
+  FileInfo file = 1;
+}
+
+message ListRequest {
+  string path = 1;
+}
+
+message ListResponse {
+  repeated FileInfo files = 1;
+}
+
+message UploadMetadata {
+  string path = 1;
+  int64 size = 2;
+  bytes sha256 = 3;
+  uint32 mode = 4;
+  bool overwrite = 5;
+}
+
+message UploadRequest {
+  oneof payload {
+    UploadMetadata metadata = 1;
+    bytes chunk = 2;
+  }
+}
+
+message UploadResponse {
+  FileInfo file = 1;
+  int64 size = 2;
+  bytes sha256 = 3;
+}
+
+message DownloadRequest {
+  string path = 1;
+}
+
+message DownloadMetadata {
+  FileInfo file = 1;
+}
+
+message DownloadSummary {
+  int64 size = 1;
+  bytes sha256 = 2;
+}
+
+message DownloadResponse {
+  oneof payload {
+    DownloadMetadata metadata = 1;
+    bytes chunk = 2;
+    DownloadSummary summary = 3;
+  }
+}
+
+message RemoveRequest {
+  string path = 1;
+  bool recursive = 2;
+}
+
+message RemoveResponse {
+  string path = 1;
+}
+
+message MoveRequest {
+  string source = 1;
+  string destination = 2;
+  bool overwrite = 3;
+}
+
+message MoveResponse {
+  FileInfo file = 1;
+}
+
+message ChmodRequest {
+  string path = 1;
+  uint32 mode = 2;
+}
+
+message ChmodResponse {
+  FileInfo file = 1;
+}
+
+message MkdirRequest {
+  string path = 1;
+  uint32 mode = 2;
+  bool parents = 3;
+}
+
+message MkdirResponse {
+  FileInfo file = 1;
+}
+
