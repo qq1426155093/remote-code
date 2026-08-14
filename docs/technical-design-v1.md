@@ -68,6 +68,7 @@ service ControllerService {
 service FileService {
   rpc Stat(StatRequest) returns (StatResponse);
   rpc List(ListRequest) returns (ListResponse);
+  rpc Tree(TreeRequest) returns (TreeResponse);
   rpc Upload(stream UploadRequest) returns (UploadResponse);
   rpc Download(DownloadRequest) returns (stream DownloadResponse);
   rpc Remove(RemoveRequest) returns (RemoveResponse);
@@ -77,7 +78,7 @@ service FileService {
 }
 ```
 
-`FileInfo` 包含相对路径、名称、类型、大小、Unix 权限位、修改时间和可选符号链接目标。时间使用 `google.protobuf.Timestamp`。
+`FileInfo` 包含相对路径、名称、类型、大小、Unix 权限位、修改时间和可选符号链接目标。时间使用 `google.protobuf.Timestamp`。`TreeResponse.root` 是递归的 `TreeNode`，每个节点包含一个 `FileInfo` 和有序的 `children`。
 
 ### 4.3 上传流
 
@@ -131,6 +132,7 @@ START -> METADATA -> CHUNK* -> CLIENT_EOF -> VERIFY -> PUBLISH -> RESPONSE
 ### 5.4 列表、删除、移动与权限
 
 - 列表通过根目录安全打开目录，并对直接子项做 `Lstat` 语义展示；名称排序保证输出稳定。
+- `Tree` 返回递归的 `TreeNode { file, children[] }`，而不是服务端拼装的展示字符串。目录按名称排序，符号链接作为叶子节点且不跟随；遍历限制为 3000 个节点和 128 层。
 - 删除禁止根路径；递归删除使用 `Root.RemoveAll`，非递归使用 `Root.Remove`。
 - 移动的源和目标都经相同校验并由 `Root.Rename` 完成。非覆盖模式先判断目标不存在；普通文件上传另有 hard-link 保证原子 no-replace。通用目录 move 的 no-replace 在首版存在同一受信 workspace 内的并发竞态，记录为已知限制。
 - `chmod` 先通过 `Root.Open` 获得安全文件描述符，再调用 `File.Chmod`，避免对可被替换的路径直接 chmod；只保留 `0777`。
@@ -138,6 +140,8 @@ START -> METADATA -> CHUNK* -> CLIENT_EOF -> VERIFY -> PUBLISH -> RESPONSE
 ## 6. CLI 设计
 
 `readline` 负责终端模式和历史输入，`shlex` 只负责词法拆分。命令表为显式 allowlist，未知命令不会发送给 controller。
+
+`readline.AutoCompleter` 根据光标左侧内容补全命令、选项、权限参数以及本地/远端路径。远端候选使用最长 2 秒的 `List` RPC，错误只会使本次候选为空，不影响 REPL；带空格或引号的路径按当前引用状态转义。
 
 每条命令创建独立 context。RPC 错误按 gRPC status 展示为 `error: <message> (<Code>)`，随后回到提示符。`ls` 使用 `tabwriter`；时间以本地时区 RFC3339 显示；权限采用 `os.FileMode` 风格。
 
@@ -192,4 +196,3 @@ START -> METADATA -> CHUNK* -> CLIENT_EOF -> VERIFY -> PUBLISH -> RESPONSE
 - 首版传输单文件且不续传；后续可加入 upload session、offset 与分块摘要。
 - 首版 CLI 同步执行一条命令；并发任务、进度条和机器可读模式留待后续版本。
 - Agent PTY 与进程管理保持为后续 milestone，本版 API 不提前暴露未实现接口。
-

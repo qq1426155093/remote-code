@@ -28,6 +28,8 @@ const (
 	transferChunkSize     = 64 << 10
 	maxReceivedChunkSize  = 1 << 20
 	maxPathBytes          = 4096
+	maxTreeEntries        = 3_000
+	maxTreeDepth          = 128
 )
 
 // Service implements the versioned gRPC file API inside one workspace root.
@@ -145,6 +147,70 @@ func (s *Service) List(_ context.Context, request *codev1.ListRequest) (*codev1.
 		files = append(files, info)
 	}
 	return &codev1.ListResponse{Files: files}, nil
+}
+
+// Tree returns a recursively nested view of a file or directory. Symbolic
+// links are deliberately not followed and therefore always remain leaf nodes.
+func (s *Service) Tree(ctx context.Context, request *codev1.TreeRequest) (*codev1.TreeResponse, error) {
+	rel, err := cleanPath(request.GetPath())
+	if err != nil {
+		return nil, err
+	}
+	entryCount := 0
+	root, err := s.buildTree(ctx, rel, 0, &entryCount)
+	if err != nil {
+		return nil, err
+	}
+	return &codev1.TreeResponse{Root: root}, nil
+}
+
+func (s *Service) buildTree(ctx context.Context, rel string, depth int, entryCount *int) (*codev1.TreeNode, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, contextError(err)
+	}
+	*entryCount = *entryCount + 1
+	if *entryCount > maxTreeEntries {
+		return nil, status.Errorf(codes.ResourceExhausted, "tree contains more than %d entries", maxTreeEntries)
+	}
+	info, err := s.lstat(rel)
+	if err != nil {
+		return nil, fileError("tree", rel, err)
+	}
+	node := &codev1.TreeNode{File: info}
+	if info.GetType() != codev1.FileType_FILE_TYPE_DIRECTORY {
+		return node, nil
+	}
+	if depth >= maxTreeDepth {
+		return nil, status.Errorf(codes.ResourceExhausted, "tree exceeds the maximum depth of %d", maxTreeDepth)
+	}
+
+	directory, err := s.root.OpenFile(rel, os.O_RDONLY|syscall.O_DIRECTORY, 0)
+	if err != nil {
+		return nil, fileError("tree", rel, err)
+	}
+	remainingEntries := maxTreeEntries - *entryCount
+	names, readErr := directory.Readdirnames(remainingEntries + 1)
+	closeErr := directory.Close()
+	if readErr != nil && !errors.Is(readErr, io.EOF) {
+		return nil, fileError("tree", rel, readErr)
+	}
+	if closeErr != nil {
+		return nil, fileError("tree", rel, closeErr)
+	}
+	if len(names) > remainingEntries {
+		return nil, status.Errorf(codes.ResourceExhausted, "tree contains more than %d entries", maxTreeEntries)
+	}
+	sort.Strings(names)
+	node.Children = make([]*codev1.TreeNode, 0, len(names))
+	for _, name := range names {
+		childPath := path.Join(rel, name)
+		child, err := s.buildTree(ctx, childPath, depth+1, entryCount)
+		if err != nil {
+			return nil, err
+		}
+		node.Children = append(node.Children, child)
+	}
+	return node, nil
 }
 
 func (s *Service) Upload(stream grpc.ClientStreamingServer[codev1.UploadRequest, codev1.UploadResponse]) error {

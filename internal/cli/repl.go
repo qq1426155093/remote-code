@@ -52,10 +52,14 @@ func New(client *remoteclient.Client, line *readline.Instance, config Config) *R
 	if stderr == nil {
 		stderr = os.Stderr
 	}
-	return &REPL{
+	repl := &REPL{
 		client: client, line: line, stdout: stdout, stderr: stderr,
 		timeout: config.Timeout, catMaxBytes: config.CatMaxBytes, cwd: ".",
 	}
+	if line != nil && line.Config != nil {
+		line.Config.AutoComplete = newCompleter(client, func() string { return repl.cwd }, config.Timeout)
+	}
+	return repl
 }
 
 // Run reads commands until exit, quit, or terminal EOF.
@@ -63,7 +67,7 @@ func (r *REPL) Run() error {
 	info := r.client.Info()
 	fmt.Fprintf(r.stdout, "Connected to remote-code-controller v%s (API %s, workspace %s)\n",
 		info.GetControllerVersion(), info.GetApiVersion(), info.GetWorkspaceName())
-	fmt.Fprintln(r.stdout, "Type 'help' for available commands.")
+	fmt.Fprintln(r.stdout, "Type 'help' for available commands; press Tab for completion.")
 	for {
 		r.line.SetPrompt("remote-code:" + displayCWD(r.cwd) + "> ")
 		line, err := r.line.Readline()
@@ -110,6 +114,8 @@ func (r *REPL) execute(arguments []string) error {
 		return r.changeDirectory(arguments[1:])
 	case "ls":
 		return r.list(arguments[1:])
+	case "tree":
+		return r.tree(arguments[1:])
 	case "stat":
 		return r.stat(arguments[1:])
 	case "cat":
@@ -149,7 +155,7 @@ func (r *REPL) help(arguments []string) error {
 		fmt.Fprintln(r.stdout, usage)
 		return nil
 	}
-	commands := []string{"help [command]", "pwd", "cd [REMOTE_DIR]", "ls [-l] [REMOTE_PATH]", "stat REMOTE_PATH", "cat REMOTE_FILE", "upload LOCAL_FILE [REMOTE_FILE]", "download REMOTE_FILE [LOCAL_FILE]", "mkdir [-p] REMOTE_DIR", "rm [-r] REMOTE_PATH", "mv [-f] SOURCE DESTINATION", "chmod OCTAL_MODE REMOTE_PATH", "clear", "exit | quit"}
+	commands := []string{"help [command]", "pwd", "cd [REMOTE_DIR]", "ls [-l] [REMOTE_PATH]", "tree [REMOTE_PATH]", "stat REMOTE_PATH", "cat REMOTE_FILE", "upload LOCAL_FILE [REMOTE_FILE]", "download REMOTE_FILE [LOCAL_FILE]", "mkdir [-p] REMOTE_DIR", "rm [-r] REMOTE_PATH", "mv [-f] SOURCE DESTINATION", "chmod OCTAL_MODE REMOTE_PATH", "clear", "exit | quit"}
 	for _, command := range commands {
 		fmt.Fprintln(r.stdout, command)
 	}
@@ -161,6 +167,7 @@ var commandUsage = map[string]string{
 	"pwd":      "usage: pwd",
 	"cd":       "usage: cd [REMOTE_DIR]",
 	"ls":       "usage: ls [-l] [REMOTE_PATH]",
+	"tree":     "usage: tree [REMOTE_PATH]",
 	"stat":     "usage: stat REMOTE_PATH",
 	"cat":      "usage: cat REMOTE_FILE",
 	"upload":   "usage: upload LOCAL_FILE [REMOTE_FILE]",
@@ -240,6 +247,53 @@ func (r *REPL) list(arguments []string) error {
 		fmt.Fprintf(writer, "%s\t%d\t%s\t%s\n", modeString(file), file.GetSize(), formatTime(file), displayFileName(file))
 	}
 	return writer.Flush()
+}
+
+func (r *REPL) tree(arguments []string) error {
+	if len(arguments) > 1 {
+		return errors.New("usage: tree [REMOTE_PATH]")
+	}
+	target := ""
+	if len(arguments) == 1 {
+		target = arguments[0]
+	}
+	remotePath, err := resolveRemotePath(r.cwd, target)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := r.commandContext()
+	defer cancel()
+	root, err := r.client.Tree(ctx, remotePath)
+	if err != nil {
+		return err
+	}
+	printTree(r.stdout, root)
+	return nil
+}
+
+func printTree(writer io.Writer, root *codev1.TreeNode) {
+	if root == nil || root.GetFile() == nil {
+		return
+	}
+	fmt.Fprintln(writer, root.GetFile().GetPath())
+	printTreeChildren(writer, root.GetChildren(), "")
+}
+
+func printTreeChildren(writer io.Writer, children []*codev1.TreeNode, prefix string) {
+	for index, child := range children {
+		if child == nil || child.GetFile() == nil {
+			continue
+		}
+		last := index == len(children)-1
+		connector := "├── "
+		childPrefix := prefix + "│   "
+		if last {
+			connector = "└── "
+			childPrefix = prefix + "    "
+		}
+		fmt.Fprintln(writer, prefix+connector+displayFileName(child.GetFile()))
+		printTreeChildren(writer, child.GetChildren(), childPrefix)
+	}
 }
 
 func (r *REPL) stat(arguments []string) error {

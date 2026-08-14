@@ -45,6 +45,7 @@ remote-code:/docs> exit
 | `pwd` | 显示当前远端虚拟目录 |
 | `cd [REMOTE_DIR]` | 切换 CLI 维护的远端当前目录，默认回到 `/` |
 | `ls [-l] [REMOTE_PATH]` | 列出目录；若参数是文件则显示该文件 |
+| `tree [REMOTE_PATH]` | 递归显示当前目录或指定路径的目录树 |
 | `stat REMOTE_PATH` | 显示类型、大小、权限和修改时间 |
 | `cat REMOTE_FILE` | 将小型远端文件内容输出到当前终端 |
 | `upload LOCAL_FILE [REMOTE_FILE]` | 分块上传本地普通文件；省略目标时使用本地文件名 |
@@ -57,6 +58,8 @@ remote-code:/docs> exit
 | `exit` / `quit` | 关闭连接并退出 CLI |
 
 命令参数支持单引号、双引号和反斜杠转义，以便处理带空格的文件名。首版不支持通配符展开、管道、重定向、远程 shell 命令或交互式远端文件编辑。
+
+REPL 内按 `Tab` 可补全内部命令、选项和参数。远端路径候选以当前虚拟目录为基准通过 `List` 获取；`upload` 的本地源路径和 `download` 的本地目标路径从本机文件系统获取。补全查询失败或超时时不终止会话。
 
 ## 4. 启动参数
 
@@ -127,5 +130,4 @@ CLI 只有在 `GetInfo` 调用成功后才进入提示符，因此“连接成�
 - 多租户、细粒度权限、配额持久化和审计数据库。
 - 断点续传、增量同步、目录整体上传下载和文件监控。
 - Windows controller 支持承诺；首版验证目标为 Linux。
-- Web UI、非交互批处理输出格式和 shell 补全。
-
+- Web UI、非交互批处理输出格式和外层 shell（bash/zsh 等）补全。

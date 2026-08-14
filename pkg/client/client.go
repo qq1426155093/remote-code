@@ -112,6 +112,18 @@ func (c *Client) List(ctx context.Context, remotePath string) ([]*codev1.FileInf
 	return response.GetFiles(), nil
 }
 
+// Tree returns the controller's structured hierarchy rooted at remotePath.
+func (c *Client) Tree(ctx context.Context, remotePath string) (*codev1.TreeNode, error) {
+	response, err := c.files.Tree(ctx, &codev1.TreeRequest{Path: remotePath})
+	if err != nil {
+		return nil, err
+	}
+	if response.GetRoot() == nil || response.GetRoot().GetFile() == nil {
+		return nil, status.Error(codes.DataLoss, "tree response has no root")
+	}
+	return response.GetRoot(), nil
+}
+
 func (c *Client) Remove(ctx context.Context, remotePath string, recursive bool) error {
 	_, err := c.files.Remove(ctx, &codev1.RemoveRequest{Path: remotePath, Recursive: recursive})
 	return err

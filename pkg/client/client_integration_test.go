@@ -47,6 +47,13 @@ func TestClientFileLifecycleOverGRPC(t *testing.T) {
 	if len(files) != 1 || files[0].GetName() != "hello.txt" {
 		t.Fatalf("List() = %+v, want hello.txt", files)
 	}
+	tree, err := remote.Tree(ctx, ".")
+	if err != nil {
+		t.Fatalf("Tree() error = %v", err)
+	}
+	if tree.GetFile().GetPath() != "/" || len(tree.GetChildren()) != 1 || tree.GetChildren()[0].GetFile().GetName() != "docs" || len(tree.GetChildren()[0].GetChildren()) != 1 {
+		t.Fatalf("Tree() = %+v, want root/docs/hello.txt hierarchy", tree)
+	}
 	var downloaded bytes.Buffer
 	result, err := remote.Download(ctx, "docs/hello.txt", &downloaded)
 	if err != nil {

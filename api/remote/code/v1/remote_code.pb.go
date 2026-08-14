@@ -449,6 +449,148 @@ func (x *ListResponse) GetFiles() []*FileInfo {
 	return nil
 }
 
+// TreeNode keeps the file hierarchy structured for non-CLI callers. Directory
+// children are sorted by name; regular files and symbolic links are leaves.
+type TreeNode struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	File          *FileInfo              `protobuf:"bytes,1,opt,name=file,proto3" json:"file,omitempty"`
+	Children      []*TreeNode            `protobuf:"bytes,2,rep,name=children,proto3" json:"children,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TreeNode) Reset() {
+	*x = TreeNode{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TreeNode) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TreeNode) ProtoMessage() {}
+
+func (x *TreeNode) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TreeNode.ProtoReflect.Descriptor instead.
+func (*TreeNode) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *TreeNode) GetFile() *FileInfo {
+	if x != nil {
+		return x.File
+	}
+	return nil
+}
+
+func (x *TreeNode) GetChildren() []*TreeNode {
+	if x != nil {
+		return x.Children
+	}
+	return nil
+}
+
+type TreeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TreeRequest) Reset() {
+	*x = TreeRequest{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TreeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TreeRequest) ProtoMessage() {}
+
+func (x *TreeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TreeRequest.ProtoReflect.Descriptor instead.
+func (*TreeRequest) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *TreeRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+type TreeResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Root          *TreeNode              `protobuf:"bytes,1,opt,name=root,proto3" json:"root,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TreeResponse) Reset() {
+	*x = TreeResponse{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TreeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TreeResponse) ProtoMessage() {}
+
+func (x *TreeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TreeResponse.ProtoReflect.Descriptor instead.
+func (*TreeResponse) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *TreeResponse) GetRoot() *TreeNode {
+	if x != nil {
+		return x.Root
+	}
+	return nil
+}
+
 type UploadMetadata struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
@@ -462,7 +604,7 @@ type UploadMetadata struct {
 
 func (x *UploadMetadata) Reset() {
 	*x = UploadMetadata{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[7]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -474,7 +616,7 @@ func (x *UploadMetadata) String() string {
 func (*UploadMetadata) ProtoMessage() {}
 
 func (x *UploadMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[7]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -487,7 +629,7 @@ func (x *UploadMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadMetadata.ProtoReflect.Descriptor instead.
 func (*UploadMetadata) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{7}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *UploadMetadata) GetPath() string {
@@ -538,7 +680,7 @@ type UploadRequest struct {
 
 func (x *UploadRequest) Reset() {
 	*x = UploadRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[8]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -550,7 +692,7 @@ func (x *UploadRequest) String() string {
 func (*UploadRequest) ProtoMessage() {}
 
 func (x *UploadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[8]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -563,7 +705,7 @@ func (x *UploadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadRequest.ProtoReflect.Descriptor instead.
 func (*UploadRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{8}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *UploadRequest) GetPayload() isUploadRequest_Payload {
@@ -618,7 +760,7 @@ type UploadResponse struct {
 
 func (x *UploadResponse) Reset() {
 	*x = UploadResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[9]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -630,7 +772,7 @@ func (x *UploadResponse) String() string {
 func (*UploadResponse) ProtoMessage() {}
 
 func (x *UploadResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[9]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -643,7 +785,7 @@ func (x *UploadResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadResponse.ProtoReflect.Descriptor instead.
 func (*UploadResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{9}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *UploadResponse) GetFile() *FileInfo {
@@ -676,7 +818,7 @@ type DownloadRequest struct {
 
 func (x *DownloadRequest) Reset() {
 	*x = DownloadRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[10]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -688,7 +830,7 @@ func (x *DownloadRequest) String() string {
 func (*DownloadRequest) ProtoMessage() {}
 
 func (x *DownloadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[10]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -701,7 +843,7 @@ func (x *DownloadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DownloadRequest.ProtoReflect.Descriptor instead.
 func (*DownloadRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{10}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *DownloadRequest) GetPath() string {
@@ -720,7 +862,7 @@ type DownloadMetadata struct {
 
 func (x *DownloadMetadata) Reset() {
 	*x = DownloadMetadata{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[11]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -732,7 +874,7 @@ func (x *DownloadMetadata) String() string {
 func (*DownloadMetadata) ProtoMessage() {}
 
 func (x *DownloadMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[11]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -745,7 +887,7 @@ func (x *DownloadMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DownloadMetadata.ProtoReflect.Descriptor instead.
 func (*DownloadMetadata) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{11}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *DownloadMetadata) GetFile() *FileInfo {
@@ -765,7 +907,7 @@ type DownloadSummary struct {
 
 func (x *DownloadSummary) Reset() {
 	*x = DownloadSummary{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[12]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -777,7 +919,7 @@ func (x *DownloadSummary) String() string {
 func (*DownloadSummary) ProtoMessage() {}
 
 func (x *DownloadSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[12]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -790,7 +932,7 @@ func (x *DownloadSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DownloadSummary.ProtoReflect.Descriptor instead.
 func (*DownloadSummary) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{12}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *DownloadSummary) GetSize() int64 {
@@ -821,7 +963,7 @@ type DownloadResponse struct {
 
 func (x *DownloadResponse) Reset() {
 	*x = DownloadResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[13]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -833,7 +975,7 @@ func (x *DownloadResponse) String() string {
 func (*DownloadResponse) ProtoMessage() {}
 
 func (x *DownloadResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[13]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -846,7 +988,7 @@ func (x *DownloadResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DownloadResponse.ProtoReflect.Descriptor instead.
 func (*DownloadResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{13}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *DownloadResponse) GetPayload() isDownloadResponse_Payload {
@@ -915,7 +1057,7 @@ type RemoveRequest struct {
 
 func (x *RemoveRequest) Reset() {
 	*x = RemoveRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[14]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -927,7 +1069,7 @@ func (x *RemoveRequest) String() string {
 func (*RemoveRequest) ProtoMessage() {}
 
 func (x *RemoveRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[14]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -940,7 +1082,7 @@ func (x *RemoveRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveRequest.ProtoReflect.Descriptor instead.
 func (*RemoveRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{14}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *RemoveRequest) GetPath() string {
@@ -966,7 +1108,7 @@ type RemoveResponse struct {
 
 func (x *RemoveResponse) Reset() {
 	*x = RemoveResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[15]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -978,7 +1120,7 @@ func (x *RemoveResponse) String() string {
 func (*RemoveResponse) ProtoMessage() {}
 
 func (x *RemoveResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[15]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -991,7 +1133,7 @@ func (x *RemoveResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveResponse.ProtoReflect.Descriptor instead.
 func (*RemoveResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{15}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *RemoveResponse) GetPath() string {
@@ -1012,7 +1154,7 @@ type MoveRequest struct {
 
 func (x *MoveRequest) Reset() {
 	*x = MoveRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[16]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1024,7 +1166,7 @@ func (x *MoveRequest) String() string {
 func (*MoveRequest) ProtoMessage() {}
 
 func (x *MoveRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[16]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1037,7 +1179,7 @@ func (x *MoveRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MoveRequest.ProtoReflect.Descriptor instead.
 func (*MoveRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{16}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *MoveRequest) GetSource() string {
@@ -1070,7 +1212,7 @@ type MoveResponse struct {
 
 func (x *MoveResponse) Reset() {
 	*x = MoveResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[17]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1082,7 +1224,7 @@ func (x *MoveResponse) String() string {
 func (*MoveResponse) ProtoMessage() {}
 
 func (x *MoveResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[17]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1095,7 +1237,7 @@ func (x *MoveResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MoveResponse.ProtoReflect.Descriptor instead.
 func (*MoveResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{17}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *MoveResponse) GetFile() *FileInfo {
@@ -1115,7 +1257,7 @@ type ChmodRequest struct {
 
 func (x *ChmodRequest) Reset() {
 	*x = ChmodRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[18]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1127,7 +1269,7 @@ func (x *ChmodRequest) String() string {
 func (*ChmodRequest) ProtoMessage() {}
 
 func (x *ChmodRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[18]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1140,7 +1282,7 @@ func (x *ChmodRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChmodRequest.ProtoReflect.Descriptor instead.
 func (*ChmodRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{18}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ChmodRequest) GetPath() string {
@@ -1166,7 +1308,7 @@ type ChmodResponse struct {
 
 func (x *ChmodResponse) Reset() {
 	*x = ChmodResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[19]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1178,7 +1320,7 @@ func (x *ChmodResponse) String() string {
 func (*ChmodResponse) ProtoMessage() {}
 
 func (x *ChmodResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[19]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1191,7 +1333,7 @@ func (x *ChmodResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChmodResponse.ProtoReflect.Descriptor instead.
 func (*ChmodResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{19}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ChmodResponse) GetFile() *FileInfo {
@@ -1212,7 +1354,7 @@ type MkdirRequest struct {
 
 func (x *MkdirRequest) Reset() {
 	*x = MkdirRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[20]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1224,7 +1366,7 @@ func (x *MkdirRequest) String() string {
 func (*MkdirRequest) ProtoMessage() {}
 
 func (x *MkdirRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[20]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1237,7 +1379,7 @@ func (x *MkdirRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MkdirRequest.ProtoReflect.Descriptor instead.
 func (*MkdirRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{20}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *MkdirRequest) GetPath() string {
@@ -1270,7 +1412,7 @@ type MkdirResponse struct {
 
 func (x *MkdirResponse) Reset() {
 	*x = MkdirResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[21]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1282,7 +1424,7 @@ func (x *MkdirResponse) String() string {
 func (*MkdirResponse) ProtoMessage() {}
 
 func (x *MkdirResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[21]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1295,7 +1437,7 @@ func (x *MkdirResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MkdirResponse.ProtoReflect.Descriptor instead.
 func (*MkdirResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{21}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *MkdirResponse) GetFile() *FileInfo {
@@ -1333,7 +1475,14 @@ const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	"\vListRequest\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\">\n" +
 	"\fListResponse\x12.\n" +
-	"\x05files\x18\x01 \x03(\v2\x18.remote.code.v1.FileInfoR\x05files\"\x82\x01\n" +
+	"\x05files\x18\x01 \x03(\v2\x18.remote.code.v1.FileInfoR\x05files\"n\n" +
+	"\bTreeNode\x12,\n" +
+	"\x04file\x18\x01 \x01(\v2\x18.remote.code.v1.FileInfoR\x04file\x124\n" +
+	"\bchildren\x18\x02 \x03(\v2\x18.remote.code.v1.TreeNodeR\bchildren\"!\n" +
+	"\vTreeRequest\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\"<\n" +
+	"\fTreeResponse\x12,\n" +
+	"\x04root\x18\x01 \x01(\v2\x18.remote.code.v1.TreeNodeR\x04root\"\x82\x01\n" +
 	"\x0eUploadMetadata\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x12\n" +
 	"\x04size\x18\x02 \x01(\x03R\x04size\x12\x16\n" +
@@ -1389,10 +1538,11 @@ const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	"\x11FILE_TYPE_SYMLINK\x10\x03\x12\x13\n" +
 	"\x0fFILE_TYPE_OTHER\x10\x042_\n" +
 	"\x11ControllerService\x12J\n" +
-	"\aGetInfo\x12\x1e.remote.code.v1.GetInfoRequest\x1a\x1f.remote.code.v1.GetInfoResponse2\xc7\x04\n" +
+	"\aGetInfo\x12\x1e.remote.code.v1.GetInfoRequest\x1a\x1f.remote.code.v1.GetInfoResponse2\x8a\x05\n" +
 	"\vFileService\x12A\n" +
 	"\x04Stat\x12\x1b.remote.code.v1.StatRequest\x1a\x1c.remote.code.v1.StatResponse\x12A\n" +
-	"\x04List\x12\x1b.remote.code.v1.ListRequest\x1a\x1c.remote.code.v1.ListResponse\x12I\n" +
+	"\x04List\x12\x1b.remote.code.v1.ListRequest\x1a\x1c.remote.code.v1.ListResponse\x12A\n" +
+	"\x04Tree\x12\x1b.remote.code.v1.TreeRequest\x1a\x1c.remote.code.v1.TreeResponse\x12I\n" +
 	"\x06Upload\x12\x1d.remote.code.v1.UploadRequest\x1a\x1e.remote.code.v1.UploadResponse(\x01\x12O\n" +
 	"\bDownload\x12\x1f.remote.code.v1.DownloadRequest\x1a .remote.code.v1.DownloadResponse0\x01\x12G\n" +
 	"\x06Remove\x12\x1d.remote.code.v1.RemoveRequest\x1a\x1e.remote.code.v1.RemoveResponse\x12A\n" +
@@ -1413,7 +1563,7 @@ func file_remote_code_v1_remote_code_proto_rawDescGZIP() []byte {
 }
 
 var file_remote_code_v1_remote_code_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_remote_code_v1_remote_code_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
+var file_remote_code_v1_remote_code_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
 var file_remote_code_v1_remote_code_proto_goTypes = []any{
 	(FileType)(0),                 // 0: remote.code.v1.FileType
 	(*GetInfoRequest)(nil),        // 1: remote.code.v1.GetInfoRequest
@@ -1423,59 +1573,67 @@ var file_remote_code_v1_remote_code_proto_goTypes = []any{
 	(*StatResponse)(nil),          // 5: remote.code.v1.StatResponse
 	(*ListRequest)(nil),           // 6: remote.code.v1.ListRequest
 	(*ListResponse)(nil),          // 7: remote.code.v1.ListResponse
-	(*UploadMetadata)(nil),        // 8: remote.code.v1.UploadMetadata
-	(*UploadRequest)(nil),         // 9: remote.code.v1.UploadRequest
-	(*UploadResponse)(nil),        // 10: remote.code.v1.UploadResponse
-	(*DownloadRequest)(nil),       // 11: remote.code.v1.DownloadRequest
-	(*DownloadMetadata)(nil),      // 12: remote.code.v1.DownloadMetadata
-	(*DownloadSummary)(nil),       // 13: remote.code.v1.DownloadSummary
-	(*DownloadResponse)(nil),      // 14: remote.code.v1.DownloadResponse
-	(*RemoveRequest)(nil),         // 15: remote.code.v1.RemoveRequest
-	(*RemoveResponse)(nil),        // 16: remote.code.v1.RemoveResponse
-	(*MoveRequest)(nil),           // 17: remote.code.v1.MoveRequest
-	(*MoveResponse)(nil),          // 18: remote.code.v1.MoveResponse
-	(*ChmodRequest)(nil),          // 19: remote.code.v1.ChmodRequest
-	(*ChmodResponse)(nil),         // 20: remote.code.v1.ChmodResponse
-	(*MkdirRequest)(nil),          // 21: remote.code.v1.MkdirRequest
-	(*MkdirResponse)(nil),         // 22: remote.code.v1.MkdirResponse
-	(*timestamppb.Timestamp)(nil), // 23: google.protobuf.Timestamp
+	(*TreeNode)(nil),              // 8: remote.code.v1.TreeNode
+	(*TreeRequest)(nil),           // 9: remote.code.v1.TreeRequest
+	(*TreeResponse)(nil),          // 10: remote.code.v1.TreeResponse
+	(*UploadMetadata)(nil),        // 11: remote.code.v1.UploadMetadata
+	(*UploadRequest)(nil),         // 12: remote.code.v1.UploadRequest
+	(*UploadResponse)(nil),        // 13: remote.code.v1.UploadResponse
+	(*DownloadRequest)(nil),       // 14: remote.code.v1.DownloadRequest
+	(*DownloadMetadata)(nil),      // 15: remote.code.v1.DownloadMetadata
+	(*DownloadSummary)(nil),       // 16: remote.code.v1.DownloadSummary
+	(*DownloadResponse)(nil),      // 17: remote.code.v1.DownloadResponse
+	(*RemoveRequest)(nil),         // 18: remote.code.v1.RemoveRequest
+	(*RemoveResponse)(nil),        // 19: remote.code.v1.RemoveResponse
+	(*MoveRequest)(nil),           // 20: remote.code.v1.MoveRequest
+	(*MoveResponse)(nil),          // 21: remote.code.v1.MoveResponse
+	(*ChmodRequest)(nil),          // 22: remote.code.v1.ChmodRequest
+	(*ChmodResponse)(nil),         // 23: remote.code.v1.ChmodResponse
+	(*MkdirRequest)(nil),          // 24: remote.code.v1.MkdirRequest
+	(*MkdirResponse)(nil),         // 25: remote.code.v1.MkdirResponse
+	(*timestamppb.Timestamp)(nil), // 26: google.protobuf.Timestamp
 }
 var file_remote_code_v1_remote_code_proto_depIdxs = []int32{
 	0,  // 0: remote.code.v1.FileInfo.type:type_name -> remote.code.v1.FileType
-	23, // 1: remote.code.v1.FileInfo.modified_at:type_name -> google.protobuf.Timestamp
+	26, // 1: remote.code.v1.FileInfo.modified_at:type_name -> google.protobuf.Timestamp
 	3,  // 2: remote.code.v1.StatResponse.file:type_name -> remote.code.v1.FileInfo
 	3,  // 3: remote.code.v1.ListResponse.files:type_name -> remote.code.v1.FileInfo
-	8,  // 4: remote.code.v1.UploadRequest.metadata:type_name -> remote.code.v1.UploadMetadata
-	3,  // 5: remote.code.v1.UploadResponse.file:type_name -> remote.code.v1.FileInfo
-	3,  // 6: remote.code.v1.DownloadMetadata.file:type_name -> remote.code.v1.FileInfo
-	12, // 7: remote.code.v1.DownloadResponse.metadata:type_name -> remote.code.v1.DownloadMetadata
-	13, // 8: remote.code.v1.DownloadResponse.summary:type_name -> remote.code.v1.DownloadSummary
-	3,  // 9: remote.code.v1.MoveResponse.file:type_name -> remote.code.v1.FileInfo
-	3,  // 10: remote.code.v1.ChmodResponse.file:type_name -> remote.code.v1.FileInfo
-	3,  // 11: remote.code.v1.MkdirResponse.file:type_name -> remote.code.v1.FileInfo
-	1,  // 12: remote.code.v1.ControllerService.GetInfo:input_type -> remote.code.v1.GetInfoRequest
-	4,  // 13: remote.code.v1.FileService.Stat:input_type -> remote.code.v1.StatRequest
-	6,  // 14: remote.code.v1.FileService.List:input_type -> remote.code.v1.ListRequest
-	9,  // 15: remote.code.v1.FileService.Upload:input_type -> remote.code.v1.UploadRequest
-	11, // 16: remote.code.v1.FileService.Download:input_type -> remote.code.v1.DownloadRequest
-	15, // 17: remote.code.v1.FileService.Remove:input_type -> remote.code.v1.RemoveRequest
-	17, // 18: remote.code.v1.FileService.Move:input_type -> remote.code.v1.MoveRequest
-	19, // 19: remote.code.v1.FileService.Chmod:input_type -> remote.code.v1.ChmodRequest
-	21, // 20: remote.code.v1.FileService.Mkdir:input_type -> remote.code.v1.MkdirRequest
-	2,  // 21: remote.code.v1.ControllerService.GetInfo:output_type -> remote.code.v1.GetInfoResponse
-	5,  // 22: remote.code.v1.FileService.Stat:output_type -> remote.code.v1.StatResponse
-	7,  // 23: remote.code.v1.FileService.List:output_type -> remote.code.v1.ListResponse
-	10, // 24: remote.code.v1.FileService.Upload:output_type -> remote.code.v1.UploadResponse
-	14, // 25: remote.code.v1.FileService.Download:output_type -> remote.code.v1.DownloadResponse
-	16, // 26: remote.code.v1.FileService.Remove:output_type -> remote.code.v1.RemoveResponse
-	18, // 27: remote.code.v1.FileService.Move:output_type -> remote.code.v1.MoveResponse
-	20, // 28: remote.code.v1.FileService.Chmod:output_type -> remote.code.v1.ChmodResponse
-	22, // 29: remote.code.v1.FileService.Mkdir:output_type -> remote.code.v1.MkdirResponse
-	21, // [21:30] is the sub-list for method output_type
-	12, // [12:21] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	3,  // 4: remote.code.v1.TreeNode.file:type_name -> remote.code.v1.FileInfo
+	8,  // 5: remote.code.v1.TreeNode.children:type_name -> remote.code.v1.TreeNode
+	8,  // 6: remote.code.v1.TreeResponse.root:type_name -> remote.code.v1.TreeNode
+	11, // 7: remote.code.v1.UploadRequest.metadata:type_name -> remote.code.v1.UploadMetadata
+	3,  // 8: remote.code.v1.UploadResponse.file:type_name -> remote.code.v1.FileInfo
+	3,  // 9: remote.code.v1.DownloadMetadata.file:type_name -> remote.code.v1.FileInfo
+	15, // 10: remote.code.v1.DownloadResponse.metadata:type_name -> remote.code.v1.DownloadMetadata
+	16, // 11: remote.code.v1.DownloadResponse.summary:type_name -> remote.code.v1.DownloadSummary
+	3,  // 12: remote.code.v1.MoveResponse.file:type_name -> remote.code.v1.FileInfo
+	3,  // 13: remote.code.v1.ChmodResponse.file:type_name -> remote.code.v1.FileInfo
+	3,  // 14: remote.code.v1.MkdirResponse.file:type_name -> remote.code.v1.FileInfo
+	1,  // 15: remote.code.v1.ControllerService.GetInfo:input_type -> remote.code.v1.GetInfoRequest
+	4,  // 16: remote.code.v1.FileService.Stat:input_type -> remote.code.v1.StatRequest
+	6,  // 17: remote.code.v1.FileService.List:input_type -> remote.code.v1.ListRequest
+	9,  // 18: remote.code.v1.FileService.Tree:input_type -> remote.code.v1.TreeRequest
+	12, // 19: remote.code.v1.FileService.Upload:input_type -> remote.code.v1.UploadRequest
+	14, // 20: remote.code.v1.FileService.Download:input_type -> remote.code.v1.DownloadRequest
+	18, // 21: remote.code.v1.FileService.Remove:input_type -> remote.code.v1.RemoveRequest
+	20, // 22: remote.code.v1.FileService.Move:input_type -> remote.code.v1.MoveRequest
+	22, // 23: remote.code.v1.FileService.Chmod:input_type -> remote.code.v1.ChmodRequest
+	24, // 24: remote.code.v1.FileService.Mkdir:input_type -> remote.code.v1.MkdirRequest
+	2,  // 25: remote.code.v1.ControllerService.GetInfo:output_type -> remote.code.v1.GetInfoResponse
+	5,  // 26: remote.code.v1.FileService.Stat:output_type -> remote.code.v1.StatResponse
+	7,  // 27: remote.code.v1.FileService.List:output_type -> remote.code.v1.ListResponse
+	10, // 28: remote.code.v1.FileService.Tree:output_type -> remote.code.v1.TreeResponse
+	13, // 29: remote.code.v1.FileService.Upload:output_type -> remote.code.v1.UploadResponse
+	17, // 30: remote.code.v1.FileService.Download:output_type -> remote.code.v1.DownloadResponse
+	19, // 31: remote.code.v1.FileService.Remove:output_type -> remote.code.v1.RemoveResponse
+	21, // 32: remote.code.v1.FileService.Move:output_type -> remote.code.v1.MoveResponse
+	23, // 33: remote.code.v1.FileService.Chmod:output_type -> remote.code.v1.ChmodResponse
+	25, // 34: remote.code.v1.FileService.Mkdir:output_type -> remote.code.v1.MkdirResponse
+	25, // [25:35] is the sub-list for method output_type
+	15, // [15:25] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_remote_code_v1_remote_code_proto_init() }
@@ -1483,11 +1641,11 @@ func file_remote_code_v1_remote_code_proto_init() {
 	if File_remote_code_v1_remote_code_proto != nil {
 		return
 	}
-	file_remote_code_v1_remote_code_proto_msgTypes[8].OneofWrappers = []any{
+	file_remote_code_v1_remote_code_proto_msgTypes[11].OneofWrappers = []any{
 		(*UploadRequest_Metadata)(nil),
 		(*UploadRequest_Chunk)(nil),
 	}
-	file_remote_code_v1_remote_code_proto_msgTypes[13].OneofWrappers = []any{
+	file_remote_code_v1_remote_code_proto_msgTypes[16].OneofWrappers = []any{
 		(*DownloadResponse_Metadata)(nil),
 		(*DownloadResponse_Chunk)(nil),
 		(*DownloadResponse_Summary)(nil),
@@ -1498,7 +1656,7 @@ func file_remote_code_v1_remote_code_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_remote_code_v1_remote_code_proto_rawDesc), len(file_remote_code_v1_remote_code_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   22,
+			NumMessages:   25,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

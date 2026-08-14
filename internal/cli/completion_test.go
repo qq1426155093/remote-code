@@ -1,0 +1,91 @@
+package cli
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"reflect"
+	"testing"
+	"time"
+
+	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
+)
+
+type fakeCompletionClient struct {
+	files    map[string][]*codev1.FileInfo
+	requests []string
+}
+
+func (f *fakeCompletionClient) List(_ context.Context, remotePath string) ([]*codev1.FileInfo, error) {
+	f.requests = append(f.requests, remotePath)
+	return f.files[remotePath], nil
+}
+
+func TestCompleterSuggestsCommandsOptionsAndArguments(t *testing.T) {
+	client := &fakeCompletionClient{files: map[string][]*codev1.FileInfo{
+		".": {
+			{Name: ".hidden", Type: codev1.FileType_FILE_TYPE_REGULAR},
+			{Name: "docs", Type: codev1.FileType_FILE_TYPE_DIRECTORY},
+			{Name: "hello world.txt", Type: codev1.FileType_FILE_TYPE_REGULAR},
+		},
+	}}
+	completer := newCompleter(client, func() string { return "." }, time.Second)
+	tests := []struct {
+		name       string
+		line       string
+		want       []string
+		wantOffset int
+	}{
+		{name: "command", line: "tr", want: []string{"ee "}, wantOffset: 2},
+		{name: "help argument", line: "help ch", want: []string{"mod "}, wantOffset: 2},
+		{name: "option", line: "ls -", want: []string{"l "}, wantOffset: 1},
+		{name: "directory", line: "cd d", want: []string{"ocs/"}, wantOffset: 1},
+		{name: "escaped remote file", line: "cat he", want: []string{"llo\\ world.txt "}, wantOffset: 2},
+		{name: "quoted remote file", line: "cat \"hello", want: []string{" world.txt\" "}, wantOffset: 6},
+		{name: "mode hints", line: "chmod 064", want: []string{"0 ", "4 "}, wantOffset: 3},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, offset := completer.Do([]rune(test.line), len([]rune(test.line)))
+			gotStrings := make([]string, len(got))
+			for index := range got {
+				gotStrings[index] = string(got[index])
+			}
+			if !reflect.DeepEqual(gotStrings, test.want) || offset != test.wantOffset {
+				t.Fatalf("Do(%q) = %#v, %d; want %#v, %d", test.line, gotStrings, offset, test.want, test.wantOffset)
+			}
+		})
+	}
+}
+
+func TestCompleterResolvesRemotePathsFromCurrentDirectory(t *testing.T) {
+	client := &fakeCompletionClient{files: map[string][]*codev1.FileInfo{
+		"docs": {{Name: "guide", Type: codev1.FileType_FILE_TYPE_DIRECTORY}},
+	}}
+	completer := newCompleter(client, func() string { return "docs" }, time.Second)
+	got, _ := completer.Do([]rune("tree g"), len([]rune("tree g")))
+	if len(got) != 1 || string(got[0]) != "uide/" {
+		t.Fatalf("Do(tree g) = %q, want guide directory completion", got)
+	}
+	if !reflect.DeepEqual(client.requests, []string{"docs"}) {
+		t.Errorf("List() requests = %#v, want docs", client.requests)
+	}
+}
+
+func TestCompleteLocalPath(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, "local file.txt"), []byte("data"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(directory, "logs"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	candidates := completeLocalPath(filepath.Join(directory, "lo"), completeFiles)
+	want := []completionCandidate{
+		{value: filepath.Join(directory, "local file.txt"), finish: true},
+		{value: filepath.Join(directory, "logs") + string(filepath.Separator), finish: false},
+	}
+	if !reflect.DeepEqual(candidates, want) {
+		t.Errorf("completeLocalPath() = %#v, want %#v", candidates, want)
+	}
+}

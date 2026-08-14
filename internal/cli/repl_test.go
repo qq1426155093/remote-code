@@ -5,6 +5,8 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+
+	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
 )
 
 func TestParseCommandSupportsQuotedPaths(t *testing.T) {
@@ -66,5 +68,26 @@ func TestLimitWriter(t *testing.T) {
 	n, err := writer.Write([]byte("abcdef"))
 	if n != 4 || !errors.Is(err, errCatLimit) || output.String() != "abcd" {
 		t.Fatalf("Write() = %d, %v, output %q; want 4, limit error, abcd", n, err, output.String())
+	}
+}
+
+func TestPrintTree(t *testing.T) {
+	root := &codev1.TreeNode{
+		File: &codev1.FileInfo{Path: "/docs", Name: "docs", Type: codev1.FileType_FILE_TYPE_DIRECTORY},
+		Children: []*codev1.TreeNode{
+			{File: &codev1.FileInfo{Name: "alpha.txt", Type: codev1.FileType_FILE_TYPE_REGULAR}},
+			{
+				File: &codev1.FileInfo{Name: "nested", Type: codev1.FileType_FILE_TYPE_DIRECTORY},
+				Children: []*codev1.TreeNode{
+					{File: &codev1.FileInfo{Name: "link", Type: codev1.FileType_FILE_TYPE_SYMLINK, SymlinkTarget: "../alpha.txt"}},
+				},
+			},
+		},
+	}
+	var output bytes.Buffer
+	printTree(&output, root)
+	want := "/docs\n├── alpha.txt\n└── nested\n    └── link -> ../alpha.txt\n"
+	if got := output.String(); got != want {
+		t.Errorf("printTree() =\n%s\nwant:\n%s", got, want)
 	}
 }

@@ -123,6 +123,7 @@ var ControllerService_ServiceDesc = grpc.ServiceDesc{
 const (
 	FileService_Stat_FullMethodName     = "/remote.code.v1.FileService/Stat"
 	FileService_List_FullMethodName     = "/remote.code.v1.FileService/List"
+	FileService_Tree_FullMethodName     = "/remote.code.v1.FileService/Tree"
 	FileService_Upload_FullMethodName   = "/remote.code.v1.FileService/Upload"
 	FileService_Download_FullMethodName = "/remote.code.v1.FileService/Download"
 	FileService_Remove_FullMethodName   = "/remote.code.v1.FileService/Remove"
@@ -137,6 +138,7 @@ const (
 type FileServiceClient interface {
 	Stat(ctx context.Context, in *StatRequest, opts ...grpc.CallOption) (*StatResponse, error)
 	List(ctx context.Context, in *ListRequest, opts ...grpc.CallOption) (*ListResponse, error)
+	Tree(ctx context.Context, in *TreeRequest, opts ...grpc.CallOption) (*TreeResponse, error)
 	Upload(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[UploadRequest, UploadResponse], error)
 	Download(ctx context.Context, in *DownloadRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DownloadResponse], error)
 	Remove(ctx context.Context, in *RemoveRequest, opts ...grpc.CallOption) (*RemoveResponse, error)
@@ -167,6 +169,16 @@ func (c *fileServiceClient) List(ctx context.Context, in *ListRequest, opts ...g
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListResponse)
 	err := c.cc.Invoke(ctx, FileService_List_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *fileServiceClient) Tree(ctx context.Context, in *TreeRequest, opts ...grpc.CallOption) (*TreeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TreeResponse)
+	err := c.cc.Invoke(ctx, FileService_Tree_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -251,6 +263,7 @@ func (c *fileServiceClient) Mkdir(ctx context.Context, in *MkdirRequest, opts ..
 type FileServiceServer interface {
 	Stat(context.Context, *StatRequest) (*StatResponse, error)
 	List(context.Context, *ListRequest) (*ListResponse, error)
+	Tree(context.Context, *TreeRequest) (*TreeResponse, error)
 	Upload(grpc.ClientStreamingServer[UploadRequest, UploadResponse]) error
 	Download(*DownloadRequest, grpc.ServerStreamingServer[DownloadResponse]) error
 	Remove(context.Context, *RemoveRequest) (*RemoveResponse, error)
@@ -272,6 +285,9 @@ func (UnimplementedFileServiceServer) Stat(context.Context, *StatRequest) (*Stat
 }
 func (UnimplementedFileServiceServer) List(context.Context, *ListRequest) (*ListResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method List not implemented")
+}
+func (UnimplementedFileServiceServer) Tree(context.Context, *TreeRequest) (*TreeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Tree not implemented")
 }
 func (UnimplementedFileServiceServer) Upload(grpc.ClientStreamingServer[UploadRequest, UploadResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method Upload not implemented")
@@ -344,6 +360,24 @@ func _FileService_List_Handler(srv interface{}, ctx context.Context, dec func(in
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(FileServiceServer).List(ctx, req.(*ListRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _FileService_Tree_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TreeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FileServiceServer).Tree(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FileService_Tree_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FileServiceServer).Tree(ctx, req.(*TreeRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -452,6 +486,10 @@ var FileService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "List",
 			Handler:    _FileService_List_Handler,
+		},
+		{
+			MethodName: "Tree",
+			Handler:    _FileService_Tree_Handler,
 		},
 		{
 			MethodName: "Remove",

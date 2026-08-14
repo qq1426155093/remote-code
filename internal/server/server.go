@@ -18,7 +18,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
-const maxMessageBytes = 2 << 20
+const maxMessageBytes = 16 << 20
 
 // Config describes one controller server.
 type Config struct {

@@ -4,8 +4,8 @@ Remote Code 是一个面向远程开发任务的 Code Agent 控制平面。它�
 `controller`，通过 gRPC 接受本地 `remote-code` CLI 的请求，管理工作区文件以及一个
 或多个 Claude Code 进程。
 
-> 项目状态：文件控制 v0.1 已可运行，包含交互式 CLI、gRPC controller、工作区安全边界、
-> 流式上传/下载以及文件管理。Agent/PTY 生命周期管理仍是后续版本计划。
+> 项目状态：文件控制 v0.1 已可运行，包含带 Tab 补全的交互式 CLI、结构化目录树、gRPC
+> controller、工作区安全边界、流式上传/下载以及文件管理。Agent/PTY 生命周期管理仍是后续版本计划。
 
 ## 快速开始
 
@@ -149,6 +149,7 @@ service ControllerService {
 service FileService {
   rpc Stat(StatRequest) returns (StatResponse);
   rpc List(ListRequest) returns (ListResponse);
+  rpc Tree(TreeRequest) returns (TreeResponse);
   rpc Upload(stream UploadRequest) returns (UploadResponse);
   rpc Download(DownloadRequest) returns (stream DownloadResponse);
   rpc Remove(RemoveRequest) returns (RemoveResponse);
@@ -158,7 +159,8 @@ service FileService {
 }
 ```
 
-文件上传和下载采用分块流并用 SHA-256 校验完整性。实际 message 与流帧定义见
+`TreeResponse` 使用递归的 `TreeNode` 返回文件元数据和子节点，CLI 只负责把它渲染成类似
+Linux `tree` 的文本。文件上传和下载采用分块流并用 SHA-256 校验完整性。实际 message 与流帧定义见
 [`remote_code.proto`](api/remote/code/v1/remote_code.proto)。后续的 `Attach` 将使用双向流承载
 stdin、stdout/stderr、终端 resize、心跳和 detach。
 

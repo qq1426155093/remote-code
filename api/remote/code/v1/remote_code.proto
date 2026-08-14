@@ -13,6 +13,7 @@ service ControllerService {
 service FileService {
   rpc Stat(StatRequest) returns (StatResponse);
   rpc List(ListRequest) returns (ListResponse);
+  rpc Tree(TreeRequest) returns (TreeResponse);
   rpc Upload(stream UploadRequest) returns (UploadResponse);
   rpc Download(DownloadRequest) returns (stream DownloadResponse);
   rpc Remove(RemoveRequest) returns (RemoveResponse);
@@ -62,6 +63,21 @@ message ListRequest {
 
 message ListResponse {
   repeated FileInfo files = 1;
+}
+
+// TreeNode keeps the file hierarchy structured for non-CLI callers. Directory
+// children are sorted by name; regular files and symbolic links are leaves.
+message TreeNode {
+  FileInfo file = 1;
+  repeated TreeNode children = 2;
+}
+
+message TreeRequest {
+  string path = 1;
+}
+
+message TreeResponse {
+  TreeNode root = 1;
 }
 
 message UploadMetadata {
@@ -143,4 +159,3 @@ message MkdirRequest {
 message MkdirResponse {
   FileInfo file = 1;
 }
-

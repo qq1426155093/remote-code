@@ -69,6 +69,77 @@ func TestServiceFileLifecycle(t *testing.T) {
 	}
 }
 
+func TestServiceTreeReturnsStructuredHierarchy(t *testing.T) {
+	workspace := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(workspace, "docs", "nested"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "docs", "zeta.txt"), []byte("z"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "docs", "nested", "alpha.txt"), []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("nested", filepath.Join(workspace, "docs", "nested-link")); err != nil {
+		t.Fatal(err)
+	}
+	service := newTestService(t, workspace, 0)
+
+	response, err := service.Tree(context.Background(), &codev1.TreeRequest{Path: "docs"})
+	if err != nil {
+		t.Fatalf("Tree() error = %v", err)
+	}
+	root := response.GetRoot()
+	if root.GetFile().GetPath() != "/docs" || root.GetFile().GetType() != codev1.FileType_FILE_TYPE_DIRECTORY {
+		t.Fatalf("Tree().Root = %+v, want /docs directory", root.GetFile())
+	}
+	children := root.GetChildren()
+	wantNames := []string{"nested", "nested-link", "zeta.txt"}
+	if len(children) != len(wantNames) {
+		t.Fatalf("Tree().Root.Children = %d entries, want %d", len(children), len(wantNames))
+	}
+	for index, want := range wantNames {
+		if got := children[index].GetFile().GetName(); got != want {
+			t.Errorf("Tree().Root.Children[%d].Name = %q, want %q", index, got, want)
+		}
+	}
+	if nested := children[0]; len(nested.GetChildren()) != 1 || nested.GetChildren()[0].GetFile().GetName() != "alpha.txt" {
+		t.Errorf("Tree() nested children = %+v, want alpha.txt", nested.GetChildren())
+	}
+	if link := children[1]; link.GetFile().GetType() != codev1.FileType_FILE_TYPE_SYMLINK || len(link.GetChildren()) != 0 {
+		t.Errorf("Tree() symlink = %+v, want a symlink leaf", link)
+	}
+
+	fileResponse, err := service.Tree(context.Background(), &codev1.TreeRequest{Path: "docs/zeta.txt"})
+	if err != nil {
+		t.Fatalf("Tree(file) error = %v", err)
+	}
+	if fileResponse.GetRoot().GetFile().GetName() != "zeta.txt" || len(fileResponse.GetRoot().GetChildren()) != 0 {
+		t.Errorf("Tree(file).Root = %+v, want zeta.txt leaf", fileResponse.GetRoot())
+	}
+
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := service.Tree(canceled, &codev1.TreeRequest{}); status.Code(err) != codes.Canceled {
+		t.Errorf("Tree(canceled) code = %s, want Canceled", status.Code(err))
+	}
+}
+
+func TestServiceTreeEnforcesDepthLimit(t *testing.T) {
+	workspace := t.TempDir()
+	deepest := workspace
+	for range maxTreeDepth + 1 {
+		deepest = filepath.Join(deepest, "d")
+	}
+	if err := os.MkdirAll(deepest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	service := newTestService(t, workspace, 0)
+	if _, err := service.Tree(context.Background(), &codev1.TreeRequest{}); status.Code(err) != codes.ResourceExhausted {
+		t.Errorf("Tree(deep hierarchy) code = %s, want ResourceExhausted", status.Code(err))
+	}
+}
+
 func TestServiceRejectsUnsafePaths(t *testing.T) {
 	workspace := t.TempDir()
 	outside := t.TempDir()
@@ -122,6 +193,16 @@ func TestServiceRejectsUnsafePaths(t *testing.T) {
 	}
 	if link.GetFile().GetSymlinkTarget() != "" {
 		t.Errorf("escaping symlink target leaked as %q", link.GetFile().GetSymlinkTarget())
+	}
+	tree, err := service.Tree(ctx, &codev1.TreeRequest{Path: "escape"})
+	if err != nil {
+		t.Fatalf("Tree(final escape symlink) error = %v", err)
+	}
+	if tree.GetRoot().GetFile().GetSymlinkTarget() != "" || len(tree.GetRoot().GetChildren()) != 0 {
+		t.Errorf("Tree(escape) = %+v, want a non-leaking symlink leaf", tree.GetRoot())
+	}
+	if _, err := service.Tree(ctx, &codev1.TreeRequest{Path: "escape/secret.txt"}); status.Code(err) != codes.PermissionDenied {
+		t.Errorf("Tree(symlink escape) code = %s, want PermissionDenied", status.Code(err))
 	}
 	for _, rootPath := range []string{"", "."} {
 		_, err := service.Remove(ctx, &codev1.RemoveRequest{Path: rootPath, Recursive: true})
