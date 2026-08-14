@@ -1,2 +1,214 @@
-# remote-code
-A remote code agent
+# Remote Code
+
+Remote Code 是一个面向远程开发任务的 Code Agent 控制平面。它在远程机器上运行
+`controller`，通过 gRPC 接受本地 `remote-code` CLI 的请求，管理工作区文件以及一个
+或多个 Claude Code 进程。
+
+> 项目状态：设计与初始化阶段，下面的命令和 API 是计划中的接口，当前尚不可用。
+
+## 使用场景
+
+1. 在远程服务器启动 `controller`，并将它限制在指定的工作目录中。
+2. 使用 CLI 上传需求文档、设计稿或其他任务输入。
+3. 在工作区中启动一个或多个 Claude Code agent，例如分别承担设计、实现和 review。
+4. 从 CLI 查看 agent 状态、接入实时终端、发送输入并持续读取输出。
+5. 任务结束后停止 agent，下载产物，或关闭整个 controller。
+
+## 设计目标
+
+- 通过一个长期运行的 controller 统一管理 agent 的启动、停止和状态。
+- 保留 Claude Code 的交互式体验，支持终端尺寸变化、流式输入和流式输出。
+- 支持断开后重新接入，并保留有限的输出历史。
+- 提供受工作区边界约束的文件上传、下载、浏览和删除能力。
+- 支持多个 agent 并行工作，清楚呈现各自的身份、角色和生命周期。
+- controller 和 CLI 均使用 Go 实现，并通过版本化的 gRPC API 通信。
+
+首个版本不以容器编排、多租户调度、Web UI 或通用 Agent SDK 为目标。
+
+## 总体架构
+
+```mermaid
+flowchart LR
+    User[Developer] --> CLI[remote-code CLI]
+    CLI <-->|gRPC + TLS| Controller[controller]
+    Controller --> Files[Workspace file service]
+    Controller --> Registry[Agent registry]
+    Registry --> PTY1[PTY: designer]
+    Registry --> PTY2[PTY: implementer]
+    Registry --> PTY3[PTY: reviewer]
+    PTY1 --> Claude1[Claude Code]
+    PTY2 --> Claude2[Claude Code]
+    PTY3 --> Claude3[Claude Code]
+    Files --> Workspace[(Workspace)]
+    Claude1 --> Workspace
+    Claude2 --> Workspace
+    Claude3 --> Workspace
+```
+
+controller 是唯一的远程入口，负责认证、路径校验、agent 注册表、进程回收和事件转发。
+每个 Claude Code 进程运行在独立的 PTY 和进程组中，CLI 通过双向流接入对应 PTY。
+
+## 核心概念
+
+- **Workspace**：controller 启动时指定的根目录。所有文件操作和 agent 工作目录都必须位于该目录内。
+- **Agent**：一个受管的 Claude Code 进程，拥有稳定 ID、名称、角色、启动参数和生命周期状态。
+- **Attachment**：CLI 与 agent PTY 的一次连接。网络断开不等同于终止 agent，之后可以重新接入。
+- **Event**：带递增序号和时间戳的输出、状态变化或错误，可用于断线续传和审计。
+
+建议的 agent 状态机：
+
+```text
+CREATED -> STARTING -> RUNNING -> STOPPING -> EXITED
+                       |    |
+                       |    +-------------> FAILED
+                       +------------------> LOST
+```
+
+## CLI 体验草案
+
+以下命令用于约定产品形态，并不表示已经实现：
+
+```bash
+# 连接远程 controller
+remote-code context add devbox --address devbox.example.com:9443 \
+  --ca ~/.config/remote-code/ca.pem \
+  --token-file ~/.config/remote-code/devbox.token
+
+# 管理文件
+remote-code file upload ./requirements.md docs/requirements.md
+remote-code file list docs
+remote-code file download output/report.md ./report.md
+
+# 启动并查看多个 agent
+remote-code agent start --name designer --role design --prompt-file prompts/design.md
+remote-code agent start --name implementer --role implementation
+remote-code agent start --name reviewer --role review
+remote-code agent list
+
+# 接入交互终端，detach 不会结束远程进程
+remote-code agent attach implementer
+remote-code agent logs reviewer --follow
+remote-code agent stop implementer --grace-period 10s
+```
+
+CLI 应同时支持面向人的表格输出和供自动化使用的 `--output json`。
+
+## gRPC API 草案
+
+API 放在版本化包 `remote.code.v1` 中，首版可拆分为三个服务：
+
+```protobuf
+service ControllerService {
+  rpc GetInfo(GetInfoRequest) returns (GetInfoResponse);
+  rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
+}
+
+service AgentService {
+  rpc Start(StartAgentRequest) returns (Agent);
+  rpc Get(GetAgentRequest) returns (Agent);
+  rpc List(ListAgentsRequest) returns (ListAgentsResponse);
+  rpc Stop(StopAgentRequest) returns (Agent);
+  rpc Attach(stream AttachRequest) returns (stream AttachEvent);
+  rpc StreamEvents(StreamEventsRequest) returns (stream AgentEvent);
+}
+
+service FileService {
+  rpc Stat(StatRequest) returns (FileInfo);
+  rpc List(ListFilesRequest) returns (ListFilesResponse);
+  rpc Upload(stream UploadRequest) returns (FileInfo);
+  rpc Download(DownloadRequest) returns (stream DownloadChunk);
+  rpc Remove(RemoveRequest) returns (RemoveResponse);
+}
+```
+
+`Attach` 使用双向流承载 stdin、stdout/stderr、终端 resize、心跳和 detach。每条输出事件应包含
+agent ID 与单调递增的序号，使客户端可以在重连时请求缺失的输出。大文件上传和下载采用分块流，
+并用 SHA-256 校验完整性。
+
+## 多 Agent 协作
+
+多个 agent 可以读取同一工作区，但多个写入者直接修改同一份文件会产生覆盖、半成品读取和 Git
+索引竞争。推荐的首版约束是：
+
+- design 和 review agent 默认只读；
+- 同一工作区默认只允许一个可写 agent；
+- 需要多个 agent 并行实现时，为每个 agent 创建独立的 Git worktree，再通过提交或补丁合并；
+- agent 之间通过明确的产物文件或 controller 事件协作，不隐式共享终端上下文。
+
+## 安全边界
+
+controller 会启动能够执行任意项目命令的 Claude Code，因此它不应直接暴露到公网。实现时至少需要：
+
+- 默认监听 loopback；远程使用时启用 TLS，并支持 token 或 mTLS 身份认证；
+- 对每个 RPC 做认证与审计，敏感字段不写入日志；
+- 将所有相对路径解析到规范化路径，并拒绝 `..`、绝对路径和符号链接逃逸；
+- 上传先写同目录临时文件，校验大小与哈希后原子替换；
+- 为上传大小、并发 agent 数、输出缓冲和 RPC 消息大小设置上限；
+- agent 使用独立进程组，停止时先发送温和信号，超时后再强制回收整个进程组；
+- controller 退出时有序停止或明确托管所有子进程，避免孤儿进程；
+- 不通过 RPC 任意指定可执行文件；Claude CLI 路径和允许的启动参数由服务端配置。
+
+工作区路径限制不是完整的沙箱。面向不可信任务时，应把 controller 运行在独立容器、虚拟机或受限
+系统用户下，并配合操作系统级的 CPU、内存、网络和文件权限限制。
+
+## 推荐目录结构
+
+```text
+.
+├── api/remote/code/v1/       # protobuf 定义
+├── cmd/
+│   ├── controller/           # 远程服务入口
+│   └── remote-code/          # CLI 入口
+├── internal/
+│   ├── agent/                # agent 生命周期与注册表
+│   ├── auth/                 # gRPC 认证与授权
+│   ├── config/               # 配置加载与校验
+│   ├── eventlog/             # 输出缓冲及事件序号
+│   ├── files/                # 安全的工作区文件操作
+│   ├── process/              # PTY、进程组和信号处理
+│   └── transport/grpc/       # gRPC 服务实现
+├── pkg/client/               # 可供 CLI 或其他 Go 程序复用的客户端
+├── configs/                  # 示例配置
+├── scripts/                  # 开发与发布脚本
+├── go.mod
+└── README.md
+```
+
+内部状态可先使用内存注册表配合每个 agent 的有界环形输出缓冲。需要 controller 重启恢复后，再引入
+SQLite 或 bbolt 持久化 agent 元数据和事件游标；仍在运行的子进程是否允许跨 controller 重启托管，
+应作为单独能力设计。
+
+## 实现路线
+
+### Milestone 1：单 Agent 闭环
+
+- 定义 v1 protobuf 并生成 Go 代码；
+- 启动 controller，校验单一工作区；
+- 启动、列出、接入和停止一个 Claude Code 进程；
+- PTY 双向流、窗口 resize、退出码和信号处理；
+- CLI context、超时、结构化错误和基础 TLS/token 认证。
+
+### Milestone 2：文件与可靠性
+
+- 安全的文件浏览、分块上传和下载；
+- 输出环形缓冲、断线重连和按事件序号续传；
+- controller 优雅关闭、孤儿进程清理、并发与资源上限；
+- 单元测试、gRPC 集成测试和 Linux PTY 端到端测试。
+
+### Milestone 3：多 Agent 协作
+
+- agent 角色、只读/可写策略和并发控制；
+- Git worktree 隔离与任务产物交接；
+- 持久化元数据、审计日志和可观测性；
+- 可选的非交互任务模式与机器可读事件流。
+
+## 开发约定
+
+- Go 版本、依赖和构建命令将在首个可运行版本中固定到 `go.mod` 与 `Makefile`。
+- protobuf API 保持向后兼容；破坏性修改通过新的版本包发布。
+- Linux 是首个服务端目标平台，因为进程组和 PTY 行为依赖操作系统。
+- 核心进程管理与路径安全逻辑必须包含竞态测试和失败路径测试。
+
+## License
+
+[Apache License 2.0](LICENSE)
