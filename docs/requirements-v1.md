@@ -14,8 +14,7 @@
 启动 controller：
 
 ```bash
-remote-code-controller --workspace /srv/project --listen-addr 127.0.0.1:9443 \
-  --runtime-dir /var/run/remote-code-controller --max-processes 16
+remote-code-controller --config /etc/remote-code/controller.toml
 ```
 
 连接并进入交互环境：
@@ -71,6 +70,8 @@ REPL 内按 `Tab` 可补全内部命令、选项和参数。远端路径候选�
 
 | 参数 | 默认值 | 说明 |
 | --- | --- | --- |
+| `--config` | 空 | 显式加载 TOML 配置文件；命令行参数覆盖文件值 |
+| `--check-config` | `false` | 校验合并后的配置并退出，不启动 listener |
 | `--workspace` | 无 | 必填，允许访问的工作区目录 |
 | `--listen-addr` | `127.0.0.1:9443` | gRPC 监听地址 |
 | `--max-upload-bytes` | `1073741824` | 单个上传文件最大字节数 |
@@ -81,6 +82,9 @@ REPL 内按 `Tab` 可补全内部命令、选项和参数。远端路径候选�
 | `--allow-insecure-remote` | `false` | 显式允许在非 loopback 地址上使用明文 gRPC |
 
 `--workspace` 必须是已存在的目录。TLS 证书与私钥必须成对提供。为防止误暴露，非 loopback 监听在未启用 TLS 时默认拒绝启动。
+TOML 配置必须声明 `version = 1`，采用严格字段解析，最大 1 MiB。最终优先级为
+“内置默认值 < TOML < 显式命令行参数”；完整 schema 见
+[Controller 配置文件](controller-configuration.md)。
 
 ### 4.2 CLI
 

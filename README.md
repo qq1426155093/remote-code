@@ -17,8 +17,7 @@ go build ./...
 go test ./...
 make build
 
-./bin/remote-code-controller --workspace /path/to/workspace \
-  --runtime-dir ./var/run/remote-code-controller
+./bin/remote-code-controller --config ./bin/remote-code-controller.toml
 ```
 
 在另一个终端连接：
@@ -44,7 +43,15 @@ remote-code:/> kill -s TERM -w listing
 默认仅允许 loopback 明文监听。远程部署应配置 `--tls-cert`、`--tls-key` 和
 `--token-file`；完整参数、行为与安全限制见
 [首版需求](docs/requirements-v1.md)、[通用进程需求](docs/process-management-requirements-v1.md)、
-[技术方案](docs/technical-design-v1.md)和[通用进程详细设计](docs/process-management-design-v1.md)。
+[技术方案](docs/technical-design-v1.md)、[通用进程详细设计](docs/process-management-design-v1.md)
+和[Controller 配置文件](docs/controller-configuration.md)。
+
+controller 同时保留全部命令行参数。使用配置文件时，显式命令行参数覆盖 TOML，例如：
+
+```bash
+./bin/remote-code-controller --config /etc/remote-code/controller.toml --max-processes 32
+./bin/remote-code-controller --config /etc/remote-code/controller.toml --check-config
+```
 
 ## 使用场景
 

@@ -28,6 +28,7 @@ CLI 的“当前目录”只是本地 REPL 状态。发送 RPC 前，CLI 将当�
 - `github.com/chzyer/readline` `v1.5.1`：交互提示符、历史、Ctrl-C/EOF 处理。
 - `github.com/google/shlex` `v0.0.0-20191202100458-e7afc7fbc510`：按 shell 引号规则拆分命令，但不执行 shell。
 - `github.com/creack/pty` `v1.1.24`：在 Linux 上创建 PTY、独立 session 和控制终端。
+- `github.com/pelletier/go-toml/v2` `v2.4.3`：严格解析 controller TOML 配置并提供带源码位置的错误。
 - `github.com/bufbuild/buf` `v1.57.2`：无需系统 `protoc` 的可复现 protobuf 生成入口。
 - `protoc-gen-go` `v1.36.10`、`protoc-gen-go-grpc` `v1.5.1`：生成 Go message 与 service stub。
 
@@ -49,6 +50,7 @@ internal/process/         进程注册表、PTY/pipe、进程组、信号与回�
 internal/server/          gRPC server 装配、TLS 与生命周期
 pkg/client/               可复用 typed client、流式上传下载
 docs/                     需求和技术方案
+configs/                  不含凭据的安全示例配置
 ```
 
 `internal/files` 不依赖 CLI，核心行为可用单元测试直接验证。`pkg/client` 隐藏流帧协议、摘要校验和本地原子下载细节。
@@ -173,6 +175,12 @@ START -> METADATA -> CHUNK* -> CLIENT_EOF -> VERIFY -> PUBLISH -> RESPONSE
 - CLI 提供 CA 时使用 TLS transport credentials，否则使用 insecure credentials。
 - token 文件去除首尾空白后必须非空。客户端以 `authorization: Bearer <token>` metadata 发送；服务端 unary 与 stream interceptor 都验证。
 - 非 loopback 明文监听必须增加 `--allow-insecure-remote`，以防配置失误。该选项不改变风险，只表示操作者明确接受风险。
+
+controller 可通过 `--config` 显式加载 schema v1 TOML。入口先把配置文件应用到内置默认值，
+再把同一组 flag 绑定到合并后的字段，因此只有实际出现的命令行参数会覆盖文件值。decoder
+拒绝未知字段；`--check-config` 完成解析、范围、workspace、TLS 配对和 token 文件校验后
+退出。TOML 层只存在于 `cmd/controller`，`internal/server` 继续接收与来源无关的 typed
+configuration。
 
 ## 8. 错误映射
 

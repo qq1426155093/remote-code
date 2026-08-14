@@ -48,11 +48,8 @@ func New(config Config) (*Server, error) {
 	if config.ListenAddress == "" {
 		config.ListenAddress = "127.0.0.1:9443"
 	}
-	if (config.TLSCertificateFile == "") != (config.TLSKeyFile == "") {
-		return nil, errors.New("tls-cert and tls-key must be provided together")
-	}
-	if config.TLSCertificateFile == "" && !config.AllowInsecureRemote && !isLoopbackAddress(config.ListenAddress) {
-		return nil, errors.New("refusing insecure non-loopback listener; configure TLS or pass --allow-insecure-remote")
+	if err := ValidateConfig(config); err != nil {
+		return nil, err
 	}
 
 	fileService, err := files.New(files.Config{Workspace: config.Workspace, MaxUploadBytes: config.MaxUploadBytes})
@@ -101,6 +98,21 @@ func New(config Config) (*Server, error) {
 	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
 	return &Server{grpcServer: grpcServer, listener: listener, files: fileService, processes: processService}, nil
+}
+
+// ValidateConfig checks transport-level invariants without opening files or a
+// listener. Service-specific filesystem validation remains in New.
+func ValidateConfig(config Config) error {
+	if config.ListenAddress == "" {
+		config.ListenAddress = "127.0.0.1:9443"
+	}
+	if (config.TLSCertificateFile == "") != (config.TLSKeyFile == "") {
+		return errors.New("tls-cert and tls-key must be provided together")
+	}
+	if config.TLSCertificateFile == "" && !config.AllowInsecureRemote && !isLoopbackAddress(config.ListenAddress) {
+		return errors.New("refusing insecure non-loopback listener; configure TLS or pass --allow-insecure-remote")
+	}
+	return nil
 }
 
 // Address returns the actual bound address, useful when port 0 is configured.

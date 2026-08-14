@@ -1,0 +1,20 @@
+# remote-code-controller configuration, TOML schema version 1.
+version = 1
+
+# All file RPCs and relative process working directories are confined here.
+workspace = "/srv/remote-code/workspace"
+
+listen_address = "127.0.0.1:9443"
+runtime_directory = "/var/run/remote-code-controller"
+max_upload_bytes = 1073741824
+max_processes = 16
+allow_insecure_remote = false
+
+# Uncomment both fields to enable TLS.
+# [tls]
+# certificate_file = "/etc/remote-code/tls/server.crt"
+# key_file = "/etc/remote-code/tls/server.key"
+
+# Store only the path in this file; keep the token in a mode-0600 file.
+# [auth]
+# token_file = "/etc/remote-code/controller.token"
