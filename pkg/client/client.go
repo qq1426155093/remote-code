@@ -39,6 +39,7 @@ type Client struct {
 	connection *grpc.ClientConn
 	controller codev1.ControllerServiceClient
 	files      codev1.FileServiceClient
+	processes  codev1.ProcessServiceClient
 	info       *codev1.GetInfoResponse
 }
 
@@ -76,6 +77,7 @@ func New(ctx context.Context, config Config) (*Client, error) {
 		connection: connection,
 		controller: codev1.NewControllerServiceClient(connection),
 		files:      codev1.NewFileServiceClient(connection),
+		processes:  codev1.NewProcessServiceClient(connection),
 	}
 	info, err := result.controller.GetInfo(ctx, &codev1.GetInfoRequest{})
 	if err != nil {
@@ -122,6 +124,41 @@ func (c *Client) Tree(ctx context.Context, remotePath string) (*codev1.TreeNode,
 		return nil, status.Error(codes.DataLoss, "tree response has no root")
 	}
 	return response.GetRoot(), nil
+}
+
+// StartProcess launches a configured command alias in the remote workspace.
+func (c *Client) StartProcess(ctx context.Context, name, command string, arguments []string, workingDirectory string, ioMode codev1.ProcessIOMode) (*codev1.ProcessInfo, error) {
+	response, err := c.processes.StartProcess(ctx, &codev1.StartProcessRequest{
+		Name: name, Command: command, Arguments: arguments, WorkingDirectory: workingDirectory, IoMode: ioMode,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if response.GetProcess() == nil {
+		return nil, status.Error(codes.DataLoss, "start process response has no process")
+	}
+	return response.GetProcess(), nil
+}
+
+// ListProcesses returns running and retained exited processes.
+func (c *Client) ListProcesses(ctx context.Context) ([]*codev1.ProcessInfo, error) {
+	response, err := c.processes.ListProcesses(ctx, &codev1.ListProcessesRequest{})
+	if err != nil {
+		return nil, err
+	}
+	return response.GetProcesses(), nil
+}
+
+// SignalProcess sends a signal to the selected managed process group.
+func (c *Client) SignalProcess(ctx context.Context, process *codev1.ProcessReference, signal codev1.ProcessSignal, wait bool) (*codev1.ProcessInfo, error) {
+	response, err := c.processes.SignalProcess(ctx, &codev1.SignalProcessRequest{Process: process, Signal: signal, Wait: wait})
+	if err != nil {
+		return nil, err
+	}
+	if response.GetProcess() == nil {
+		return nil, status.Error(codes.DataLoss, "signal process response has no process")
+	}
+	return response.GetProcess(), nil
 }
 
 func (c *Client) Remove(ctx context.Context, remotePath string, recursive bool) error {

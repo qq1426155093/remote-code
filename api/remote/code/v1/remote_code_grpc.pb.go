@@ -522,3 +522,181 @@ var FileService_ServiceDesc = grpc.ServiceDesc{
 	},
 	Metadata: "remote/code/v1/remote_code.proto",
 }
+
+const (
+	ProcessService_StartProcess_FullMethodName  = "/remote.code.v1.ProcessService/StartProcess"
+	ProcessService_ListProcesses_FullMethodName = "/remote.code.v1.ProcessService/ListProcesses"
+	ProcessService_SignalProcess_FullMethodName = "/remote.code.v1.ProcessService/SignalProcess"
+)
+
+// ProcessServiceClient is the client API for ProcessService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type ProcessServiceClient interface {
+	StartProcess(ctx context.Context, in *StartProcessRequest, opts ...grpc.CallOption) (*StartProcessResponse, error)
+	ListProcesses(ctx context.Context, in *ListProcessesRequest, opts ...grpc.CallOption) (*ListProcessesResponse, error)
+	SignalProcess(ctx context.Context, in *SignalProcessRequest, opts ...grpc.CallOption) (*SignalProcessResponse, error)
+}
+
+type processServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewProcessServiceClient(cc grpc.ClientConnInterface) ProcessServiceClient {
+	return &processServiceClient{cc}
+}
+
+func (c *processServiceClient) StartProcess(ctx context.Context, in *StartProcessRequest, opts ...grpc.CallOption) (*StartProcessResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StartProcessResponse)
+	err := c.cc.Invoke(ctx, ProcessService_StartProcess_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *processServiceClient) ListProcesses(ctx context.Context, in *ListProcessesRequest, opts ...grpc.CallOption) (*ListProcessesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListProcessesResponse)
+	err := c.cc.Invoke(ctx, ProcessService_ListProcesses_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *processServiceClient) SignalProcess(ctx context.Context, in *SignalProcessRequest, opts ...grpc.CallOption) (*SignalProcessResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SignalProcessResponse)
+	err := c.cc.Invoke(ctx, ProcessService_SignalProcess_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// ProcessServiceServer is the server API for ProcessService service.
+// All implementations must embed UnimplementedProcessServiceServer
+// for forward compatibility.
+type ProcessServiceServer interface {
+	StartProcess(context.Context, *StartProcessRequest) (*StartProcessResponse, error)
+	ListProcesses(context.Context, *ListProcessesRequest) (*ListProcessesResponse, error)
+	SignalProcess(context.Context, *SignalProcessRequest) (*SignalProcessResponse, error)
+	mustEmbedUnimplementedProcessServiceServer()
+}
+
+// UnimplementedProcessServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedProcessServiceServer struct{}
+
+func (UnimplementedProcessServiceServer) StartProcess(context.Context, *StartProcessRequest) (*StartProcessResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method StartProcess not implemented")
+}
+func (UnimplementedProcessServiceServer) ListProcesses(context.Context, *ListProcessesRequest) (*ListProcessesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListProcesses not implemented")
+}
+func (UnimplementedProcessServiceServer) SignalProcess(context.Context, *SignalProcessRequest) (*SignalProcessResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SignalProcess not implemented")
+}
+func (UnimplementedProcessServiceServer) mustEmbedUnimplementedProcessServiceServer() {}
+func (UnimplementedProcessServiceServer) testEmbeddedByValue()                        {}
+
+// UnsafeProcessServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to ProcessServiceServer will
+// result in compilation errors.
+type UnsafeProcessServiceServer interface {
+	mustEmbedUnimplementedProcessServiceServer()
+}
+
+func RegisterProcessServiceServer(s grpc.ServiceRegistrar, srv ProcessServiceServer) {
+	// If the following call pancis, it indicates UnimplementedProcessServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&ProcessService_ServiceDesc, srv)
+}
+
+func _ProcessService_StartProcess_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StartProcessRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProcessServiceServer).StartProcess(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProcessService_StartProcess_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProcessServiceServer).StartProcess(ctx, req.(*StartProcessRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ProcessService_ListProcesses_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListProcessesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProcessServiceServer).ListProcesses(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProcessService_ListProcesses_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProcessServiceServer).ListProcesses(ctx, req.(*ListProcessesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ProcessService_SignalProcess_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SignalProcessRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProcessServiceServer).SignalProcess(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProcessService_SignalProcess_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProcessServiceServer).SignalProcess(ctx, req.(*SignalProcessRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// ProcessService_ServiceDesc is the grpc.ServiceDesc for ProcessService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var ProcessService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "remote.code.v1.ProcessService",
+	HandlerType: (*ProcessServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "StartProcess",
+			Handler:    _ProcessService_StartProcess_Handler,
+		},
+		{
+			MethodName: "ListProcesses",
+			Handler:    _ProcessService_ListProcesses_Handler,
+		},
+		{
+			MethodName: "SignalProcess",
+			Handler:    _ProcessService_SignalProcess_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "remote/code/v1/remote_code.proto",
+}

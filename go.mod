@@ -4,6 +4,7 @@ go 1.26
 
 require (
 	github.com/chzyer/readline v1.5.1
+	github.com/creack/pty v1.1.24
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	google.golang.org/grpc v1.76.0
 	google.golang.org/protobuf v1.36.10

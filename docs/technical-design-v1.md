@@ -1,4 +1,4 @@
-# Remote Code 文件控制首版技术方案
+# Remote Code 文件与进程控制技术方案
 
 ## 1. 方案概览
 
@@ -12,6 +12,9 @@ flowchart LR
     G --> F[internal/files.Service]
     F --> O[os.Root]
     O --> W[(remote workspace)]
+    C <-->|gRPC unary| P[ProcessService]
+    P --> PR[process registry]
+    PR --> X[PTY/pipe process groups]
 ```
 
 CLI 的“当前目录”只是本地 REPL 状态。发送 RPC 前，CLI 将当前目录与用户参数合成为工作区相对路径；controller 不信任客户端，仍独立做路径和操作校验。
@@ -24,6 +27,7 @@ CLI 的“当前目录”只是本地 REPL 状态。发送 RPC 前，CLI 将当�
 - `google.golang.org/protobuf` `v1.36.10`：protobuf runtime 与代码生成器。
 - `github.com/chzyer/readline` `v1.5.1`：交互提示符、历史、Ctrl-C/EOF 处理。
 - `github.com/google/shlex` `v0.0.0-20191202100458-e7afc7fbc510`：按 shell 引号规则拆分命令，但不执行 shell。
+- `github.com/creack/pty` `v1.1.24`：在 Linux 上创建 PTY、独立 session 和控制终端。
 - `github.com/bufbuild/buf` `v1.57.2`：无需系统 `protoc` 的可复现 protobuf 生成入口。
 - `protoc-gen-go` `v1.36.10`、`protoc-gen-go-grpc` `v1.5.1`：生成 Go message 与 service stub。
 
@@ -41,6 +45,7 @@ cmd/remote-code/          REPL 入口
 internal/auth/            bearer token 服务端拦截器和客户端凭据
 internal/cli/             命令解析、虚拟 cwd、展示与命令执行
 internal/files/           工作区文件操作和 gRPC FileService
+internal/process/         进程注册表、PTY/pipe、进程组、信号与回收
 internal/server/          gRPC server 装配、TLS 与生命周期
 pkg/client/               可复用 typed client、流式上传下载
 docs/                     需求和技术方案
@@ -60,7 +65,7 @@ service ControllerService {
 }
 ```
 
-`GetInfoResponse` 返回 controller 版本、API 版本、工作区显示名和最大上传字节数。它既是能力查询，也是 CLI 进入 REPL 前的连接探测。绝不返回工作区绝对路径。
+`GetInfoResponse` 返回 controller 版本、API 版本、工作区显示名、最大上传字节数、允许的进程命令别名和活动进程上限。它既是能力查询，也是 CLI 进入 REPL 前的连接探测。绝不返回工作区绝对路径或 executable 的真实路径。
 
 ### 4.2 FileService
 
@@ -80,7 +85,19 @@ service FileService {
 
 `FileInfo` 包含相对路径、名称、类型、大小、Unix 权限位、修改时间和可选符号链接目标。时间使用 `google.protobuf.Timestamp`。`TreeResponse.root` 是递归的 `TreeNode`，每个节点包含一个 `FileInfo` 和有序的 `children`。
 
-### 4.3 上传流
+### 4.3 ProcessService
+
+```protobuf
+service ProcessService {
+  rpc StartProcess(StartProcessRequest) returns (StartProcessResponse);
+  rpc ListProcesses(ListProcessesRequest) returns (ListProcessesResponse);
+  rpc SignalProcess(SignalProcessRequest) returns (SignalProcessResponse);
+}
+```
+
+`ProcessInfo` 返回 UUID、唯一名称、OS PID、PTY/pipe 模式、命令别名、参数、虚拟工作目录、状态、时间戳以及可选退出码/退出信号。`ProcessReference` 用 oneof 明确区分 UUID、名称与 PID。`SignalProcess.wait=true` 使用 RPC context 作为等待上限。
+
+### 4.4 上传流
 
 `UploadRequest` 是 oneof 帧：第一帧必须是 `UploadMetadata`，后续帧只能是 `bytes chunk`。
 
@@ -96,7 +113,7 @@ START -> METADATA -> CHUNK* -> CLIENT_EOF -> VERIFY -> PUBLISH -> RESPONSE
 
 元数据缺失、重复或位于 chunk 之后返回 `InvalidArgument`；超过限制返回 `ResourceExhausted`；大小或摘要不一致返回 `DataLoss`。
 
-### 4.4 下载流
+### 4.5 下载流
 
 `DownloadResponse` 是 oneof 帧：先发送 `DownloadMetadata`，再发送多个 chunk，最后发送 `DownloadSummary`。summary 包含实际总字节数和 SHA-256。客户端必须看到 metadata 与 summary，且必须核对计数和摘要后才能发布本地文件。
 
@@ -178,13 +195,18 @@ START -> METADATA -> CHUNK* -> CLIENT_EOF -> VERIFY -> PUBLISH -> RESPONSE
 
 `os.Root` 可供并发 goroutine 使用，service 本身不保存每个请求的可变共享状态。每次上传有独立临时文件和 hash。controller 设置 gRPC 最大消息大小，应用层再限制 chunk 与总上传大小。
 
-进程收到终止信号后调用 `GracefulStop`；超过固定宽限期后 `Stop`，最后关闭 `os.Root` 和 listener。首版不保存会话或文件操作历史。
+进程服务以 mutex 保护 UUID/name/PID 索引、活动计数和有界历史。启动时在锁内完成名称预留与 `exec.Start`，避免关闭和并发启动交错；每个成功启动的命令立即建立唯一 reaper goroutine 调用 `Wait` 并原子记录退出结果。pipe 的 stdout/stderr 始终并发排空，PTY master 也持续读取，防止子进程因输出缓冲写满而停住。
+
+工作目录先通过 `os.Root` 安全打开并验证为目录；Linux 启动器使用 `/proc/self/fd/<fd>` 对已打开目录执行 child chdir，避免校验后符号链接替换。pipe 模式使用 `Setpgid`，PTY 模式使用 `setsid + controlling tty`，两者均以 PID 为进程组 ID。`SignalProcess` 只解析已注册且仍运行的记录，并对负 PGID 调用 `kill`。controller 关闭时注册表先拒绝新启动并发送 `TERM`，context 到期后发送 `KILL`；gRPC 随后停止，最后释放工作区句柄。
+
+允许的 executable 在 controller 启动时解析并验证，客户端只传命令别名。参数目前由已认证客户端提供，因此管理员不应把 shell 或其他可通过参数执行任意程序的工具加入 allowlist，除非明确接受该权限边界。
 
 ## 10. 测试方案
 
 - `internal/files` 单元测试：正常 CRUD、排序、权限、绝对路径、所有位置的 `..`、根删除、符号链接逃逸、内部符号链接、大小限制、摘要不一致、no-overwrite 和临时文件清理。
-- `pkg/client`/transport 集成测试：使用 loopback listener 和真实 gRPC server 完成上传下载闭环，验证摘要与状态码。
-- `internal/cli` 单元测试：引号解析、虚拟 cwd 边界、mode 和选项解析。
+- `internal/process` 单元测试：真实 pipe/PTY、UUID/PID/name、工作目录边界、活动上限、多种信号、自动回收、强制关闭和并发注册/列表/终止。
+- `pkg/client`/transport 集成测试：使用 loopback listener 和真实 gRPC server 完成文件与进程闭环，验证摘要、状态码和退出结果。
+- `internal/cli` 单元测试：引号解析、虚拟 cwd 边界、mode、进程参数/引用/信号和补全。
 - 全量执行 `go test ./...`、`go test -race ./...`、`go vet ./...` 与 `go build ./...`。
 
 测试使用临时目录、确定性内容和内存/loopback server，不需要外部服务或 Agent 凭据。
@@ -195,4 +217,4 @@ START -> METADATA -> CHUNK* -> CLIENT_EOF -> VERIFY -> PUBLISH -> RESPONSE
 - 通用 `mv` 的“检查后 rename”无法提供跨所有对象类型的强原子 no-replace；Linux 后续可用 `renameat2(RENAME_NOREPLACE)` 增强。
 - 首版传输单文件且不续传；后续可加入 upload session、offset 与分块摘要。
 - 首版 CLI 同步执行一条命令；并发任务、进度条和机器可读模式留待后续版本。
-- Agent PTY 与进程管理保持为后续 milestone，本版 API 不提前暴露未实现接口。
+- PTY/pipe attach、输出缓冲、窗口 resize、Agent 语义和断线续传保持为后续 milestone；当前进程 API 只负责启动、元数据、信号和回收。

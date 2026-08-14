@@ -18,6 +18,14 @@ type completionFileClient interface {
 	List(context.Context, string) ([]*codev1.FileInfo, error)
 }
 
+type completionProcessClient interface {
+	ListProcesses(context.Context) ([]*codev1.ProcessInfo, error)
+}
+
+type completionInfoClient interface {
+	Info() *codev1.GetInfoResponse
+}
+
 type commandCompleter struct {
 	client  completionFileClient
 	cwd     func() string
@@ -122,9 +130,128 @@ func (c *commandCompleter) Do(line []rune, pos int) ([][]rune, int) {
 		case 1:
 			candidates = c.completeRemotePath(current, completeAnyPath)
 		}
+	case "run":
+		candidates = c.completeRun(previous, current)
+	case "kill":
+		candidates = c.completeKill(previous, current)
 	}
 	return formatCompletions(input, candidates)
 }
+
+func (c *commandCompleter) completeRun(previous []string, current string) []completionCandidate {
+	if len(previous) > 0 {
+		switch previous[len(previous)-1] {
+		case "--cwd":
+			return c.completeRemotePath(current, completeDirectories)
+		case "--name":
+			return nil
+		}
+	}
+	used := make(map[string]bool)
+	expectValue := false
+	commandStarted := false
+	optionsEnded := false
+	for _, argument := range previous {
+		if expectValue {
+			expectValue = false
+			continue
+		}
+		switch {
+		case optionsEnded:
+			commandStarted = true
+		case argument == "--name" || argument == "--cwd":
+			used[argument] = true
+			expectValue = true
+		case argument == "--pipe" || argument == "--pty":
+			used[argument] = true
+		case argument == "--":
+			optionsEnded = true
+		default:
+			commandStarted = true
+		}
+		if commandStarted {
+			break
+		}
+	}
+	if commandStarted {
+		return nil
+	}
+	candidates := make([]completionCandidate, 0)
+	if !optionsEnded && (current == "" || strings.HasPrefix(current, "-")) {
+		for _, option := range []string{"--cwd", "--name", "--pipe", "--pty"} {
+			if !used[option] {
+				candidates = append(candidates, completionCandidate{value: option, finish: true})
+			}
+		}
+	}
+	if current == "" || !strings.HasPrefix(current, "-") {
+		if infoClient, ok := c.client.(completionInfoClient); ok {
+			for _, command := range infoClient.Info().GetProcessCommands() {
+				candidates = append(candidates, completionCandidate{value: command, finish: true})
+			}
+		}
+	}
+	return candidates
+}
+
+func (c *commandCompleter) completeKill(previous []string, current string) []completionCandidate {
+	if len(previous) > 0 && (previous[len(previous)-1] == "-s" || previous[len(previous)-1] == "--signal") {
+		candidates := make([]completionCandidate, 0, len(processSignalCompletions))
+		for _, signal := range processSignalCompletions {
+			candidates = append(candidates, completionCandidate{value: signal, finish: true})
+		}
+		return candidates
+	}
+	targetSeen := false
+	expectSignal := false
+	usedWait := false
+	usedSignal := false
+	for _, argument := range previous {
+		if expectSignal {
+			expectSignal = false
+			continue
+		}
+		switch argument {
+		case "-s", "--signal":
+			usedSignal = true
+			expectSignal = true
+		case "-w", "--wait":
+			usedWait = true
+		case "--":
+		default:
+			targetSeen = true
+		}
+	}
+	candidates := make([]completionCandidate, 0)
+	if current == "" || strings.HasPrefix(current, "-") {
+		if !usedSignal {
+			candidates = append(candidates, completionCandidate{value: "-s", finish: true})
+		}
+		if !usedWait {
+			candidates = append(candidates, completionCandidate{value: "-w", finish: true})
+		}
+	}
+	if !targetSeen && (current == "" || !strings.HasPrefix(current, "-")) {
+		processClient, ok := c.client.(completionProcessClient)
+		if !ok {
+			return candidates
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+		defer cancel()
+		processes, err := processClient.ListProcesses(ctx)
+		if err != nil {
+			return candidates
+		}
+		for _, process := range processes {
+			if process != nil && process.GetState() == codev1.ProcessState_PROCESS_STATE_RUNNING {
+				candidates = append(candidates, completionCandidate{value: process.GetName(), finish: true})
+			}
+		}
+	}
+	return candidates
+}
+
+var processSignalCompletions = []string{"CONT", "HUP", "INT", "KILL", "QUIT", "STOP", "TERM", "USR1", "USR2"}
 
 func commandCompletionCandidates() []completionCandidate {
 	names := make([]string, 0, len(commandUsage))

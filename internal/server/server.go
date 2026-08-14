@@ -11,6 +11,7 @@ import (
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
 	"github.com/qq1426155093/remote-code/internal/auth"
 	"github.com/qq1426155093/remote-code/internal/files"
+	processservice "github.com/qq1426155093/remote-code/internal/process"
 	"github.com/qq1426155093/remote-code/internal/version"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -29,6 +30,8 @@ type Config struct {
 	TLSKeyFile          string
 	Token               string
 	AllowInsecureRemote bool
+	ProcessCommands     map[string]string
+	MaxProcesses        int
 }
 
 // Server owns the listener, gRPC server and workspace handle.
@@ -36,6 +39,7 @@ type Server struct {
 	grpcServer *grpc.Server
 	listener   net.Listener
 	files      *files.Service
+	processes  *processservice.Service
 	closeOnce  sync.Once
 }
 
@@ -55,8 +59,16 @@ func New(config Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	processService, err := processservice.New(processservice.Config{
+		Workspace: config.Workspace, Commands: config.ProcessCommands, MaxProcesses: config.MaxProcesses,
+	})
+	if err != nil {
+		_ = fileService.Close()
+		return nil, err
+	}
 	listener, err := net.Listen("tcp", config.ListenAddress)
 	if err != nil {
+		_ = processService.Close()
 		_ = fileService.Close()
 		return nil, fmt.Errorf("listen on %s: %w", config.ListenAddress, err)
 	}
@@ -69,6 +81,7 @@ func New(config Config) (*Server, error) {
 		transportCredentials, err := credentials.NewServerTLSFromFile(config.TLSCertificateFile, config.TLSKeyFile)
 		if err != nil {
 			_ = listener.Close()
+			_ = processService.Close()
 			_ = fileService.Close()
 			return nil, fmt.Errorf("load TLS certificate: %w", err)
 		}
@@ -81,12 +94,13 @@ func New(config Config) (*Server, error) {
 		)
 	}
 	grpcServer := grpc.NewServer(options...)
-	codev1.RegisterControllerServiceServer(grpcServer, &controllerService{files: fileService})
+	codev1.RegisterControllerServiceServer(grpcServer, &controllerService{files: fileService, processes: processService})
 	codev1.RegisterFileServiceServer(grpcServer, fileService)
+	codev1.RegisterProcessServiceServer(grpcServer, processService)
 	healthServer := health.NewServer()
 	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
-	return &Server{grpcServer: grpcServer, listener: listener, files: fileService}, nil
+	return &Server{grpcServer: grpcServer, listener: listener, files: fileService, processes: processService}, nil
 }
 
 // Address returns the actual bound address, useful when port 0 is configured.
@@ -101,21 +115,26 @@ func (s *Server) Serve() error {
 
 // Shutdown gracefully drains requests until ctx expires, then forces a stop.
 func (s *Server) Shutdown(ctx context.Context) error {
+	shutdownErr := s.processes.Shutdown(ctx)
 	done := make(chan struct{})
 	go func() {
 		s.grpcServer.GracefulStop()
 		close(done)
 	}()
-	var shutdownErr error
 	select {
 	case <-done:
 	case <-ctx.Done():
 		s.grpcServer.Stop()
 		<-done
-		shutdownErr = ctx.Err()
+		if shutdownErr == nil {
+			shutdownErr = ctx.Err()
+		}
 	}
 	s.closeOnce.Do(func() {
 		_ = s.listener.Close()
+		if err := s.processes.Close(); shutdownErr == nil {
+			shutdownErr = err
+		}
 		if err := s.files.Close(); shutdownErr == nil {
 			shutdownErr = err
 		}
@@ -125,7 +144,8 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 type controllerService struct {
 	codev1.UnimplementedControllerServiceServer
-	files *files.Service
+	files     *files.Service
+	processes *processservice.Service
 }
 
 func (s *controllerService) GetInfo(context.Context, *codev1.GetInfoRequest) (*codev1.GetInfoResponse, error) {
@@ -134,6 +154,8 @@ func (s *controllerService) GetInfo(context.Context, *codev1.GetInfoRequest) (*c
 		ApiVersion:        version.APIVersion,
 		WorkspaceName:     s.files.WorkspaceName(),
 		MaxUploadBytes:    s.files.MaxUploadBytes(),
+		ProcessCommands:   s.processes.AllowedCommands(),
+		MaxProcesses:      uint32(s.processes.MaxProcesses()),
 	}, nil
 }
 

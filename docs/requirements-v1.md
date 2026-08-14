@@ -1,4 +1,4 @@
-# Remote Code 文件控制首版需求
+# Remote Code 文件与进程控制需求
 
 ## 1. 目标
 
@@ -7,14 +7,15 @@
 - `remote-code-controller`：运行在远端机器，限制在一个启动时指定的工作区中，通过 gRPC 提供文件服务。
 - `remote-code`：运行在本地，连接 controller 后进入类似 MySQL client 的长期交互式命令行。
 
-本版本打通“连接、浏览、上传、下载、查看、删除、移动、创建目录、修改权限”的完整闭环。CLI 运行在用户当前终端或 PTY 中，读取命令并展示结果；终端退出前保持 gRPC 连接。文件命令不是远程 shell，controller 不执行任意命令。
+本版本打通文件管理以及受控进程的“启动、浏览、发信号、等待退出和回收”闭环。CLI 运行在用户当前终端或 PTY 中，读取命令并展示结果；终端退出前保持 gRPC 连接。controller 只启动服务端通过 `--process-command NAME=EXECUTABLE` 明确配置的命令，不接受客户端提供任意可执行路径。
 
 ## 2. 用户流程
 
 启动 controller：
 
 ```bash
-remote-code-controller --workspace /srv/project --listen-addr 127.0.0.1:9443
+remote-code-controller --workspace /srv/project --listen-addr 127.0.0.1:9443 \
+  --process-command claude=/usr/local/bin/claude --max-processes 16
 ```
 
 连接并进入交互环境：
@@ -54,6 +55,9 @@ remote-code:/docs> exit
 | `rm [-r] REMOTE_PATH` | 删除文件或空目录；`-r` 递归删除目录 |
 | `mv [-f] SOURCE DESTINATION` | 移动或重命名；`-f` 允许覆盖目标 |
 | `chmod OCTAL_MODE REMOTE_PATH` | 修改权限，例如 `chmod 640 configs/app.yaml` |
+| `run --name NAME [--pipe\|--pty] [--cwd REMOTE_DIR] COMMAND [ARG ...]` | 以配置的命令别名启动受管进程 |
+| `ps` | 浏览运行中及保留的已退出进程 |
+| `kill [-s SIGNAL] [-w] PROCESS` | 向进程组发信号；`-w` 等待进程回收 |
 | `clear` | 清理本地终端显示 |
 | `exit` / `quit` | 关闭连接并退出 CLI |
 
@@ -70,6 +74,8 @@ REPL 内按 `Tab` 可补全内部命令、选项和参数。远端路径候选�
 | `--workspace` | 无 | 必填，允许访问的工作区目录 |
 | `--listen-addr` | `127.0.0.1:9443` | gRPC 监听地址 |
 | `--max-upload-bytes` | `1073741824` | 单个上传文件最大字节数 |
+| `--process-command` | 空 | 允许的 `NAME=EXECUTABLE`，可重复配置 |
+| `--max-processes` | `16` | 最大并发活动进程数 |
 | `--tls-cert` / `--tls-key` | 空 | 同时提供时启用 TLS |
 | `--token-file` | 空 | 可选 bearer token 文件，内容不会写日志 |
 | `--allow-insecure-remote` | `false` | 显式允许在非 loopback 地址上使用明文 gRPC |
@@ -110,6 +116,10 @@ CLI 只有在 `GetInfo` 调用成功后才进入提示符，因此“连接成�
 - 上传大小由服务端强制限制；网络取消、客户端中断、哈希不一致和写盘失败均不得发布不完整目标。
 - 下载与上传以固定上限的块传输，不把整个文件读入内存。
 - controller 收到 `SIGINT` 或 `SIGTERM` 时停止接受新请求并优雅关闭。
+- 每个进程运行在独立进程组；PTY 模式还使用独立 session 和控制终端。信号发送到整个进程组，而不是只发送给父进程。
+- controller 为每个成功启动的直接子进程调用一次 `Wait`，记录退出码或退出信号并避免僵尸进程。关闭时先发送 `TERM`，超时后对尚未退出的进程组发送 `KILL`。
+- 进程名称在当前保留记录中唯一；进程具有服务端生成的 UUID 和 OS PID，可按 UUID、名称或 PID 定位。
+- 活动进程数、参数数量/长度和保留的进程历史均有固定上限。RPC 不接收环境变量或任意可执行路径。
 - 日志不得记录 token、文件内容或上传内容。
 - token 比较采用常量时间比较；启用 token 后，所有业务 RPC 均需认证。
 
@@ -119,14 +129,14 @@ CLI 只有在 `GetInfo` 调用成功后才进入提示符，因此“连接成�
 
 1. `go build ./...`、`go test ./...`、`go test -race ./...` 和 `go vet ./...` 全部通过。
 2. CLI 能建立连接并持续处理多条命令，单条错误不会结束会话。
-3. 通过真实 gRPC 连接完成目录创建、上传、列表、查看、下载、移动、修改权限和删除闭环。
+3. 通过真实 gRPC 连接完成目录创建、上传、列表、查看、下载、移动、修改权限、删除以及进程启动/列表/终止闭环。
 4. 上传与下载对内容执行 SHA-256 校验，并使用临时文件避免暴露半成品。
-5. 自动测试覆盖绝对路径、`..`、符号链接逃逸、根目录删除、上传大小限制、哈希不一致和覆盖规则。
+5. 自动测试覆盖绝对路径、`..`、符号链接逃逸、根目录删除、上传限制、进程工作目录逃逸、PTY/pipe、并发注册、不同信号、进程组和回收。
 6. `.proto`、生成代码和可复现的生成命令一并提交；测试不依赖任何 Agent 凭据。
 
 ## 8. 首版不包含
 
-- Claude Code/其他 Agent 的启动、PTY attach 和生命周期管理。
+- PTY/pipe 的远程输入输出 attach、窗口 resize、日志回放和断线续传。
 - 多租户、细粒度权限、配额持久化和审计数据库。
 - 断点续传、增量同步、目录整体上传下载和文件监控。
 - Windows controller 支持承诺；首版验证目标为 Linux。

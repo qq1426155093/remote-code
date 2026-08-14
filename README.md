@@ -4,8 +4,8 @@ Remote Code 是一个面向远程开发任务的 Code Agent 控制平面。它�
 `controller`，通过 gRPC 接受本地 `remote-code` CLI 的请求，管理工作区文件以及一个
 或多个 Claude Code 进程。
 
-> 项目状态：文件控制 v0.1 已可运行，包含带 Tab 补全的交互式 CLI、结构化目录树、gRPC
-> controller、工作区安全边界、流式上传/下载以及文件管理。Agent/PTY 生命周期管理仍是后续版本计划。
+> 项目状态：文件与基础进程控制已可运行，包含带 Tab 补全的交互式 CLI、结构化目录树、
+> gRPC controller、流式上传/下载、PTY/pipe 启动、进程列表、信号和自动回收。远程 attach 与 Agent 语义仍是后续版本计划。
 
 ## 快速开始
 
@@ -16,7 +16,8 @@ go build ./...
 go test ./...
 make build
 
-./bin/remote-code-controller --workspace /path/to/workspace
+./bin/remote-code-controller --workspace /path/to/workspace \
+  --process-command claude=/usr/local/bin/claude
 ```
 
 在另一个终端连接：
@@ -25,14 +26,16 @@ make build
 ./bin/remote-code --controller-addr 127.0.0.1:9443
 ```
 
-连接后可使用 `ls`、`stat`、`cat`、`upload`、`download`、`mkdir`、`rm`、`mv`、
-`chmod`、`cd` 和 `pwd`，输入 `help` 查看完整说明。例如：
+连接后可使用文件命令以及 `run`、`ps`、`kill` 进程命令，输入 `help` 查看完整说明。例如：
 
 ```text
 remote-code:/> mkdir -p docs/input
 remote-code:/> upload ./requirements.md docs/input/requirements.md
 remote-code:/> ls -l docs/input
 remote-code:/> download docs/input/requirements.md ./requirements.copy.md
+remote-code:/> run --name designer --pty --cwd / claude
+remote-code:/> ps
+remote-code:/> kill -s TERM -w designer
 ```
 
 默认仅允许 loopback 明文监听。远程部署应配置 `--tls-cert`、`--tls-key` 和
@@ -78,8 +81,8 @@ flowchart LR
     Claude3 --> Workspace
 ```
 
-controller 是唯一的远程入口，负责认证、路径校验、agent 注册表、进程回收和事件转发。
-每个 Claude Code 进程运行在独立的 PTY 和进程组中，CLI 通过双向流接入对应 PTY。
+controller 是唯一的远程入口，负责认证、路径校验、进程注册、进程回收和事件转发。
+每个受管进程运行在独立进程组中；PTY 模式还拥有独立 session 和控制终端。后续的 Attach API 会让 CLI 通过双向流接入对应 PTY。
 
 ## 核心概念
 
@@ -107,7 +110,7 @@ remote-code --controller-addr devbox.example.com:9443 \
   --token-file ~/.config/remote-code/devbox.token
 ```
 
-下面的 context 与 agent 子命令是后续版本的产品形态草案：
+当前 REPL 已提供通用的 `run`、`ps` 和 `kill`；下面的 context、agent attach 与日志命令是后续版本的产品形态草案：
 
 以下命令用于约定产品形态，并不表示已经实现：
 
@@ -157,12 +160,21 @@ service FileService {
   rpc Chmod(ChmodRequest) returns (ChmodResponse);
   rpc Mkdir(MkdirRequest) returns (MkdirResponse);
 }
+
+service ProcessService {
+  rpc StartProcess(StartProcessRequest) returns (StartProcessResponse);
+  rpc ListProcesses(ListProcessesRequest) returns (ListProcessesResponse);
+  rpc SignalProcess(SignalProcessRequest) returns (SignalProcessResponse);
+}
 ```
 
 `TreeResponse` 使用递归的 `TreeNode` 返回文件元数据和子节点，CLI 只负责把它渲染成类似
 Linux `tree` 的文本。文件上传和下载采用分块流并用 SHA-256 校验完整性。实际 message 与流帧定义见
 [`remote_code.proto`](api/remote/code/v1/remote_code.proto)。后续的 `Attach` 将使用双向流承载
 stdin、stdout/stderr、终端 resize、心跳和 detach。
+
+进程只能通过 controller 的 `--process-command NAME=EXECUTABLE` allowlist 启动。每个进程具有 UUID、
+唯一名称和 OS PID；pipe 与 PTY 模式都使用独立进程组，`SignalProcess` 可按 UUID、名称或 PID 向整个组发送 HUP、INT、QUIT、TERM、KILL、USR1、USR2、STOP 或 CONT。直接子进程始终由 controller `Wait` 回收。
 
 ## 多 Agent 协作
 
@@ -185,7 +197,7 @@ controller 会启动能够执行任意项目命令的 Claude Code，因此它不
 - 为上传大小、并发 agent 数、输出缓冲和 RPC 消息大小设置上限；
 - agent 使用独立进程组，停止时先发送温和信号，超时后再强制回收整个进程组；
 - controller 退出时有序停止或明确托管所有子进程，避免孤儿进程；
-- 不通过 RPC 任意指定可执行文件；Claude CLI 路径和允许的启动参数由服务端配置。
+- 不通过 RPC 任意指定可执行文件；可执行文件由服务端 allowlist 配置。参数来自已认证客户端，因此不应允许 shell 等可借参数执行其他程序的入口，除非明确接受该权限边界。
 
 工作区路径限制不是完整的沙箱。面向不可信任务时，应把 controller 运行在独立容器、虚拟机或受限
 系统用户下，并配合操作系统级的 CPU、内存、网络和文件权限限制。
@@ -227,13 +239,12 @@ SQLite 或 bbolt 持久化 agent 元数据和事件游标；仍在运行的子�
 - 移动、删除、建目录和权限修改；
 - 可选 TLS/token、优雅关闭、单元与 gRPC 集成测试。
 
-### Milestone 2：单 Agent 闭环
+### Milestone 2：基础进程闭环（部分完成）
 
-- 扩展 v1 Agent protobuf 并生成 Go 代码；
-- 启动 controller，校验单一工作区；
-- 启动、列出、接入和停止一个 Claude Code 进程；
-- PTY 双向流、窗口 resize、退出码和信号处理；
-- CLI context、超时、结构化错误和基础 TLS/token 认证。
+- 已扩展 v1 Process protobuf 并生成 Go 代码；
+- 已实现受控命令的 pipe/PTY 启动、列表、进程组信号、退出码和回收；
+- 已实现 CLI context、超时、结构化错误和 TLS/token 认证；
+- PTY 双向 attach、窗口 resize 和输出回放待后续实现。
 
 ### Milestone 3：Agent 可靠性
 

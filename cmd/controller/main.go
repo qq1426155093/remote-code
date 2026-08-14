@@ -8,6 +8,8 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"sort"
+	"strings"
 	"syscall"
 	"time"
 
@@ -26,11 +28,14 @@ func main() {
 
 func run() error {
 	var config server.Config
+	processCommands := make(commandFlags)
 	var tokenFile string
 	var showVersion bool
 	flag.StringVar(&config.Workspace, "workspace", "", "workspace directory (required)")
 	flag.StringVar(&config.ListenAddress, "listen-addr", "127.0.0.1:9443", "gRPC listen address")
 	flag.Int64Var(&config.MaxUploadBytes, "max-upload-bytes", 1<<30, "maximum bytes per uploaded file")
+	flag.Var(processCommands, "process-command", "allowed process command as NAME=EXECUTABLE (repeatable)")
+	flag.IntVar(&config.MaxProcesses, "max-processes", 16, "maximum concurrently active managed processes")
 	flag.StringVar(&config.TLSCertificateFile, "tls-cert", "", "TLS certificate PEM file")
 	flag.StringVar(&config.TLSKeyFile, "tls-key", "", "TLS private key PEM file")
 	flag.StringVar(&tokenFile, "token-file", "", "optional bearer token file")
@@ -44,6 +49,7 @@ func run() error {
 	if config.Workspace == "" {
 		return errors.New("--workspace is required")
 	}
+	config.ProcessCommands = processCommands
 	if tokenFile != "" {
 		token, err := auth.ReadTokenFile(tokenFile)
 		if err != nil {
@@ -80,5 +86,28 @@ func run() error {
 	if err := controller.Shutdown(ctx); err != nil && !errors.Is(err, context.DeadlineExceeded) {
 		return fmt.Errorf("shutdown controller: %w", err)
 	}
+	return nil
+}
+
+type commandFlags map[string]string
+
+func (f commandFlags) String() string {
+	values := make([]string, 0, len(f))
+	for name, executable := range f {
+		values = append(values, name+"="+executable)
+	}
+	sort.Strings(values)
+	return strings.Join(values, ",")
+}
+
+func (f commandFlags) Set(value string) error {
+	name, executable, ok := strings.Cut(value, "=")
+	if !ok || name == "" || executable == "" {
+		return errors.New("process command must use NAME=EXECUTABLE")
+	}
+	if _, exists := f[name]; exists {
+		return fmt.Errorf("process command %q is configured more than once", name)
+	}
+	f[name] = executable
 	return nil
 }

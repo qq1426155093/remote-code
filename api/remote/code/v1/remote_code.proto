@@ -22,6 +22,12 @@ service FileService {
   rpc Mkdir(MkdirRequest) returns (MkdirResponse);
 }
 
+service ProcessService {
+  rpc StartProcess(StartProcessRequest) returns (StartProcessResponse);
+  rpc ListProcesses(ListProcessesRequest) returns (ListProcessesResponse);
+  rpc SignalProcess(SignalProcessRequest) returns (SignalProcessResponse);
+}
+
 message GetInfoRequest {}
 
 message GetInfoResponse {
@@ -29,6 +35,9 @@ message GetInfoResponse {
   string api_version = 2;
   string workspace_name = 3;
   int64 max_upload_bytes = 4;
+  // Server-configured command aliases accepted by StartProcess.
+  repeated string process_commands = 5;
+  uint32 max_processes = 6;
 }
 
 enum FileType {
@@ -158,4 +167,84 @@ message MkdirRequest {
 
 message MkdirResponse {
   FileInfo file = 1;
+}
+
+enum ProcessIOMode {
+  PROCESS_IO_MODE_UNSPECIFIED = 0;
+  PROCESS_IO_MODE_PIPE = 1;
+  PROCESS_IO_MODE_PTY = 2;
+}
+
+enum ProcessState {
+  PROCESS_STATE_UNSPECIFIED = 0;
+  PROCESS_STATE_STARTING = 1;
+  PROCESS_STATE_RUNNING = 2;
+  PROCESS_STATE_EXITED = 3;
+}
+
+enum ProcessSignal {
+  PROCESS_SIGNAL_UNSPECIFIED = 0;
+  PROCESS_SIGNAL_HUP = 1;
+  PROCESS_SIGNAL_INT = 2;
+  PROCESS_SIGNAL_QUIT = 3;
+  PROCESS_SIGNAL_TERM = 4;
+  PROCESS_SIGNAL_KILL = 5;
+  PROCESS_SIGNAL_USR1 = 6;
+  PROCESS_SIGNAL_USR2 = 7;
+  PROCESS_SIGNAL_STOP = 8;
+  PROCESS_SIGNAL_CONT = 9;
+}
+
+message ProcessInfo {
+  string id = 1;
+  string name = 2;
+  int64 pid = 3;
+  ProcessIOMode io_mode = 4;
+  ProcessState state = 5;
+  string command = 6;
+  repeated string arguments = 7;
+  string working_directory = 8;
+  google.protobuf.Timestamp started_at = 9;
+  google.protobuf.Timestamp exited_at = 10;
+  optional int32 exit_code = 11;
+  // Native POSIX signal number when the process was terminated by a signal.
+  optional int32 exit_signal = 12;
+}
+
+message ProcessReference {
+  oneof value {
+    string id = 1;
+    string name = 2;
+    int64 pid = 3;
+  }
+}
+
+message StartProcessRequest {
+  string name = 1;
+  // Command is an alias from GetInfoResponse.process_commands, never a path.
+  string command = 2;
+  repeated string arguments = 3;
+  string working_directory = 4;
+  ProcessIOMode io_mode = 5;
+}
+
+message StartProcessResponse {
+  ProcessInfo process = 1;
+}
+
+message ListProcessesRequest {}
+
+message ListProcessesResponse {
+  repeated ProcessInfo processes = 1;
+}
+
+message SignalProcessRequest {
+  ProcessReference process = 1;
+  ProcessSignal signal = 2;
+  // Wait for the process leader to be reaped, bounded by the RPC context.
+  bool wait = 3;
+}
+
+message SignalProcessResponse {
+  ProcessInfo process = 1;
 }
