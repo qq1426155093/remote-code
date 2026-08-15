@@ -131,4 +131,5 @@ logs [-f] [-n LINES|--offset OFFSET] [--stdout|--stderr] PROCESS_ID
 ```
 
 未指定 stream 时输出两者；stdout chunk 写本地 stdout，stderr chunk 写本地 stderr，数据不做 UTF-8
-转换。`-f` 受 CLI 的 RPC timeout 配置约束；需要长期跟随时可用 `--timeout 0` 启动 CLI。
+转换。`-f` 受 CLI 的 RPC timeout 配置约束；需要长期跟随时可用 `--timeout 0` 启动 CLI。跟随期间按
+Ctrl-C 只取消本次日志观察并返回 REPL，不向远端进程发送信号。

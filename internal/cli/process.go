@@ -199,12 +199,24 @@ func (r *REPL) observeProcessLogs(arguments []string) error {
 	if err != nil {
 		return err
 	}
-	ctx, cancel := r.commandContext()
-	defer cancel()
-	stream, err := r.client.ObserveProcessLogs(ctx, options.processID, remoteclient.ProcessLogOptions{
+	commandContext, cancelCommand := r.commandContext()
+	defer cancelCommand()
+	streamContext := commandContext
+	stopInterrupt := func() {}
+	if options.follow {
+		streamContext, stopInterrupt = r.interruptContext(commandContext)
+	}
+	defer stopInterrupt()
+	interrupted := func() bool {
+		return options.follow && streamContext.Err() != nil && commandContext.Err() == nil
+	}
+	stream, err := r.client.ObserveProcessLogs(streamContext, options.processID, remoteclient.ProcessLogOptions{
 		Streams: options.streams, Offset: options.offset, TailLines: options.tail, Follow: options.follow,
 	})
 	if err != nil {
+		if interrupted() {
+			return nil
+		}
 		return err
 	}
 	for {
@@ -213,6 +225,9 @@ func (r *REPL) observeProcessLogs(arguments []string) error {
 			return nil
 		}
 		if err != nil {
+			if interrupted() {
+				return nil
+			}
 			return err
 		}
 		chunk := response.GetChunk()

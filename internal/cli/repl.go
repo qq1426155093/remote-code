@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -34,14 +35,15 @@ type Config struct {
 
 // REPL implements the long-running terminal command loop.
 type REPL struct {
-	client      *remoteclient.Client
-	line        *readline.Instance
-	stdout      io.Writer
-	stderr      io.Writer
-	terminal    terminalController
-	timeout     time.Duration
-	catMaxBytes int64
-	cwd         string
+	client           *remoteclient.Client
+	line             *readline.Instance
+	stdout           io.Writer
+	stderr           io.Writer
+	terminal         terminalController
+	timeout          time.Duration
+	catMaxBytes      int64
+	cwd              string
+	interruptContext func(context.Context) (context.Context, context.CancelFunc)
 }
 
 // New creates an interactive REPL around an established client and terminal.
@@ -57,6 +59,9 @@ func New(client *remoteclient.Client, line *readline.Instance, config Config) *R
 	repl := &REPL{
 		client: client, line: line, stdout: stdout, stderr: stderr,
 		terminal: newLocalTerminal(config.Stdin), timeout: config.Timeout, catMaxBytes: config.CatMaxBytes, cwd: ".",
+		interruptContext: func(parent context.Context) (context.Context, context.CancelFunc) {
+			return signal.NotifyContext(parent, os.Interrupt)
+		},
 	}
 	if line != nil && line.Config != nil {
 		line.Config.AutoComplete = newCompleter(client, func() string { return repl.cwd }, config.Timeout)
@@ -171,7 +176,7 @@ func (r *REPL) help(arguments []string) error {
 		fmt.Fprintln(r.stdout, usage)
 		return nil
 	}
-	commands := []string{"help [command]", "pwd", "cd [REMOTE_DIR]", "ls [-l] [REMOTE_PATH]", "tree [REMOTE_PATH]", "stat REMOTE_PATH", "cat REMOTE_FILE", "upload LOCAL_FILE [REMOTE_FILE]", "download REMOTE_FILE [LOCAL_FILE]", "mkdir [-p] REMOTE_DIR", "rm [-r] REMOTE_PATH", "mv [-f] SOURCE DESTINATION", "chmod OCTAL_MODE REMOTE_PATH", "exec [--name NAME] [--pipe|--pty] [--stdin|--attach] [--cwd REMOTE_DIR] [-e KEY=VALUE ...] [--] CMD [ARG ...]", "ps [-a]", "kill [-s SIGNAL] [-w] PROCESS", "stdin PROCESS", "attach PROCESS", "forget PROCESS_OR_GLOB [PROCESS_OR_GLOB ...]", "logs [-f] [-n LINES|--offset OFFSET] [--stdout|--stderr] PROCESS_ID", "clear", "exit | quit"}
+	commands := []string{"help [command]", "pwd", "cd [REMOTE_DIR]", "ls [-l] [REMOTE_PATH]", "tree [REMOTE_PATH]", "stat REMOTE_PATH", "cat REMOTE_FILE", "upload LOCAL_FILE [REMOTE_FILE]", "download REMOTE_FILE [LOCAL_FILE]", "mkdir [-p] REMOTE_DIR", "rm [-r] REMOTE_PATH", "mv [-f] SOURCE DESTINATION", "chmod OCTAL_MODE REMOTE_PATH", "exec [--name NAME] [--pipe|--pty] [--stdin|--attach] [--cwd REMOTE_DIR] [-e KEY=VALUE ...] [--] CMD [ARG ...]", "ps [-a]", "kill [-s SIGNAL] [-w] PROCESS", "stdin PROCESS", "attach PROCESS", "forget PROCESS_OR_GLOB [PROCESS_OR_GLOB ...]", "logs [-f] [-n LINES|--offset OFFSET] [--stdout|--stderr] PROCESS_ID (Ctrl-C stops following; process continues)", "clear", "exit | quit"}
 	for _, command := range commands {
 		fmt.Fprintln(r.stdout, command)
 	}
@@ -196,7 +201,7 @@ var commandUsage = map[string]string{
 	"ps":       "usage: ps [-a]",
 	"kill":     "usage: kill [-s SIGNAL] [-w] PROCESS",
 	"forget":   "usage: forget PROCESS_OR_GLOB [PROCESS_OR_GLOB ...]",
-	"logs":     "usage: logs [-f] [-n LINES|--offset OFFSET] [--stdout|--stderr] PROCESS_ID",
+	"logs":     "usage: logs [-f] [-n LINES|--offset OFFSET] [--stdout|--stderr] PROCESS_ID\nCtrl-C stops --follow; the process continues",
 	"stdin":    "usage: stdin PROCESS",
 	"attach":   "usage: attach PROCESS",
 	"clear":    "usage: clear",

@@ -44,6 +44,7 @@ remote-code:/> exec --attach --name editor vim test.txt
 remote-code:/> ps
 remote-code:/> ps -a
 remote-code:/> logs -n 100 --follow 7aa5daab-e886-4889-9ec3-92d461883091
+# 按 Ctrl-C 停止 follow；远端进程继续运行
 remote-code:/> kill -s TERM -w listing
 remote-code:/> forget listing 'test-*' glob:reused-name
 ```

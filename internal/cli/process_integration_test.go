@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,6 +15,20 @@ import (
 	"github.com/qq1426155093/remote-code/internal/server"
 	remoteclient "github.com/qq1426155093/remote-code/pkg/client"
 )
+
+type notifyingBuffer struct {
+	bytes.Buffer
+	wrote chan struct{}
+	once  sync.Once
+}
+
+func (b *notifyingBuffer) Write(data []byte) (int, error) {
+	written, err := b.Buffer.Write(data)
+	if written > 0 {
+		b.once.Do(func() { close(b.wrote) })
+	}
+	return written, err
+}
 
 func TestREPLUsesCurrentDirectoryForExecAndSupportsPSAll(t *testing.T) {
 	workspace := t.TempDir()
@@ -182,6 +197,86 @@ func TestREPLForgetSupportsMultipleSelectorsGlobsAndPartialFailures(t *testing.T
 	}
 	if _, err := client.SignalProcess(ctx, &codev1.ProcessReference{
 		Value: &codev1.ProcessReference_Id{Id: active.GetId()},
+	}, codev1.ProcessSignal_PROCESS_SIGNAL_KILL, true); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestREPLInterruptStopsLogFollowWithoutStoppingProcess(t *testing.T) {
+	controller, err := server.New(server.Config{
+		ListenAddress: "127.0.0.1:0", Workspace: t.TempDir(), RuntimeDirectory: t.TempDir(), MaxProcesses: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	serveErrors := make(chan error, 1)
+	go func() { serveErrors <- controller.Serve() }()
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = controller.Shutdown(ctx)
+		select {
+		case <-serveErrors:
+		case <-time.After(5 * time.Second):
+			t.Error("controller did not stop")
+		}
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	client, err := remoteclient.New(ctx, remoteclient.Config{Address: controller.Address()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	started, err := client.StartProcessWithOptions(ctx, remoteclient.ProcessStartOptions{
+		Name: "follow-running", Command: "sh", Arguments: []string{"-c", "printf 'follow-ready\\n'; sleep 30"},
+		WorkingDirectory: ".", IOMode: codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	output := &notifyingBuffer{wrote: make(chan struct{})}
+	repl := New(client, nil, Config{Timeout: 5 * time.Second, Stdout: output})
+	interrupts := make(chan context.CancelFunc, 1)
+	repl.interruptContext = func(parent context.Context) (context.Context, context.CancelFunc) {
+		interruptContext, cancelInterrupt := context.WithCancel(parent)
+		interrupts <- cancelInterrupt
+		return interruptContext, cancelInterrupt
+	}
+	result := make(chan error, 1)
+	go func() { result <- repl.observeProcessLogs([]string{"-f", started.GetId()}) }()
+
+	var cancelFollow context.CancelFunc
+	select {
+	case cancelFollow = <-interrupts:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	select {
+	case <-output.wrote:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	cancelFollow()
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Fatalf("observeProcessLogs() after interrupt error = %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	if !strings.Contains(output.String(), "follow-ready") {
+		t.Fatalf("followed output = %q", output.String())
+	}
+	active, err := client.ListProcesses(ctx)
+	if err != nil || len(active) != 1 || active[0].GetId() != started.GetId() || active[0].GetState() != codev1.ProcessState_PROCESS_STATE_RUNNING {
+		t.Fatalf("process after stopping log follow = %+v, %v", active, err)
+	}
+	if _, err := client.SignalProcess(ctx, &codev1.ProcessReference{
+		Value: &codev1.ProcessReference_Id{Id: started.GetId()},
 	}, codev1.ProcessSignal_PROCESS_SIGNAL_KILL, true); err != nil {
 		t.Fatal(err)
 	}
