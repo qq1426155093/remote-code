@@ -7,6 +7,7 @@
 package codev1
 
 import (
+	status "google.golang.org/genproto/googleapis/rpc/status"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -3895,11 +3896,384 @@ func (x *DeleteProcessResponse) GetProcess() *ProcessInfo {
 	return nil
 }
 
+type ProcessSelector struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Value:
+	//
+	//	*ProcessSelector_Reference
+	//	*ProcessSelector_NameGlob
+	Value         isProcessSelector_Value `protobuf_oneof:"value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProcessSelector) Reset() {
+	*x = ProcessSelector{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[53]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProcessSelector) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProcessSelector) ProtoMessage() {}
+
+func (x *ProcessSelector) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[53]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProcessSelector.ProtoReflect.Descriptor instead.
+func (*ProcessSelector) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{53}
+}
+
+func (x *ProcessSelector) GetValue() isProcessSelector_Value {
+	if x != nil {
+		return x.Value
+	}
+	return nil
+}
+
+func (x *ProcessSelector) GetReference() *ProcessReference {
+	if x != nil {
+		if x, ok := x.Value.(*ProcessSelector_Reference); ok {
+			return x.Reference
+		}
+	}
+	return nil
+}
+
+func (x *ProcessSelector) GetNameGlob() string {
+	if x != nil {
+		if x, ok := x.Value.(*ProcessSelector_NameGlob); ok {
+			return x.NameGlob
+		}
+	}
+	return ""
+}
+
+type isProcessSelector_Value interface {
+	isProcessSelector_Value()
+}
+
+type ProcessSelector_Reference struct {
+	Reference *ProcessReference `protobuf:"bytes,1,opt,name=reference,proto3,oneof"`
+}
+
+type ProcessSelector_NameGlob struct {
+	// Case-sensitive path.Match-style glob applied only to logical process names.
+	NameGlob string `protobuf:"bytes,2,opt,name=name_glob,json=nameGlob,proto3,oneof"`
+}
+
+func (*ProcessSelector_Reference) isProcessSelector_Value() {}
+
+func (*ProcessSelector_NameGlob) isProcessSelector_Value() {}
+
+type BatchDeleteProcessesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Selectors     []*ProcessSelector     `protobuf:"bytes,1,rep,name=selectors,proto3" json:"selectors,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BatchDeleteProcessesRequest) Reset() {
+	*x = BatchDeleteProcessesRequest{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[54]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BatchDeleteProcessesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BatchDeleteProcessesRequest) ProtoMessage() {}
+
+func (x *BatchDeleteProcessesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[54]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BatchDeleteProcessesRequest.ProtoReflect.Descriptor instead.
+func (*BatchDeleteProcessesRequest) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{54}
+}
+
+func (x *BatchDeleteProcessesRequest) GetSelectors() []*ProcessSelector {
+	if x != nil {
+		return x.Selectors
+	}
+	return nil
+}
+
+type BatchDeleteSelectorResult struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Zero-based position in BatchDeleteProcessesRequest.selectors.
+	SelectorIndex uint32 `protobuf:"varint,1,opt,name=selector_index,json=selectorIndex,proto3" json:"selector_index,omitempty"`
+	MatchedCount  uint32 `protobuf:"varint,2,opt,name=matched_count,json=matchedCount,proto3" json:"matched_count,omitempty"`
+	// OK when the selector was valid and matched at least one process.
+	Status        *status.Status `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BatchDeleteSelectorResult) Reset() {
+	*x = BatchDeleteSelectorResult{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[55]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BatchDeleteSelectorResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BatchDeleteSelectorResult) ProtoMessage() {}
+
+func (x *BatchDeleteSelectorResult) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[55]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BatchDeleteSelectorResult.ProtoReflect.Descriptor instead.
+func (*BatchDeleteSelectorResult) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{55}
+}
+
+func (x *BatchDeleteSelectorResult) GetSelectorIndex() uint32 {
+	if x != nil {
+		return x.SelectorIndex
+	}
+	return 0
+}
+
+func (x *BatchDeleteSelectorResult) GetMatchedCount() uint32 {
+	if x != nil {
+		return x.MatchedCount
+	}
+	return 0
+}
+
+func (x *BatchDeleteSelectorResult) GetStatus() *status.Status {
+	if x != nil {
+		return x.Status
+	}
+	return nil
+}
+
+type ProcessDeleteTarget struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Pid           int64                  `protobuf:"varint,3,opt,name=pid,proto3" json:"pid,omitempty"`
+	State         ProcessState           `protobuf:"varint,4,opt,name=state,proto3,enum=remote.code.v1.ProcessState" json:"state,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProcessDeleteTarget) Reset() {
+	*x = ProcessDeleteTarget{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[56]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProcessDeleteTarget) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProcessDeleteTarget) ProtoMessage() {}
+
+func (x *ProcessDeleteTarget) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[56]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProcessDeleteTarget.ProtoReflect.Descriptor instead.
+func (*ProcessDeleteTarget) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{56}
+}
+
+func (x *ProcessDeleteTarget) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *ProcessDeleteTarget) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ProcessDeleteTarget) GetPid() int64 {
+	if x != nil {
+		return x.Pid
+	}
+	return 0
+}
+
+func (x *ProcessDeleteTarget) GetState() ProcessState {
+	if x != nil {
+		return x.State
+	}
+	return ProcessState_PROCESS_STATE_UNSPECIFIED
+}
+
+type BatchDeleteProcessResult struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Process *ProcessDeleteTarget   `protobuf:"bytes,1,opt,name=process,proto3" json:"process,omitempty"`
+	// Every input selector that matched this UUID, in request order.
+	SelectorIndexes []uint32 `protobuf:"varint,2,rep,packed,name=selector_indexes,json=selectorIndexes,proto3" json:"selector_indexes,omitempty"`
+	// OK when the persistent history was deleted.
+	Status        *status.Status `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BatchDeleteProcessResult) Reset() {
+	*x = BatchDeleteProcessResult{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[57]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BatchDeleteProcessResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BatchDeleteProcessResult) ProtoMessage() {}
+
+func (x *BatchDeleteProcessResult) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[57]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BatchDeleteProcessResult.ProtoReflect.Descriptor instead.
+func (*BatchDeleteProcessResult) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{57}
+}
+
+func (x *BatchDeleteProcessResult) GetProcess() *ProcessDeleteTarget {
+	if x != nil {
+		return x.Process
+	}
+	return nil
+}
+
+func (x *BatchDeleteProcessResult) GetSelectorIndexes() []uint32 {
+	if x != nil {
+		return x.SelectorIndexes
+	}
+	return nil
+}
+
+func (x *BatchDeleteProcessResult) GetStatus() *status.Status {
+	if x != nil {
+		return x.Status
+	}
+	return nil
+}
+
+type BatchDeleteProcessesResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Exactly one result for each input selector.
+	Selectors []*BatchDeleteSelectorResult `protobuf:"bytes,1,rep,name=selectors,proto3" json:"selectors,omitempty"`
+	// Exactly one result for each unique UUID selected by the request.
+	Processes     []*BatchDeleteProcessResult `protobuf:"bytes,2,rep,name=processes,proto3" json:"processes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BatchDeleteProcessesResponse) Reset() {
+	*x = BatchDeleteProcessesResponse{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[58]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BatchDeleteProcessesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BatchDeleteProcessesResponse) ProtoMessage() {}
+
+func (x *BatchDeleteProcessesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[58]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BatchDeleteProcessesResponse.ProtoReflect.Descriptor instead.
+func (*BatchDeleteProcessesResponse) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{58}
+}
+
+func (x *BatchDeleteProcessesResponse) GetSelectors() []*BatchDeleteSelectorResult {
+	if x != nil {
+		return x.Selectors
+	}
+	return nil
+}
+
+func (x *BatchDeleteProcessesResponse) GetProcesses() []*BatchDeleteProcessResult {
+	if x != nil {
+		return x.Processes
+	}
+	return nil
+}
+
 var File_remote_code_v1_remote_code_proto protoreflect.FileDescriptor
 
 const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	"\n" +
-	" remote/code/v1/remote_code.proto\x12\x0eremote.code.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x10\n" +
+	" remote/code/v1/remote_code.proto\x12\x0eremote.code.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17google/rpc/status.proto\"\x10\n" +
 	"\x0eGetInfoRequest\"\xdd\x01\n" +
 	"\x0fGetInfoResponse\x12-\n" +
 	"\x12controller_version\x18\x01 \x01(\tR\x11controllerVersion\x12\x1f\n" +
@@ -4137,7 +4511,29 @@ const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	"\x14DeleteProcessRequest\x12:\n" +
 	"\aprocess\x18\x01 \x01(\v2 .remote.code.v1.ProcessReferenceR\aprocess\"N\n" +
 	"\x15DeleteProcessResponse\x125\n" +
-	"\aprocess\x18\x01 \x01(\v2\x1b.remote.code.v1.ProcessInfoR\aprocess*\x81\x01\n" +
+	"\aprocess\x18\x01 \x01(\v2\x1b.remote.code.v1.ProcessInfoR\aprocess\"{\n" +
+	"\x0fProcessSelector\x12@\n" +
+	"\treference\x18\x01 \x01(\v2 .remote.code.v1.ProcessReferenceH\x00R\treference\x12\x1d\n" +
+	"\tname_glob\x18\x02 \x01(\tH\x00R\bnameGlobB\a\n" +
+	"\x05value\"\\\n" +
+	"\x1bBatchDeleteProcessesRequest\x12=\n" +
+	"\tselectors\x18\x01 \x03(\v2\x1f.remote.code.v1.ProcessSelectorR\tselectors\"\x93\x01\n" +
+	"\x19BatchDeleteSelectorResult\x12%\n" +
+	"\x0eselector_index\x18\x01 \x01(\rR\rselectorIndex\x12#\n" +
+	"\rmatched_count\x18\x02 \x01(\rR\fmatchedCount\x12*\n" +
+	"\x06status\x18\x03 \x01(\v2\x12.google.rpc.StatusR\x06status\"\x7f\n" +
+	"\x13ProcessDeleteTarget\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x10\n" +
+	"\x03pid\x18\x03 \x01(\x03R\x03pid\x122\n" +
+	"\x05state\x18\x04 \x01(\x0e2\x1c.remote.code.v1.ProcessStateR\x05state\"\xb0\x01\n" +
+	"\x18BatchDeleteProcessResult\x12=\n" +
+	"\aprocess\x18\x01 \x01(\v2#.remote.code.v1.ProcessDeleteTargetR\aprocess\x12)\n" +
+	"\x10selector_indexes\x18\x02 \x03(\rR\x0fselectorIndexes\x12*\n" +
+	"\x06status\x18\x03 \x01(\v2\x12.google.rpc.StatusR\x06status\"\xaf\x01\n" +
+	"\x1cBatchDeleteProcessesResponse\x12G\n" +
+	"\tselectors\x18\x01 \x03(\v2).remote.code.v1.BatchDeleteSelectorResultR\tselectors\x12F\n" +
+	"\tprocesses\x18\x02 \x03(\v2(.remote.code.v1.BatchDeleteProcessResultR\tprocesses*\x81\x01\n" +
 	"\bFileType\x12\x19\n" +
 	"\x15FILE_TYPE_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11FILE_TYPE_REGULAR\x10\x01\x12\x17\n" +
@@ -4200,12 +4596,13 @@ const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	"\x06Remove\x12\x1d.remote.code.v1.RemoveRequest\x1a\x1e.remote.code.v1.RemoveResponse\x12A\n" +
 	"\x04Move\x12\x1b.remote.code.v1.MoveRequest\x1a\x1c.remote.code.v1.MoveResponse\x12D\n" +
 	"\x05Chmod\x12\x1c.remote.code.v1.ChmodRequest\x1a\x1d.remote.code.v1.ChmodResponse\x12D\n" +
-	"\x05Mkdir\x12\x1c.remote.code.v1.MkdirRequest\x1a\x1d.remote.code.v1.MkdirResponse2\xe5\x04\n" +
+	"\x05Mkdir\x12\x1c.remote.code.v1.MkdirRequest\x1a\x1d.remote.code.v1.MkdirResponse2\xd8\x05\n" +
 	"\x0eProcessService\x12Y\n" +
 	"\fStartProcess\x12#.remote.code.v1.StartProcessRequest\x1a$.remote.code.v1.StartProcessResponse\x12\\\n" +
 	"\rListProcesses\x12$.remote.code.v1.ListProcessesRequest\x1a%.remote.code.v1.ListProcessesResponse\x12\\\n" +
 	"\rSignalProcess\x12$.remote.code.v1.SignalProcessRequest\x1a%.remote.code.v1.SignalProcessResponse\x12\\\n" +
-	"\rDeleteProcess\x12$.remote.code.v1.DeleteProcessRequest\x1a%.remote.code.v1.DeleteProcessResponse\x12m\n" +
+	"\rDeleteProcess\x12$.remote.code.v1.DeleteProcessRequest\x1a%.remote.code.v1.DeleteProcessResponse\x12q\n" +
+	"\x14BatchDeleteProcesses\x12+.remote.code.v1.BatchDeleteProcessesRequest\x1a,.remote.code.v1.BatchDeleteProcessesResponse\x12m\n" +
 	"\x12ObserveProcessLogs\x12).remote.code.v1.ObserveProcessLogsRequest\x1a*.remote.code.v1.ObserveProcessLogsResponse0\x01\x12o\n" +
 	"\x12StreamProcessInput\x12).remote.code.v1.StreamProcessInputRequest\x1a*.remote.code.v1.StreamProcessInputResponse(\x010\x01B?Z=github.com/qq1426155093/remote-code/api/remote/code/v1;codev1b\x06proto3"
 
@@ -4222,76 +4619,83 @@ func file_remote_code_v1_remote_code_proto_rawDescGZIP() []byte {
 }
 
 var file_remote_code_v1_remote_code_proto_enumTypes = make([]protoimpl.EnumInfo, 9)
-var file_remote_code_v1_remote_code_proto_msgTypes = make([]protoimpl.MessageInfo, 54)
+var file_remote_code_v1_remote_code_proto_msgTypes = make([]protoimpl.MessageInfo, 60)
 var file_remote_code_v1_remote_code_proto_goTypes = []any{
-	(FileType)(0),                      // 0: remote.code.v1.FileType
-	(ProcessIOMode)(0),                 // 1: remote.code.v1.ProcessIOMode
-	(ProcessState)(0),                  // 2: remote.code.v1.ProcessState
-	(ProcessSignal)(0),                 // 3: remote.code.v1.ProcessSignal
-	(ProcessLogStream)(0),              // 4: remote.code.v1.ProcessLogStream
-	(ProcessLogEndReason)(0),           // 5: remote.code.v1.ProcessLogEndReason
-	(ProcessInputMode)(0),              // 6: remote.code.v1.ProcessInputMode
-	(ProcessInputState)(0),             // 7: remote.code.v1.ProcessInputState
-	(ProcessInputEndReason)(0),         // 8: remote.code.v1.ProcessInputEndReason
-	(*GetInfoRequest)(nil),             // 9: remote.code.v1.GetInfoRequest
-	(*GetInfoResponse)(nil),            // 10: remote.code.v1.GetInfoResponse
-	(*FileInfo)(nil),                   // 11: remote.code.v1.FileInfo
-	(*StatRequest)(nil),                // 12: remote.code.v1.StatRequest
-	(*StatResponse)(nil),               // 13: remote.code.v1.StatResponse
-	(*ListRequest)(nil),                // 14: remote.code.v1.ListRequest
-	(*ListResponse)(nil),               // 15: remote.code.v1.ListResponse
-	(*TreeNode)(nil),                   // 16: remote.code.v1.TreeNode
-	(*TreeRequest)(nil),                // 17: remote.code.v1.TreeRequest
-	(*TreeResponse)(nil),               // 18: remote.code.v1.TreeResponse
-	(*UploadMetadata)(nil),             // 19: remote.code.v1.UploadMetadata
-	(*UploadRequest)(nil),              // 20: remote.code.v1.UploadRequest
-	(*UploadResponse)(nil),             // 21: remote.code.v1.UploadResponse
-	(*DownloadRequest)(nil),            // 22: remote.code.v1.DownloadRequest
-	(*DownloadMetadata)(nil),           // 23: remote.code.v1.DownloadMetadata
-	(*DownloadSummary)(nil),            // 24: remote.code.v1.DownloadSummary
-	(*DownloadResponse)(nil),           // 25: remote.code.v1.DownloadResponse
-	(*RemoveRequest)(nil),              // 26: remote.code.v1.RemoveRequest
-	(*RemoveResponse)(nil),             // 27: remote.code.v1.RemoveResponse
-	(*MoveRequest)(nil),                // 28: remote.code.v1.MoveRequest
-	(*MoveResponse)(nil),               // 29: remote.code.v1.MoveResponse
-	(*ChmodRequest)(nil),               // 30: remote.code.v1.ChmodRequest
-	(*ChmodResponse)(nil),              // 31: remote.code.v1.ChmodResponse
-	(*MkdirRequest)(nil),               // 32: remote.code.v1.MkdirRequest
-	(*MkdirResponse)(nil),              // 33: remote.code.v1.MkdirResponse
-	(*ProcessInfo)(nil),                // 34: remote.code.v1.ProcessInfo
-	(*ProcessReference)(nil),           // 35: remote.code.v1.ProcessReference
-	(*StartProcessRequest)(nil),        // 36: remote.code.v1.StartProcessRequest
-	(*StartProcessResponse)(nil),       // 37: remote.code.v1.StartProcessResponse
-	(*ListProcessesRequest)(nil),       // 38: remote.code.v1.ListProcessesRequest
-	(*ListProcessesResponse)(nil),      // 39: remote.code.v1.ListProcessesResponse
-	(*SignalProcessRequest)(nil),       // 40: remote.code.v1.SignalProcessRequest
-	(*SignalProcessResponse)(nil),      // 41: remote.code.v1.SignalProcessResponse
-	(*ObserveProcessLogsRequest)(nil),  // 42: remote.code.v1.ObserveProcessLogsRequest
-	(*ProcessLogHeader)(nil),           // 43: remote.code.v1.ProcessLogHeader
-	(*ProcessLogChunk)(nil),            // 44: remote.code.v1.ProcessLogChunk
-	(*ProcessLogCheckpoint)(nil),       // 45: remote.code.v1.ProcessLogCheckpoint
-	(*ProcessLogEnd)(nil),              // 46: remote.code.v1.ProcessLogEnd
-	(*ObserveProcessLogsResponse)(nil), // 47: remote.code.v1.ObserveProcessLogsResponse
-	(*ProcessInputOpen)(nil),           // 48: remote.code.v1.ProcessInputOpen
-	(*ProcessInputData)(nil),           // 49: remote.code.v1.ProcessInputData
-	(*TerminalSize)(nil),               // 50: remote.code.v1.TerminalSize
-	(*ProcessTerminalResize)(nil),      // 51: remote.code.v1.ProcessTerminalResize
-	(*ProcessInputClose)(nil),          // 52: remote.code.v1.ProcessInputClose
-	(*ProcessInputDetach)(nil),         // 53: remote.code.v1.ProcessInputDetach
-	(*StreamProcessInputRequest)(nil),  // 54: remote.code.v1.StreamProcessInputRequest
-	(*ProcessInputOpened)(nil),         // 55: remote.code.v1.ProcessInputOpened
-	(*ProcessInputAck)(nil),            // 56: remote.code.v1.ProcessInputAck
-	(*ProcessTerminalResizeAck)(nil),   // 57: remote.code.v1.ProcessTerminalResizeAck
-	(*ProcessInputEnd)(nil),            // 58: remote.code.v1.ProcessInputEnd
-	(*StreamProcessInputResponse)(nil), // 59: remote.code.v1.StreamProcessInputResponse
-	(*DeleteProcessRequest)(nil),       // 60: remote.code.v1.DeleteProcessRequest
-	(*DeleteProcessResponse)(nil),      // 61: remote.code.v1.DeleteProcessResponse
-	nil,                                // 62: remote.code.v1.StartProcessRequest.EnvironmentEntry
-	(*timestamppb.Timestamp)(nil),      // 63: google.protobuf.Timestamp
+	(FileType)(0),                        // 0: remote.code.v1.FileType
+	(ProcessIOMode)(0),                   // 1: remote.code.v1.ProcessIOMode
+	(ProcessState)(0),                    // 2: remote.code.v1.ProcessState
+	(ProcessSignal)(0),                   // 3: remote.code.v1.ProcessSignal
+	(ProcessLogStream)(0),                // 4: remote.code.v1.ProcessLogStream
+	(ProcessLogEndReason)(0),             // 5: remote.code.v1.ProcessLogEndReason
+	(ProcessInputMode)(0),                // 6: remote.code.v1.ProcessInputMode
+	(ProcessInputState)(0),               // 7: remote.code.v1.ProcessInputState
+	(ProcessInputEndReason)(0),           // 8: remote.code.v1.ProcessInputEndReason
+	(*GetInfoRequest)(nil),               // 9: remote.code.v1.GetInfoRequest
+	(*GetInfoResponse)(nil),              // 10: remote.code.v1.GetInfoResponse
+	(*FileInfo)(nil),                     // 11: remote.code.v1.FileInfo
+	(*StatRequest)(nil),                  // 12: remote.code.v1.StatRequest
+	(*StatResponse)(nil),                 // 13: remote.code.v1.StatResponse
+	(*ListRequest)(nil),                  // 14: remote.code.v1.ListRequest
+	(*ListResponse)(nil),                 // 15: remote.code.v1.ListResponse
+	(*TreeNode)(nil),                     // 16: remote.code.v1.TreeNode
+	(*TreeRequest)(nil),                  // 17: remote.code.v1.TreeRequest
+	(*TreeResponse)(nil),                 // 18: remote.code.v1.TreeResponse
+	(*UploadMetadata)(nil),               // 19: remote.code.v1.UploadMetadata
+	(*UploadRequest)(nil),                // 20: remote.code.v1.UploadRequest
+	(*UploadResponse)(nil),               // 21: remote.code.v1.UploadResponse
+	(*DownloadRequest)(nil),              // 22: remote.code.v1.DownloadRequest
+	(*DownloadMetadata)(nil),             // 23: remote.code.v1.DownloadMetadata
+	(*DownloadSummary)(nil),              // 24: remote.code.v1.DownloadSummary
+	(*DownloadResponse)(nil),             // 25: remote.code.v1.DownloadResponse
+	(*RemoveRequest)(nil),                // 26: remote.code.v1.RemoveRequest
+	(*RemoveResponse)(nil),               // 27: remote.code.v1.RemoveResponse
+	(*MoveRequest)(nil),                  // 28: remote.code.v1.MoveRequest
+	(*MoveResponse)(nil),                 // 29: remote.code.v1.MoveResponse
+	(*ChmodRequest)(nil),                 // 30: remote.code.v1.ChmodRequest
+	(*ChmodResponse)(nil),                // 31: remote.code.v1.ChmodResponse
+	(*MkdirRequest)(nil),                 // 32: remote.code.v1.MkdirRequest
+	(*MkdirResponse)(nil),                // 33: remote.code.v1.MkdirResponse
+	(*ProcessInfo)(nil),                  // 34: remote.code.v1.ProcessInfo
+	(*ProcessReference)(nil),             // 35: remote.code.v1.ProcessReference
+	(*StartProcessRequest)(nil),          // 36: remote.code.v1.StartProcessRequest
+	(*StartProcessResponse)(nil),         // 37: remote.code.v1.StartProcessResponse
+	(*ListProcessesRequest)(nil),         // 38: remote.code.v1.ListProcessesRequest
+	(*ListProcessesResponse)(nil),        // 39: remote.code.v1.ListProcessesResponse
+	(*SignalProcessRequest)(nil),         // 40: remote.code.v1.SignalProcessRequest
+	(*SignalProcessResponse)(nil),        // 41: remote.code.v1.SignalProcessResponse
+	(*ObserveProcessLogsRequest)(nil),    // 42: remote.code.v1.ObserveProcessLogsRequest
+	(*ProcessLogHeader)(nil),             // 43: remote.code.v1.ProcessLogHeader
+	(*ProcessLogChunk)(nil),              // 44: remote.code.v1.ProcessLogChunk
+	(*ProcessLogCheckpoint)(nil),         // 45: remote.code.v1.ProcessLogCheckpoint
+	(*ProcessLogEnd)(nil),                // 46: remote.code.v1.ProcessLogEnd
+	(*ObserveProcessLogsResponse)(nil),   // 47: remote.code.v1.ObserveProcessLogsResponse
+	(*ProcessInputOpen)(nil),             // 48: remote.code.v1.ProcessInputOpen
+	(*ProcessInputData)(nil),             // 49: remote.code.v1.ProcessInputData
+	(*TerminalSize)(nil),                 // 50: remote.code.v1.TerminalSize
+	(*ProcessTerminalResize)(nil),        // 51: remote.code.v1.ProcessTerminalResize
+	(*ProcessInputClose)(nil),            // 52: remote.code.v1.ProcessInputClose
+	(*ProcessInputDetach)(nil),           // 53: remote.code.v1.ProcessInputDetach
+	(*StreamProcessInputRequest)(nil),    // 54: remote.code.v1.StreamProcessInputRequest
+	(*ProcessInputOpened)(nil),           // 55: remote.code.v1.ProcessInputOpened
+	(*ProcessInputAck)(nil),              // 56: remote.code.v1.ProcessInputAck
+	(*ProcessTerminalResizeAck)(nil),     // 57: remote.code.v1.ProcessTerminalResizeAck
+	(*ProcessInputEnd)(nil),              // 58: remote.code.v1.ProcessInputEnd
+	(*StreamProcessInputResponse)(nil),   // 59: remote.code.v1.StreamProcessInputResponse
+	(*DeleteProcessRequest)(nil),         // 60: remote.code.v1.DeleteProcessRequest
+	(*DeleteProcessResponse)(nil),        // 61: remote.code.v1.DeleteProcessResponse
+	(*ProcessSelector)(nil),              // 62: remote.code.v1.ProcessSelector
+	(*BatchDeleteProcessesRequest)(nil),  // 63: remote.code.v1.BatchDeleteProcessesRequest
+	(*BatchDeleteSelectorResult)(nil),    // 64: remote.code.v1.BatchDeleteSelectorResult
+	(*ProcessDeleteTarget)(nil),          // 65: remote.code.v1.ProcessDeleteTarget
+	(*BatchDeleteProcessResult)(nil),     // 66: remote.code.v1.BatchDeleteProcessResult
+	(*BatchDeleteProcessesResponse)(nil), // 67: remote.code.v1.BatchDeleteProcessesResponse
+	nil,                                  // 68: remote.code.v1.StartProcessRequest.EnvironmentEntry
+	(*timestamppb.Timestamp)(nil),        // 69: google.protobuf.Timestamp
+	(*status.Status)(nil),                // 70: google.rpc.Status
 }
 var file_remote_code_v1_remote_code_proto_depIdxs = []int32{
 	0,  // 0: remote.code.v1.FileInfo.type:type_name -> remote.code.v1.FileType
-	63, // 1: remote.code.v1.FileInfo.modified_at:type_name -> google.protobuf.Timestamp
+	69, // 1: remote.code.v1.FileInfo.modified_at:type_name -> google.protobuf.Timestamp
 	11, // 2: remote.code.v1.StatResponse.file:type_name -> remote.code.v1.FileInfo
 	11, // 3: remote.code.v1.ListResponse.files:type_name -> remote.code.v1.FileInfo
 	11, // 4: remote.code.v1.TreeNode.file:type_name -> remote.code.v1.FileInfo
@@ -4307,13 +4711,13 @@ var file_remote_code_v1_remote_code_proto_depIdxs = []int32{
 	11, // 14: remote.code.v1.MkdirResponse.file:type_name -> remote.code.v1.FileInfo
 	1,  // 15: remote.code.v1.ProcessInfo.io_mode:type_name -> remote.code.v1.ProcessIOMode
 	2,  // 16: remote.code.v1.ProcessInfo.state:type_name -> remote.code.v1.ProcessState
-	63, // 17: remote.code.v1.ProcessInfo.started_at:type_name -> google.protobuf.Timestamp
-	63, // 18: remote.code.v1.ProcessInfo.exited_at:type_name -> google.protobuf.Timestamp
-	63, // 19: remote.code.v1.ProcessInfo.created_at:type_name -> google.protobuf.Timestamp
+	69, // 17: remote.code.v1.ProcessInfo.started_at:type_name -> google.protobuf.Timestamp
+	69, // 18: remote.code.v1.ProcessInfo.exited_at:type_name -> google.protobuf.Timestamp
+	69, // 19: remote.code.v1.ProcessInfo.created_at:type_name -> google.protobuf.Timestamp
 	6,  // 20: remote.code.v1.ProcessInfo.input_mode:type_name -> remote.code.v1.ProcessInputMode
 	7,  // 21: remote.code.v1.ProcessInfo.input_state:type_name -> remote.code.v1.ProcessInputState
 	1,  // 22: remote.code.v1.StartProcessRequest.io_mode:type_name -> remote.code.v1.ProcessIOMode
-	62, // 23: remote.code.v1.StartProcessRequest.environment:type_name -> remote.code.v1.StartProcessRequest.EnvironmentEntry
+	68, // 23: remote.code.v1.StartProcessRequest.environment:type_name -> remote.code.v1.StartProcessRequest.EnvironmentEntry
 	6,  // 24: remote.code.v1.StartProcessRequest.input_mode:type_name -> remote.code.v1.ProcessInputMode
 	50, // 25: remote.code.v1.StartProcessRequest.terminal_size:type_name -> remote.code.v1.TerminalSize
 	34, // 26: remote.code.v1.StartProcessResponse.process:type_name -> remote.code.v1.ProcessInfo
@@ -4324,7 +4728,7 @@ var file_remote_code_v1_remote_code_proto_depIdxs = []int32{
 	4,  // 31: remote.code.v1.ObserveProcessLogsRequest.streams:type_name -> remote.code.v1.ProcessLogStream
 	1,  // 32: remote.code.v1.ProcessLogHeader.io_mode:type_name -> remote.code.v1.ProcessIOMode
 	4,  // 33: remote.code.v1.ProcessLogHeader.streams:type_name -> remote.code.v1.ProcessLogStream
-	63, // 34: remote.code.v1.ProcessLogChunk.timestamp:type_name -> google.protobuf.Timestamp
+	69, // 34: remote.code.v1.ProcessLogChunk.timestamp:type_name -> google.protobuf.Timestamp
 	4,  // 35: remote.code.v1.ProcessLogChunk.stream:type_name -> remote.code.v1.ProcessLogStream
 	5,  // 36: remote.code.v1.ProcessLogEnd.reason:type_name -> remote.code.v1.ProcessLogEndReason
 	2,  // 37: remote.code.v1.ProcessLogEnd.state:type_name -> remote.code.v1.ProcessState
@@ -4349,43 +4753,53 @@ var file_remote_code_v1_remote_code_proto_depIdxs = []int32{
 	57, // 56: remote.code.v1.StreamProcessInputResponse.resize_ack:type_name -> remote.code.v1.ProcessTerminalResizeAck
 	35, // 57: remote.code.v1.DeleteProcessRequest.process:type_name -> remote.code.v1.ProcessReference
 	34, // 58: remote.code.v1.DeleteProcessResponse.process:type_name -> remote.code.v1.ProcessInfo
-	9,  // 59: remote.code.v1.ControllerService.GetInfo:input_type -> remote.code.v1.GetInfoRequest
-	12, // 60: remote.code.v1.FileService.Stat:input_type -> remote.code.v1.StatRequest
-	14, // 61: remote.code.v1.FileService.List:input_type -> remote.code.v1.ListRequest
-	17, // 62: remote.code.v1.FileService.Tree:input_type -> remote.code.v1.TreeRequest
-	20, // 63: remote.code.v1.FileService.Upload:input_type -> remote.code.v1.UploadRequest
-	22, // 64: remote.code.v1.FileService.Download:input_type -> remote.code.v1.DownloadRequest
-	26, // 65: remote.code.v1.FileService.Remove:input_type -> remote.code.v1.RemoveRequest
-	28, // 66: remote.code.v1.FileService.Move:input_type -> remote.code.v1.MoveRequest
-	30, // 67: remote.code.v1.FileService.Chmod:input_type -> remote.code.v1.ChmodRequest
-	32, // 68: remote.code.v1.FileService.Mkdir:input_type -> remote.code.v1.MkdirRequest
-	36, // 69: remote.code.v1.ProcessService.StartProcess:input_type -> remote.code.v1.StartProcessRequest
-	38, // 70: remote.code.v1.ProcessService.ListProcesses:input_type -> remote.code.v1.ListProcessesRequest
-	40, // 71: remote.code.v1.ProcessService.SignalProcess:input_type -> remote.code.v1.SignalProcessRequest
-	60, // 72: remote.code.v1.ProcessService.DeleteProcess:input_type -> remote.code.v1.DeleteProcessRequest
-	42, // 73: remote.code.v1.ProcessService.ObserveProcessLogs:input_type -> remote.code.v1.ObserveProcessLogsRequest
-	54, // 74: remote.code.v1.ProcessService.StreamProcessInput:input_type -> remote.code.v1.StreamProcessInputRequest
-	10, // 75: remote.code.v1.ControllerService.GetInfo:output_type -> remote.code.v1.GetInfoResponse
-	13, // 76: remote.code.v1.FileService.Stat:output_type -> remote.code.v1.StatResponse
-	15, // 77: remote.code.v1.FileService.List:output_type -> remote.code.v1.ListResponse
-	18, // 78: remote.code.v1.FileService.Tree:output_type -> remote.code.v1.TreeResponse
-	21, // 79: remote.code.v1.FileService.Upload:output_type -> remote.code.v1.UploadResponse
-	25, // 80: remote.code.v1.FileService.Download:output_type -> remote.code.v1.DownloadResponse
-	27, // 81: remote.code.v1.FileService.Remove:output_type -> remote.code.v1.RemoveResponse
-	29, // 82: remote.code.v1.FileService.Move:output_type -> remote.code.v1.MoveResponse
-	31, // 83: remote.code.v1.FileService.Chmod:output_type -> remote.code.v1.ChmodResponse
-	33, // 84: remote.code.v1.FileService.Mkdir:output_type -> remote.code.v1.MkdirResponse
-	37, // 85: remote.code.v1.ProcessService.StartProcess:output_type -> remote.code.v1.StartProcessResponse
-	39, // 86: remote.code.v1.ProcessService.ListProcesses:output_type -> remote.code.v1.ListProcessesResponse
-	41, // 87: remote.code.v1.ProcessService.SignalProcess:output_type -> remote.code.v1.SignalProcessResponse
-	61, // 88: remote.code.v1.ProcessService.DeleteProcess:output_type -> remote.code.v1.DeleteProcessResponse
-	47, // 89: remote.code.v1.ProcessService.ObserveProcessLogs:output_type -> remote.code.v1.ObserveProcessLogsResponse
-	59, // 90: remote.code.v1.ProcessService.StreamProcessInput:output_type -> remote.code.v1.StreamProcessInputResponse
-	75, // [75:91] is the sub-list for method output_type
-	59, // [59:75] is the sub-list for method input_type
-	59, // [59:59] is the sub-list for extension type_name
-	59, // [59:59] is the sub-list for extension extendee
-	0,  // [0:59] is the sub-list for field type_name
+	35, // 59: remote.code.v1.ProcessSelector.reference:type_name -> remote.code.v1.ProcessReference
+	62, // 60: remote.code.v1.BatchDeleteProcessesRequest.selectors:type_name -> remote.code.v1.ProcessSelector
+	70, // 61: remote.code.v1.BatchDeleteSelectorResult.status:type_name -> google.rpc.Status
+	2,  // 62: remote.code.v1.ProcessDeleteTarget.state:type_name -> remote.code.v1.ProcessState
+	65, // 63: remote.code.v1.BatchDeleteProcessResult.process:type_name -> remote.code.v1.ProcessDeleteTarget
+	70, // 64: remote.code.v1.BatchDeleteProcessResult.status:type_name -> google.rpc.Status
+	64, // 65: remote.code.v1.BatchDeleteProcessesResponse.selectors:type_name -> remote.code.v1.BatchDeleteSelectorResult
+	66, // 66: remote.code.v1.BatchDeleteProcessesResponse.processes:type_name -> remote.code.v1.BatchDeleteProcessResult
+	9,  // 67: remote.code.v1.ControllerService.GetInfo:input_type -> remote.code.v1.GetInfoRequest
+	12, // 68: remote.code.v1.FileService.Stat:input_type -> remote.code.v1.StatRequest
+	14, // 69: remote.code.v1.FileService.List:input_type -> remote.code.v1.ListRequest
+	17, // 70: remote.code.v1.FileService.Tree:input_type -> remote.code.v1.TreeRequest
+	20, // 71: remote.code.v1.FileService.Upload:input_type -> remote.code.v1.UploadRequest
+	22, // 72: remote.code.v1.FileService.Download:input_type -> remote.code.v1.DownloadRequest
+	26, // 73: remote.code.v1.FileService.Remove:input_type -> remote.code.v1.RemoveRequest
+	28, // 74: remote.code.v1.FileService.Move:input_type -> remote.code.v1.MoveRequest
+	30, // 75: remote.code.v1.FileService.Chmod:input_type -> remote.code.v1.ChmodRequest
+	32, // 76: remote.code.v1.FileService.Mkdir:input_type -> remote.code.v1.MkdirRequest
+	36, // 77: remote.code.v1.ProcessService.StartProcess:input_type -> remote.code.v1.StartProcessRequest
+	38, // 78: remote.code.v1.ProcessService.ListProcesses:input_type -> remote.code.v1.ListProcessesRequest
+	40, // 79: remote.code.v1.ProcessService.SignalProcess:input_type -> remote.code.v1.SignalProcessRequest
+	60, // 80: remote.code.v1.ProcessService.DeleteProcess:input_type -> remote.code.v1.DeleteProcessRequest
+	63, // 81: remote.code.v1.ProcessService.BatchDeleteProcesses:input_type -> remote.code.v1.BatchDeleteProcessesRequest
+	42, // 82: remote.code.v1.ProcessService.ObserveProcessLogs:input_type -> remote.code.v1.ObserveProcessLogsRequest
+	54, // 83: remote.code.v1.ProcessService.StreamProcessInput:input_type -> remote.code.v1.StreamProcessInputRequest
+	10, // 84: remote.code.v1.ControllerService.GetInfo:output_type -> remote.code.v1.GetInfoResponse
+	13, // 85: remote.code.v1.FileService.Stat:output_type -> remote.code.v1.StatResponse
+	15, // 86: remote.code.v1.FileService.List:output_type -> remote.code.v1.ListResponse
+	18, // 87: remote.code.v1.FileService.Tree:output_type -> remote.code.v1.TreeResponse
+	21, // 88: remote.code.v1.FileService.Upload:output_type -> remote.code.v1.UploadResponse
+	25, // 89: remote.code.v1.FileService.Download:output_type -> remote.code.v1.DownloadResponse
+	27, // 90: remote.code.v1.FileService.Remove:output_type -> remote.code.v1.RemoveResponse
+	29, // 91: remote.code.v1.FileService.Move:output_type -> remote.code.v1.MoveResponse
+	31, // 92: remote.code.v1.FileService.Chmod:output_type -> remote.code.v1.ChmodResponse
+	33, // 93: remote.code.v1.FileService.Mkdir:output_type -> remote.code.v1.MkdirResponse
+	37, // 94: remote.code.v1.ProcessService.StartProcess:output_type -> remote.code.v1.StartProcessResponse
+	39, // 95: remote.code.v1.ProcessService.ListProcesses:output_type -> remote.code.v1.ListProcessesResponse
+	41, // 96: remote.code.v1.ProcessService.SignalProcess:output_type -> remote.code.v1.SignalProcessResponse
+	61, // 97: remote.code.v1.ProcessService.DeleteProcess:output_type -> remote.code.v1.DeleteProcessResponse
+	67, // 98: remote.code.v1.ProcessService.BatchDeleteProcesses:output_type -> remote.code.v1.BatchDeleteProcessesResponse
+	47, // 99: remote.code.v1.ProcessService.ObserveProcessLogs:output_type -> remote.code.v1.ObserveProcessLogsResponse
+	59, // 100: remote.code.v1.ProcessService.StreamProcessInput:output_type -> remote.code.v1.StreamProcessInputResponse
+	84, // [84:101] is the sub-list for method output_type
+	67, // [67:84] is the sub-list for method input_type
+	67, // [67:67] is the sub-list for extension type_name
+	67, // [67:67] is the sub-list for extension extendee
+	0,  // [0:67] is the sub-list for field type_name
 }
 
 func init() { file_remote_code_v1_remote_code_proto_init() }
@@ -4432,13 +4846,17 @@ func file_remote_code_v1_remote_code_proto_init() {
 		(*StreamProcessInputResponse_End)(nil),
 		(*StreamProcessInputResponse_ResizeAck)(nil),
 	}
+	file_remote_code_v1_remote_code_proto_msgTypes[53].OneofWrappers = []any{
+		(*ProcessSelector_Reference)(nil),
+		(*ProcessSelector_NameGlob)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_remote_code_v1_remote_code_proto_rawDesc), len(file_remote_code_v1_remote_code_proto_rawDesc)),
 			NumEnums:      9,
-			NumMessages:   54,
+			NumMessages:   60,
 			NumExtensions: 0,
 			NumServices:   3,
 		},

@@ -524,12 +524,13 @@ var FileService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	ProcessService_StartProcess_FullMethodName       = "/remote.code.v1.ProcessService/StartProcess"
-	ProcessService_ListProcesses_FullMethodName      = "/remote.code.v1.ProcessService/ListProcesses"
-	ProcessService_SignalProcess_FullMethodName      = "/remote.code.v1.ProcessService/SignalProcess"
-	ProcessService_DeleteProcess_FullMethodName      = "/remote.code.v1.ProcessService/DeleteProcess"
-	ProcessService_ObserveProcessLogs_FullMethodName = "/remote.code.v1.ProcessService/ObserveProcessLogs"
-	ProcessService_StreamProcessInput_FullMethodName = "/remote.code.v1.ProcessService/StreamProcessInput"
+	ProcessService_StartProcess_FullMethodName         = "/remote.code.v1.ProcessService/StartProcess"
+	ProcessService_ListProcesses_FullMethodName        = "/remote.code.v1.ProcessService/ListProcesses"
+	ProcessService_SignalProcess_FullMethodName        = "/remote.code.v1.ProcessService/SignalProcess"
+	ProcessService_DeleteProcess_FullMethodName        = "/remote.code.v1.ProcessService/DeleteProcess"
+	ProcessService_BatchDeleteProcesses_FullMethodName = "/remote.code.v1.ProcessService/BatchDeleteProcesses"
+	ProcessService_ObserveProcessLogs_FullMethodName   = "/remote.code.v1.ProcessService/ObserveProcessLogs"
+	ProcessService_StreamProcessInput_FullMethodName   = "/remote.code.v1.ProcessService/StreamProcessInput"
 )
 
 // ProcessServiceClient is the client API for ProcessService service.
@@ -540,6 +541,7 @@ type ProcessServiceClient interface {
 	ListProcesses(ctx context.Context, in *ListProcessesRequest, opts ...grpc.CallOption) (*ListProcessesResponse, error)
 	SignalProcess(ctx context.Context, in *SignalProcessRequest, opts ...grpc.CallOption) (*SignalProcessResponse, error)
 	DeleteProcess(ctx context.Context, in *DeleteProcessRequest, opts ...grpc.CallOption) (*DeleteProcessResponse, error)
+	BatchDeleteProcesses(ctx context.Context, in *BatchDeleteProcessesRequest, opts ...grpc.CallOption) (*BatchDeleteProcessesResponse, error)
 	ObserveProcessLogs(ctx context.Context, in *ObserveProcessLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ObserveProcessLogsResponse], error)
 	StreamProcessInput(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[StreamProcessInputRequest, StreamProcessInputResponse], error)
 }
@@ -592,6 +594,16 @@ func (c *processServiceClient) DeleteProcess(ctx context.Context, in *DeleteProc
 	return out, nil
 }
 
+func (c *processServiceClient) BatchDeleteProcesses(ctx context.Context, in *BatchDeleteProcessesRequest, opts ...grpc.CallOption) (*BatchDeleteProcessesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BatchDeleteProcessesResponse)
+	err := c.cc.Invoke(ctx, ProcessService_BatchDeleteProcesses_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *processServiceClient) ObserveProcessLogs(ctx context.Context, in *ObserveProcessLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ObserveProcessLogsResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &ProcessService_ServiceDesc.Streams[0], ProcessService_ObserveProcessLogs_FullMethodName, cOpts...)
@@ -632,6 +644,7 @@ type ProcessServiceServer interface {
 	ListProcesses(context.Context, *ListProcessesRequest) (*ListProcessesResponse, error)
 	SignalProcess(context.Context, *SignalProcessRequest) (*SignalProcessResponse, error)
 	DeleteProcess(context.Context, *DeleteProcessRequest) (*DeleteProcessResponse, error)
+	BatchDeleteProcesses(context.Context, *BatchDeleteProcessesRequest) (*BatchDeleteProcessesResponse, error)
 	ObserveProcessLogs(*ObserveProcessLogsRequest, grpc.ServerStreamingServer[ObserveProcessLogsResponse]) error
 	StreamProcessInput(grpc.BidiStreamingServer[StreamProcessInputRequest, StreamProcessInputResponse]) error
 	mustEmbedUnimplementedProcessServiceServer()
@@ -655,6 +668,9 @@ func (UnimplementedProcessServiceServer) SignalProcess(context.Context, *SignalP
 }
 func (UnimplementedProcessServiceServer) DeleteProcess(context.Context, *DeleteProcessRequest) (*DeleteProcessResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteProcess not implemented")
+}
+func (UnimplementedProcessServiceServer) BatchDeleteProcesses(context.Context, *BatchDeleteProcessesRequest) (*BatchDeleteProcessesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method BatchDeleteProcesses not implemented")
 }
 func (UnimplementedProcessServiceServer) ObserveProcessLogs(*ObserveProcessLogsRequest, grpc.ServerStreamingServer[ObserveProcessLogsResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method ObserveProcessLogs not implemented")
@@ -755,6 +771,24 @@ func _ProcessService_DeleteProcess_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ProcessService_BatchDeleteProcesses_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BatchDeleteProcessesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProcessServiceServer).BatchDeleteProcesses(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProcessService_BatchDeleteProcesses_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProcessServiceServer).BatchDeleteProcesses(ctx, req.(*BatchDeleteProcessesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ProcessService_ObserveProcessLogs_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(ObserveProcessLogsRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -795,6 +829,10 @@ var ProcessService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteProcess",
 			Handler:    _ProcessService_DeleteProcess_Handler,
+		},
+		{
+			MethodName: "BatchDeleteProcesses",
+			Handler:    _ProcessService_BatchDeleteProcesses_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

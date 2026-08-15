@@ -147,7 +147,7 @@ func (c *commandCompleter) Do(line []rune, pos int) ([][]rune, int) {
 }
 
 func (c *commandCompleter) completeForget(previous []string, current string) []completionCandidate {
-	if len(previous) > 0 || strings.HasPrefix(current, "-") {
+	if strings.HasPrefix(current, "-") || strings.ContainsAny(current, "*?[") {
 		return nil
 	}
 	processClient, ok := c.client.(completionProcessClient)
@@ -160,10 +160,19 @@ func (c *commandCompleter) completeForget(previous []string, current string) []c
 	if err != nil {
 		return nil
 	}
+	selectedNames := make(map[string]bool, len(previous))
+	for _, argument := range previous {
+		selector, err := parseProcessSelector(argument)
+		if err == nil && selector.GetReference() != nil && selector.GetReference().GetName() != "" {
+			selectedNames[selector.GetReference().GetName()] = true
+		}
+	}
+	seenNames := make(map[string]bool, len(processes))
 	candidates := make([]completionCandidate, 0, len(processes))
 	for _, process := range processes {
-		if process != nil && !isActiveProcessState(process.GetState()) {
+		if process != nil && !isActiveProcessState(process.GetState()) && !selectedNames[process.GetName()] && !seenNames[process.GetName()] {
 			candidates = append(candidates, completionCandidate{value: process.GetName(), finish: true})
+			seenNames[process.GetName()] = true
 		}
 	}
 	return candidates

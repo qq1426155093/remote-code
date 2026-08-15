@@ -198,6 +198,43 @@ func (c *Client) DeleteProcess(ctx context.Context, process *codev1.ProcessRefer
 	return response.GetProcess(), nil
 }
 
+// ExactProcessSelector selects the one process resolved by an exact UUID,
+// logical name, or PID reference.
+func ExactProcessSelector(process *codev1.ProcessReference) *codev1.ProcessSelector {
+	return &codev1.ProcessSelector{Value: &codev1.ProcessSelector_Reference{Reference: process}}
+}
+
+// ProcessNameGlobSelector selects every process whose logical name matches the
+// server's case-sensitive path.Match-style glob.
+func ProcessNameGlobSelector(pattern string) *codev1.ProcessSelector {
+	return &codev1.ProcessSelector{Value: &codev1.ProcessSelector_NameGlob{NameGlob: pattern}}
+}
+
+// BatchDeleteProcesses permanently deletes every unique process selected by
+// the request. Per-selector and per-process failures are returned in-band.
+func (c *Client) BatchDeleteProcesses(ctx context.Context, selectors []*codev1.ProcessSelector) (*codev1.BatchDeleteProcessesResponse, error) {
+	response, err := c.processes.BatchDeleteProcesses(ctx, &codev1.BatchDeleteProcessesRequest{Selectors: selectors})
+	if err != nil {
+		return nil, err
+	}
+	if len(response.GetSelectors()) != len(selectors) {
+		return nil, status.Errorf(codes.DataLoss, "batch delete response has %d selector results, want %d", len(response.GetSelectors()), len(selectors))
+	}
+	seenSelectors := make(map[uint32]bool, len(selectors))
+	for _, result := range response.GetSelectors() {
+		if result == nil || int(result.GetSelectorIndex()) >= len(selectors) || result.GetStatus() == nil || seenSelectors[result.GetSelectorIndex()] {
+			return nil, status.Error(codes.DataLoss, "batch delete response has invalid selector results")
+		}
+		seenSelectors[result.GetSelectorIndex()] = true
+	}
+	for _, result := range response.GetProcesses() {
+		if result == nil || result.GetProcess() == nil || result.GetProcess().GetId() == "" || result.GetStatus() == nil {
+			return nil, status.Error(codes.DataLoss, "batch delete response has invalid process results")
+		}
+	}
+	return response, nil
+}
+
 func (c *Client) Remove(ctx context.Context, remotePath string, recursive bool) error {
 	_, err := c.files.Remove(ctx, &codev1.RemoveRequest{Path: remotePath, Recursive: recursive})
 	return err

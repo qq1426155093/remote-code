@@ -15,7 +15,7 @@ controller 提供与 Claude Code 无关的通用进程管理能力。任何通�
 - 持久化元数据、状态以及带时间戳的 stdout/stderr 输出块；
 - 按逻辑 offset 或最后 N 行回放日志，并可无缝跟随到进程退出；
 - 列出当前活动进程，或列出活动及历史进程；
-- 永久删除已退出、启动失败或 controller-lost 的进程历史；
+- 单个或批量永久删除已退出、启动失败或 controller-lost 的进程历史，批量选择支持名称 glob；
 - 按 UUID、名称或 PID 向整个进程组发送受支持的 POSIX 信号；
 - 组合输入和日志流，对运行中的 PTY 进行 raw terminal attach、resize、detach 和重新连接；
 - controller 始终 `Wait` 直接子进程，避免僵尸进程；
@@ -76,6 +76,11 @@ RPC context 约束。
 记录。成功后原子地从内存索引移除记录，并永久删除 `<runtime-dir>/<uuid>` 中的元数据和
 全部日志，因此后续 `ListProcesses(all=true)` 不再返回该记录。活动进程返回
 failed-precondition；日志仍被观察时也拒绝删除，调用方可在观察结束后重试。
+
+`BatchDeleteProcesses` 接受最多 128 个选择器。选择器可以是 UUID、名称、PID 精确引用，
+也可以是仅作用于逻辑名称的大小写敏感 glob。server 在同一注册表快照中展开选择器，按 UUID
+去重后逐项删除；选择器无匹配和单个目标删除失败通过响应内的 `google.rpc.Status` 返回，
+不阻止其它终态记录删除。批量删除不是事务，已经成功的删除不会回滚。
 
 ### 2.5 写入标准输入
 
@@ -149,7 +154,8 @@ controller 日志。
 - `ps` 只显示活动进程。
 - `ps -a` 显示活动和历史进程。
 - `kill [-s SIGNAL] [-w] PROCESS` 保持 UUID、名称和 PID 引用能力。
-- `forget PROCESS` 删除终态进程的完整持久化历史。
+- `forget PROCESS_OR_GLOB [PROCESS_OR_GLOB ...]` 批量删除终态历史；无前缀的 `*`、`?`、
+  `[class]` 或显式 `glob:PATTERN` 匹配逻辑名称，重叠结果按 UUID 去重。
 - `logs [-f] [-n LINES|--offset OFFSET] [--stdout|--stderr] PROCESS_ID` 回放或持续跟随输出。
 - `stdin PROCESS` 进入行输入子模式；`.detach` 保留远端输入，`.eof` 关闭 PIPE 输入，`.eot`
   发送 Ctrl-D 字节。

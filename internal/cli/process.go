@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/chzyer/readline"
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
 	remoteclient "github.com/qq1426155093/remote-code/pkg/client"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -128,21 +130,68 @@ func (r *REPL) signalProcess(arguments []string) error {
 }
 
 func (r *REPL) forgetProcess(arguments []string) error {
-	if len(arguments) != 1 {
+	if len(arguments) == 0 {
 		return errors.New(commandUsage["forget"])
 	}
-	reference, err := parseProcessReference(arguments[0])
-	if err != nil {
-		return err
+	selectors := make([]*codev1.ProcessSelector, 0, len(arguments))
+	for _, argument := range arguments {
+		selector, err := parseProcessSelector(argument)
+		if err != nil {
+			return fmt.Errorf("invalid process selector %q: %w", argument, err)
+		}
+		selectors = append(selectors, selector)
 	}
 	ctx, cancel := r.commandContext()
 	defer cancel()
-	info, err := r.client.DeleteProcess(ctx, reference)
+	response, err := r.client.BatchDeleteProcesses(ctx, selectors)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(r.stdout, "forgot %s (%s)\n", info.GetName(), info.GetId())
+	failed := 0
+	deleted := 0
+	for _, result := range response.GetSelectors() {
+		code := codes.Code(result.GetStatus().GetCode())
+		if code == codes.OK {
+			continue
+		}
+		failed++
+		index := int(result.GetSelectorIndex())
+		value := "<invalid>"
+		if index >= 0 && index < len(arguments) {
+			value = arguments[index]
+		}
+		fmt.Fprintf(r.stderr, "selector %q: %s (%s)\n", value, batchDeleteMessage(result.GetStatus().GetMessage(), code), code)
+	}
+	for _, result := range response.GetProcesses() {
+		process := result.GetProcess()
+		code := codes.Code(result.GetStatus().GetCode())
+		if code == codes.OK {
+			deleted++
+			fmt.Fprintf(r.stdout, "forgot %s (%s)\n", process.GetName(), process.GetId())
+			continue
+		}
+		failed++
+		fmt.Fprintf(r.stderr, "skipped %s (%s): %s (%s)\n", process.GetName(), process.GetId(), batchDeleteMessage(result.GetStatus().GetMessage(), code), code)
+	}
+	if failed > 0 {
+		processNoun := "processes"
+		if deleted == 1 {
+			processNoun = "process"
+		}
+		operationNoun := "operations"
+		if failed == 1 {
+			operationNoun = "operation"
+		}
+		return fmt.Errorf("forgot %d %s; %d %s failed", deleted, processNoun, failed, operationNoun)
+	}
 	return nil
+}
+
+func batchDeleteMessage(message string, code codes.Code) string {
+	if message != "" {
+		return message
+	}
+	return code.String()
 }
 
 func (r *REPL) observeProcessLogs(arguments []string) error {
@@ -469,6 +518,40 @@ func parseProcessReference(value string) (*codev1.ProcessReference, error) {
 		return &codev1.ProcessReference{Value: &codev1.ProcessReference_Id{Id: value}}, nil
 	}
 	return &codev1.ProcessReference{Value: &codev1.ProcessReference_Name{Name: value}}, nil
+}
+
+func parseProcessSelector(value string) (*codev1.ProcessSelector, error) {
+	if value == "" {
+		return nil, errors.New("process selector is required")
+	}
+	if kind, explicit, ok := strings.Cut(value, ":"); ok {
+		if strings.EqualFold(kind, "glob") {
+			return parseProcessNameGlob(explicit)
+		}
+		reference, err := parseProcessReference(value)
+		if err != nil {
+			return nil, err
+		}
+		return remoteclient.ExactProcessSelector(reference), nil
+	}
+	if strings.ContainsAny(value, "*?[") {
+		return parseProcessNameGlob(value)
+	}
+	reference, err := parseProcessReference(value)
+	if err != nil {
+		return nil, err
+	}
+	return remoteclient.ExactProcessSelector(reference), nil
+}
+
+func parseProcessNameGlob(pattern string) (*codev1.ProcessSelector, error) {
+	if pattern == "" {
+		return nil, errors.New("process name glob is required")
+	}
+	if _, err := path.Match(pattern, ""); err != nil {
+		return nil, errors.New("process name glob is invalid")
+	}
+	return remoteclient.ProcessNameGlobSelector(pattern), nil
 }
 
 func parseProcessSignal(value string) (codev1.ProcessSignal, error) {

@@ -43,7 +43,7 @@ remote-code:/> ps
 remote-code:/> ps -a
 remote-code:/> logs -n 100 --follow 7aa5daab-e886-4889-9ec3-92d461883091
 remote-code:/> kill -s TERM -w listing
-remote-code:/> forget listing
+remote-code:/> forget listing 'test-*' glob:reused-name
 ```
 
 默认仅允许 loopback 明文监听。远程部署应配置 `--tls-cert`、`--tls-key` 和
@@ -187,6 +187,7 @@ service ProcessService {
   rpc ListProcesses(ListProcessesRequest) returns (ListProcessesResponse);
   rpc SignalProcess(SignalProcessRequest) returns (SignalProcessResponse);
   rpc DeleteProcess(DeleteProcessRequest) returns (DeleteProcessResponse);
+  rpc BatchDeleteProcesses(BatchDeleteProcessesRequest) returns (BatchDeleteProcessesResponse);
   rpc ObserveProcessLogs(ObserveProcessLogsRequest) returns (stream ObserveProcessLogsResponse);
   rpc StreamProcessInput(stream StreamProcessInputRequest) returns (stream StreamProcessInputResponse);
 }
@@ -200,8 +201,9 @@ Linux `tree` 的文本。文件上传和下载采用分块流并用 SHA-256 校�
 `StartProcess` 接受具体命令、参数、工作区内 cwd、PIPE/PTY 模式、输入模式和环境覆盖；它不经 shell
 解释。每个进程具有 UUID、逻辑名称和 OS PID；pipe 与 PTY 模式都使用独立进程组，
 `SignalProcess` 可按 UUID、名称或 PID 向整个组发送 HUP、INT、QUIT、TERM、KILL、
-USR1、USR2、STOP 或 CONT。`DeleteProcess` 只删除终态进程的完整历史目录；直接子进程始终
-由 controller `Wait` 回收。
+USR1、USR2、STOP 或 CONT。`DeleteProcess` 只删除一个终态进程的完整历史目录；
+`BatchDeleteProcesses` 接受多个精确引用或名称 glob，按 UUID 去重并逐项返回删除状态。
+直接子进程始终由 controller `Wait` 回收。
 
 进程记录位于 `--runtime-dir/<uuid>/`。`metadata.json` 与 `status.json` 保存元数据和状态；
 `logs/` 使用带 stdout/stderr tag、逻辑 offset、CRC 和 tail 索引的 v2 分段格式。PIPE 保留双流

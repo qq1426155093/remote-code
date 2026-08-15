@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -97,5 +98,91 @@ func TestREPLUsesCurrentDirectoryForExecAndSupportsPSAll(t *testing.T) {
 	}
 	if bytes.Contains(stdout.Bytes(), []byte("cwd-job")) {
 		t.Fatalf("ps -a output contains forgotten process: %s", stdout.String())
+	}
+}
+
+func TestREPLForgetSupportsMultipleSelectorsGlobsAndPartialFailures(t *testing.T) {
+	controller, err := server.New(server.Config{
+		ListenAddress: "127.0.0.1:0", Workspace: t.TempDir(), RuntimeDirectory: t.TempDir(), MaxProcesses: 3,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	serveErrors := make(chan error, 1)
+	go func() { serveErrors <- controller.Serve() }()
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = controller.Shutdown(ctx)
+		select {
+		case <-serveErrors:
+		case <-time.After(5 * time.Second):
+			t.Error("controller did not stop")
+		}
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	client, err := remoteclient.New(ctx, remoteclient.Config{Address: controller.Address()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	var stdout, stderr bytes.Buffer
+	repl := New(client, nil, Config{Timeout: 5 * time.Second, Stdout: &stdout, Stderr: &stderr})
+
+	waitForName := func(name string) *codev1.ProcessInfo {
+		t.Helper()
+		for {
+			processes, err := client.ListProcesses(ctx, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, process := range processes {
+				if process.GetName() == name && !isActiveProcessState(process.GetState()) {
+					return process
+				}
+			}
+			select {
+			case <-ctx.Done():
+				t.Fatal(ctx.Err())
+			case <-time.After(10 * time.Millisecond):
+			}
+		}
+	}
+	for _, name := range []string{"repl-batch-a", "repl-batch-b"} {
+		if err := repl.startProcess([]string{"--name", name, "true"}); err != nil {
+			t.Fatalf("start %s: %v", name, err)
+		}
+		waitForName(name)
+	}
+	if err := repl.startProcess([]string{"--name", "repl-batch-active", "sleep", "30"}); err != nil {
+		t.Fatal(err)
+	}
+	activeList, err := client.ListProcesses(ctx)
+	if err != nil || len(activeList) != 1 {
+		t.Fatalf("ListProcesses(active) = %+v, %v", activeList, err)
+	}
+	active := activeList[0]
+
+	stdout.Reset()
+	stderr.Reset()
+	err = repl.forgetProcess([]string{"repl-batch-a", "repl-batch-*"})
+	if err == nil || !strings.Contains(err.Error(), "forgot 2 processes; 1 operation failed") {
+		t.Fatalf("forget error = %v", err)
+	}
+	if strings.Count(stdout.String(), "forgot repl-batch-a") != 1 || strings.Count(stdout.String(), "forgot repl-batch-b") != 1 {
+		t.Errorf("forget stdout = %s", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "skipped repl-batch-active") || !strings.Contains(stderr.String(), "FailedPrecondition") {
+		t.Errorf("forget stderr = %s", stderr.String())
+	}
+	all, err := client.ListProcesses(ctx, true)
+	if err != nil || len(all) != 1 || all[0].GetId() != active.GetId() {
+		t.Fatalf("ListProcesses(all) = %+v, %v", all, err)
+	}
+	if _, err := client.SignalProcess(ctx, &codev1.ProcessReference{
+		Value: &codev1.ProcessReference_Id{Id: active.GetId()},
+	}, codev1.ProcessSignal_PROCESS_SIGNAL_KILL, true); err != nil {
+		t.Fatal(err)
 	}
 }

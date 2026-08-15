@@ -25,6 +25,8 @@ registry 的所有索引和 `ProcessInfo` 状态由同一 mutex 保护。磁盘 
 - `StartProcessRequest.environment` 使用 `map<string,string>`；
 - `ListProcessesRequest.all` 控制是否包含终态；
 - `DeleteProcessRequest.process` 复用 `ProcessReference`，响应返回删除前的终态快照；
+- `BatchDeleteProcessesRequest.selectors` 接受精确 `ProcessReference` 或名称 glob，响应分别返回
+  selector 解析状态和去重后的进程删除状态；
 - `ProcessInfo` 增加 `created_at`、`environment_keys`；
 - `ProcessState` 增加 `FAILED` 和 `LOST`；
 - `GetInfoResponse.process_commands` 被保留字段号并移除，因为 server 不再维护命令
@@ -117,10 +119,17 @@ segment 轮转后使用稀疏 offset 索引定位回放，使用 stdout/stderr �
 严格 UUID 命名的目录并同步 runtime 根目录，最后清除 UUID/name/PID/order 索引。活动进程
 或仍有日志 observer 的记录返回 `FailedPrecondition`；符号链接或非目录记录不会被递归删除。
 
+`BatchDeleteProcesses` 先在 registry 锁内从同一快照展开所有精确引用和名称 glob。glob 使用
+大小写敏感的 `path.Match` 语义并按 `order` 遍历；多个选择器命中同一 UUID 时只保留一个删除
+目标，同时记录全部 selector index。展开后释放全局锁，再按首次命中顺序逐个复用单条删除逻辑。
+selector 无匹配、活动状态、日志 observer 和磁盘失败都作为逐项 `google.rpc.Status` 返回；批量
+操作不提供回滚，context 取消前已经完成的删除仍然有效。
+
 ## 8. CLI 与客户端
 
 public client 的 `StartProcess` 接收一个选项结构，避免继续增长位置参数；
-`ListProcesses(ctx, all)` 显式传递过滤条件，`DeleteProcess` 删除终态历史。REPL parser 支持重复 `-e`/`--env`，遇到
+`ListProcesses(ctx, all)` 显式传递过滤条件，`DeleteProcess` 删除单条终态历史，
+`BatchDeleteProcesses` 返回逐 selector 和逐进程结果。REPL parser 支持重复 `-e`/`--env`，遇到
 `--` 后停止解析选项。命令启动成功后打印 name、UUID、PID、mode 和 cwd。
 
 `ObserveProcessLogs` 的 client 选项以互斥指针表达 offset/tail，返回原始 gRPC server stream。
@@ -131,8 +140,9 @@ REPL `attach PROCESS` 将本地终端切换为 raw mode，原样转发 PTY 字�
 `exec --attach` 隐含 PTY、MANAGED 输入和本地初始窗口尺寸。detach 转义为 `Ctrl-] d`。
 
 `exec` 未设置 cwd 时使用 REPL 保存的工作区相对 cwd；显式 `--cwd` 也通过与文件命令
-相同的远端路径解析器相对于当前 cwd 解析。`ps` 仅接受可选 `-a`/`--all`，`forget`
-接受一个 UUID、名称或带前缀的 PID 引用。
+相同的远端路径解析器相对于当前 cwd 解析。`ps` 仅接受可选 `-a`/`--all`。`forget` 接受一个或
+多个 UUID、名称、PID 或名称 glob；无前缀参数包含 glob 元字符时自动按 glob 解释，
+`glob:PATTERN` 可显式选择全部同名历史。
 
 Tab completion 增加 `exec` 的选项提示、`--cwd` 目录补全和 kill/ps 参数提示。具体命令
 及其参数由目标程序定义，v1 不尝试从 controller 主机 shell 动态生成补全。

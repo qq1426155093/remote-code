@@ -36,6 +36,7 @@ func TestCompleterSuggestsCommandsOptionsAndArguments(t *testing.T) {
 	}, processes: []*codev1.ProcessInfo{
 		{Name: "worker", State: codev1.ProcessState_PROCESS_STATE_RUNNING},
 		{Name: "finished", State: codev1.ProcessState_PROCESS_STATE_EXITED},
+		{Name: "failed", State: codev1.ProcessState_PROCESS_STATE_FAILED},
 	}}
 	completer := newCompleter(client, func() string { return "." }, time.Second)
 	tests := []struct {
@@ -56,6 +57,7 @@ func TestCompleterSuggestsCommandsOptionsAndArguments(t *testing.T) {
 		{name: "signal", line: "kill -s T", want: []string{"ERM "}, wantOffset: 1},
 		{name: "running process", line: "kill wor", want: []string{"ker "}, wantOffset: 3},
 		{name: "finished process", line: "forget fin", want: []string{"ished "}, wantOffset: 3},
+		{name: "second forget process", line: "forget finished fa", want: []string{"iled "}, wantOffset: 2},
 		{name: "log options", line: "logs --o", want: []string{"ffset "}, wantOffset: 3},
 	}
 	for _, test := range tests {

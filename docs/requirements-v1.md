@@ -57,11 +57,13 @@ remote-code:/docs> exit
 | `exec [--name NAME] [--pipe\|--pty] [--cwd REMOTE_DIR] [-e KEY=VALUE ...] [--] CMD [ARG ...]` | 直接启动通用受管进程 |
 | `ps` / `ps -a` | 分别浏览活动进程，或活动及历史进程 |
 | `kill [-s SIGNAL] [-w] PROCESS` | 向进程组发信号；`-w` 等待进程回收 |
-| `forget PROCESS` | 永久删除终态进程的元数据和输出日志 |
+| `forget PROCESS_OR_GLOB [PROCESS_OR_GLOB ...]` | 批量永久删除终态进程的元数据和输出日志；名称支持 glob |
 | `clear` | 清理本地终端显示 |
 | `exit` / `quit` | 关闭连接并退出 CLI |
 
-命令参数支持单引号、双引号和反斜杠转义，以便处理带空格的文件名。首版不支持通配符展开、管道、重定向、远程 shell 命令或交互式远端文件编辑。
+命令参数支持单引号、双引号和反斜杠转义，以便处理带空格的文件名。仅 `forget` 的进程名称
+选择器支持 glob；远端路径不展开通配符。首版不支持隐式管道、重定向、远程 shell 命令或
+交互式远端文件编辑。
 
 REPL 内按 `Tab` 可补全内部命令、选项和参数。远端路径候选以当前虚拟目录为基准通过 `List` 获取；`upload` 的本地源路径和 `download` 的本地目标路径从本机文件系统获取。补全查询失败或超时时不终止会话。
 

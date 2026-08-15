@@ -156,6 +156,12 @@ func TestServiceDeletesExitedProcessHistory(t *testing.T) {
 	if status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("DeleteProcess(observed) code = %s, want FailedPrecondition", status.Code(err))
 	}
+	batch, err := service.BatchDeleteProcesses(context.Background(), &codev1.BatchDeleteProcessesRequest{Selectors: []*codev1.ProcessSelector{
+		{Value: &codev1.ProcessSelector_NameGlob{NameGlob: "delete-history"}},
+	}})
+	if err != nil || len(batch.GetProcesses()) != 1 || codes.Code(batch.GetProcesses()[0].GetStatus().GetCode()) != codes.FailedPrecondition {
+		t.Fatalf("BatchDeleteProcesses(observed) = %+v, %v", batch, err)
+	}
 	logs.releaseObserver()
 
 	deleted, err := service.DeleteProcess(context.Background(), &codev1.DeleteProcessRequest{
@@ -179,6 +185,113 @@ func TestServiceDeletesExitedProcessHistory(t *testing.T) {
 	})
 	if status.Code(err) != codes.NotFound {
 		t.Fatalf("DeleteProcess(deleted) code = %s, want NotFound", status.Code(err))
+	}
+}
+
+func TestServiceBatchDeletesGlobsDeduplicatesAndReportsPartialFailures(t *testing.T) {
+	t.Setenv(helperEnvironment, "1")
+	service := newProcessServiceAt(t, t.TempDir(), t.TempDir(), 3)
+	ctx := context.Background()
+
+	startExited := func(name string) *codev1.ProcessInfo {
+		t.Helper()
+		started, err := service.StartProcess(ctx, helperStartRequest(
+			name, ".", codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE, "exit", "0",
+		))
+		if err != nil {
+			t.Fatalf("StartProcess(%s): %v", name, err)
+		}
+		return waitForProcessExit(t, service, started.GetProcess().GetId())
+	}
+	first := startExited("batch-finished-1")
+	second := startExited("batch-finished-2")
+	active, err := service.StartProcess(ctx, helperStartRequest(
+		"batch-active", ".", codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE, "sleep",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { stopProcess(t, service, active.GetProcess()) })
+
+	response, err := service.BatchDeleteProcesses(ctx, &codev1.BatchDeleteProcessesRequest{Selectors: []*codev1.ProcessSelector{
+		{Value: &codev1.ProcessSelector_Reference{Reference: &codev1.ProcessReference{Value: &codev1.ProcessReference_Id{Id: first.GetId()}}}},
+		{Value: &codev1.ProcessSelector_NameGlob{NameGlob: "batch-finished-*"}},
+		{Value: &codev1.ProcessSelector_NameGlob{NameGlob: "batch-active*"}},
+		{Value: &codev1.ProcessSelector_NameGlob{NameGlob: "missing-*"}},
+		{Value: &codev1.ProcessSelector_NameGlob{NameGlob: "["}},
+	}})
+	if err != nil {
+		t.Fatalf("BatchDeleteProcesses() error = %v", err)
+	}
+	wantSelectorCodes := []codes.Code{codes.OK, codes.OK, codes.OK, codes.NotFound, codes.InvalidArgument}
+	wantMatched := []uint32{1, 2, 1, 0, 0}
+	if len(response.GetSelectors()) != len(wantSelectorCodes) {
+		t.Fatalf("selector results = %+v", response.GetSelectors())
+	}
+	for index, result := range response.GetSelectors() {
+		if got := codes.Code(result.GetStatus().GetCode()); got != wantSelectorCodes[index] || result.GetMatchedCount() != wantMatched[index] {
+			t.Errorf("selector[%d] = %+v, want code %s matched %d", index, result, wantSelectorCodes[index], wantMatched[index])
+		}
+	}
+	if len(response.GetProcesses()) != 3 {
+		t.Fatalf("process results = %+v, want 3 unique targets", response.GetProcesses())
+	}
+	if got := response.GetProcesses()[0]; got.GetProcess().GetId() != first.GetId() ||
+		!reflect.DeepEqual(got.GetSelectorIndexes(), []uint32{0, 1}) || codes.Code(got.GetStatus().GetCode()) != codes.OK {
+		t.Errorf("first process result = %+v", got)
+	}
+	if got := response.GetProcesses()[1]; got.GetProcess().GetId() != second.GetId() ||
+		!reflect.DeepEqual(got.GetSelectorIndexes(), []uint32{1}) || codes.Code(got.GetStatus().GetCode()) != codes.OK {
+		t.Errorf("second process result = %+v", got)
+	}
+	if got := response.GetProcesses()[2]; got.GetProcess().GetId() != active.GetProcess().GetId() ||
+		codes.Code(got.GetStatus().GetCode()) != codes.FailedPrecondition {
+		t.Errorf("active process result = %+v", got)
+	}
+	all, err := service.ListProcesses(ctx, &codev1.ListProcessesRequest{All: true})
+	if err != nil || len(all.GetProcesses()) != 1 || all.GetProcesses()[0].GetId() != active.GetProcess().GetId() {
+		t.Fatalf("ListProcesses(all) = %+v, %v", all, err)
+	}
+}
+
+func TestServiceBatchNameGlobDeletesEverySameNameHistory(t *testing.T) {
+	t.Setenv(helperEnvironment, "1")
+	service := newProcessServiceAt(t, t.TempDir(), t.TempDir(), 1)
+	ctx := context.Background()
+	for range 2 {
+		started, err := service.StartProcess(ctx, helperStartRequest(
+			"reused-name", ".", codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE, "exit", "0",
+		))
+		if err != nil {
+			t.Fatal(err)
+		}
+		waitForProcessExit(t, service, started.GetProcess().GetId())
+	}
+	response, err := service.BatchDeleteProcesses(ctx, &codev1.BatchDeleteProcessesRequest{Selectors: []*codev1.ProcessSelector{
+		{Value: &codev1.ProcessSelector_NameGlob{NameGlob: "reused-name"}},
+	}})
+	if err != nil || len(response.GetProcesses()) != 2 || response.GetSelectors()[0].GetMatchedCount() != 2 {
+		t.Fatalf("BatchDeleteProcesses(reused name) = %+v, %v", response, err)
+	}
+	all, err := service.ListProcesses(ctx, &codev1.ListProcessesRequest{All: true})
+	if err != nil || len(all.GetProcesses()) != 0 {
+		t.Fatalf("ListProcesses(all) = %+v, %v", all, err)
+	}
+}
+
+func TestServiceBatchDeleteValidatesWholeRequest(t *testing.T) {
+	service := newProcessServiceAt(t, t.TempDir(), t.TempDir(), 1)
+	if _, err := service.BatchDeleteProcesses(context.Background(), nil); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("BatchDeleteProcesses(nil) code = %s", status.Code(err))
+	}
+	selectors := make([]*codev1.ProcessSelector, maxBatchDeleteSelectors+1)
+	if _, err := service.BatchDeleteProcesses(context.Background(), &codev1.BatchDeleteProcessesRequest{Selectors: selectors}); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("BatchDeleteProcesses(too many) code = %s", status.Code(err))
+	}
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := service.BatchDeleteProcesses(canceled, &codev1.BatchDeleteProcessesRequest{Selectors: selectors[:1]}); status.Code(err) != codes.Canceled {
+		t.Fatalf("BatchDeleteProcesses(canceled) code = %s", status.Code(err))
 	}
 }
 

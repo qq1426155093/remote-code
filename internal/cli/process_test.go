@@ -120,6 +120,36 @@ func TestParseProcessSignalOptions(t *testing.T) {
 	}
 }
 
+func TestParseProcessSelectorSupportsExactReferencesAndNameGlobs(t *testing.T) {
+	tests := []struct {
+		value    string
+		wantName string
+		wantGlob string
+	}{
+		{value: "worker", wantName: "worker"},
+		{value: "name:worker-*", wantName: "worker-*"},
+		{value: "worker-*", wantGlob: "worker-*"},
+		{value: "glob:worker", wantGlob: "worker"},
+		{value: "GLOB:test-[0-9]", wantGlob: "test-[0-9]"},
+	}
+	for _, test := range tests {
+		t.Run(test.value, func(t *testing.T) {
+			selector, err := parseProcessSelector(test.value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if selector.GetReference().GetName() != test.wantName || selector.GetNameGlob() != test.wantGlob {
+				t.Fatalf("parseProcessSelector(%q) = %+v", test.value, selector)
+			}
+		})
+	}
+	for _, value := range []string{"", "glob:", "glob:["} {
+		if _, err := parseProcessSelector(value); err == nil {
+			t.Errorf("parseProcessSelector(%q) succeeded", value)
+		}
+	}
+}
+
 func TestParseProcessLogOptions(t *testing.T) {
 	id := "7aa5daab-e886-4889-9ec3-92d461883091"
 	options, err := parseProcessLogOptions([]string{"-f", "-n", "100", "--stdout", id})

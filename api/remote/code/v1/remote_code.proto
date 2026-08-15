@@ -3,6 +3,7 @@ syntax = "proto3";
 package remote.code.v1;
 
 import "google/protobuf/timestamp.proto";
+import "google/rpc/status.proto";
 
 option go_package = "github.com/qq1426155093/remote-code/api/remote/code/v1;codev1";
 
@@ -27,6 +28,7 @@ service ProcessService {
   rpc ListProcesses(ListProcessesRequest) returns (ListProcessesResponse);
   rpc SignalProcess(SignalProcessRequest) returns (SignalProcessResponse);
   rpc DeleteProcess(DeleteProcessRequest) returns (DeleteProcessResponse);
+  rpc BatchDeleteProcesses(BatchDeleteProcessesRequest) returns (BatchDeleteProcessesResponse);
   rpc ObserveProcessLogs(ObserveProcessLogsRequest) returns (stream ObserveProcessLogsResponse);
   rpc StreamProcessInput(stream StreamProcessInputRequest) returns (stream StreamProcessInputResponse);
 }
@@ -444,4 +446,46 @@ message DeleteProcessRequest {
 message DeleteProcessResponse {
   // Snapshot of the terminal process whose persistent history was deleted.
   ProcessInfo process = 1;
+}
+
+message ProcessSelector {
+  oneof value {
+    ProcessReference reference = 1;
+    // Case-sensitive path.Match-style glob applied only to logical process names.
+    string name_glob = 2;
+  }
+}
+
+message BatchDeleteProcessesRequest {
+  repeated ProcessSelector selectors = 1;
+}
+
+message BatchDeleteSelectorResult {
+  // Zero-based position in BatchDeleteProcessesRequest.selectors.
+  uint32 selector_index = 1;
+  uint32 matched_count = 2;
+  // OK when the selector was valid and matched at least one process.
+  google.rpc.Status status = 3;
+}
+
+message ProcessDeleteTarget {
+  string id = 1;
+  string name = 2;
+  int64 pid = 3;
+  ProcessState state = 4;
+}
+
+message BatchDeleteProcessResult {
+  ProcessDeleteTarget process = 1;
+  // Every input selector that matched this UUID, in request order.
+  repeated uint32 selector_indexes = 2;
+  // OK when the persistent history was deleted.
+  google.rpc.Status status = 3;
+}
+
+message BatchDeleteProcessesResponse {
+  // Exactly one result for each input selector.
+  repeated BatchDeleteSelectorResult selectors = 1;
+  // Exactly one result for each unique UUID selected by the request.
+  repeated BatchDeleteProcessResult processes = 2;
 }

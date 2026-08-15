@@ -227,6 +227,55 @@ func TestClientProcessLifecycleOverGRPC(t *testing.T) {
 	}
 }
 
+func TestClientBatchDeletesProcessesOverGRPC(t *testing.T) {
+	t.Setenv("REMOTE_CODE_CLIENT_PROCESS_HELPER", "1")
+	address := startControllerWithProcesses(t, t.TempDir(), 3)
+	remote := connectClient(t, address, "")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	for _, name := range []string{"grpc-batch-a", "grpc-batch-b"} {
+		if _, err := remote.StartProcess(ctx, name, os.Args[0], []string{"-test.run=^TestClientProcessHelper$", "--", "logs"}, ".", codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE); err != nil {
+			t.Fatalf("StartProcess(%s): %v", name, err)
+		}
+	}
+	for {
+		all, err := remote.ListProcesses(ctx, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(all) == 2 && all[0].GetState() == codev1.ProcessState_PROCESS_STATE_EXITED && all[1].GetState() == codev1.ProcessState_PROCESS_STATE_EXITED {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+
+	response, err := remote.BatchDeleteProcesses(ctx, []*codev1.ProcessSelector{
+		client.ProcessNameGlobSelector("grpc-batch-*"),
+		client.ProcessNameGlobSelector("missing-*"),
+	})
+	if err != nil {
+		t.Fatalf("BatchDeleteProcesses() error = %v", err)
+	}
+	if len(response.GetProcesses()) != 2 || response.GetSelectors()[0].GetMatchedCount() != 2 ||
+		codes.Code(response.GetSelectors()[0].GetStatus().GetCode()) != codes.OK ||
+		codes.Code(response.GetSelectors()[1].GetStatus().GetCode()) != codes.NotFound {
+		t.Fatalf("BatchDeleteProcesses() = %+v", response)
+	}
+	for _, result := range response.GetProcesses() {
+		if codes.Code(result.GetStatus().GetCode()) != codes.OK {
+			t.Errorf("process result = %+v", result)
+		}
+	}
+	if all, err := remote.ListProcesses(ctx, true); err != nil || len(all) != 0 {
+		t.Fatalf("ListProcesses(all after batch delete) = %+v, %v", all, err)
+	}
+}
+
 func TestClientObservesProcessLogsOverGRPC(t *testing.T) {
 	t.Setenv("REMOTE_CODE_CLIENT_PROCESS_HELPER", "1")
 	address := startControllerWithProcesses(t, t.TempDir(), 1)

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
+	statuspb "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -34,6 +35,8 @@ const (
 	maxEnvironmentVariables  = 256
 	maxEnvironmentEntryBytes = 4096
 	maxEnvironmentBytes      = 64 << 10
+	maxBatchDeleteSelectors  = 128
+	maxProcessNameGlobBytes  = 256
 	forcedShutdownWait       = 5 * time.Second
 )
 
@@ -94,6 +97,11 @@ type validatedStart struct {
 	terminalSize     *codev1.TerminalSize
 	environment      []string
 	environmentKeys  []string
+}
+
+type batchDeleteTarget struct {
+	info            *codev1.ProcessInfo
+	selectorIndexes []uint32
 }
 
 // New validates the workspace/runtime roots and recovers persistent history.
@@ -322,18 +330,144 @@ func (s *Service) DeleteProcess(ctx context.Context, request *codev1.DeleteProce
 	}
 
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	record, err := s.lookupLocked(request.GetProcess())
 	if err != nil {
-		s.mu.Unlock()
 		return nil, err
 	}
+	info, err := s.deleteRecordLocked(record)
+	if err != nil {
+		return nil, err
+	}
+	return &codev1.DeleteProcessResponse{Process: info}, nil
+}
+
+// BatchDeleteProcesses expands exact references and process-name globs from
+// one registry snapshot, then permanently deletes every unique selected UUID.
+// Individual selection and deletion failures are returned in-band so one
+// failure does not prevent unrelated terminal histories from being removed.
+func (s *Service) BatchDeleteProcesses(ctx context.Context, request *codev1.BatchDeleteProcessesRequest) (*codev1.BatchDeleteProcessesResponse, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, status.FromContextError(err).Err()
+	}
+	if request == nil || len(request.GetSelectors()) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "at least one process selector is required")
+	}
+	if len(request.GetSelectors()) > maxBatchDeleteSelectors {
+		return nil, status.Errorf(codes.InvalidArgument, "batch delete accepts at most %d selectors", maxBatchDeleteSelectors)
+	}
+
+	response := &codev1.BatchDeleteProcessesResponse{
+		Selectors: make([]*codev1.BatchDeleteSelectorResult, 0, len(request.GetSelectors())),
+		Processes: make([]*codev1.BatchDeleteProcessResult, 0),
+	}
+	targetsByID := make(map[string]*batchDeleteTarget)
+	orderedTargets := make([]*batchDeleteTarget, 0)
+
+	s.mu.Lock()
+	for index, selector := range request.GetSelectors() {
+		selectorResult := &codev1.BatchDeleteSelectorResult{SelectorIndex: uint32(index)}
+		records, err := s.selectProcessesLocked(selector)
+		if err != nil {
+			selectorResult.Status = batchDeleteStatus(err)
+			response.Selectors = append(response.Selectors, selectorResult)
+			continue
+		}
+		if len(records) == 0 {
+			selectorResult.Status = batchDeleteStatus(status.Error(codes.NotFound, "process selector matched no processes"))
+			response.Selectors = append(response.Selectors, selectorResult)
+			continue
+		}
+		selectorResult.MatchedCount = uint32(len(records))
+		selectorResult.Status = batchDeleteStatus(nil)
+		response.Selectors = append(response.Selectors, selectorResult)
+		for _, record := range records {
+			id := record.info.GetId()
+			target := targetsByID[id]
+			if target == nil {
+				target = &batchDeleteTarget{info: cloneProcessInfo(record.info)}
+				targetsByID[id] = target
+				orderedTargets = append(orderedTargets, target)
+			}
+			target.selectorIndexes = append(target.selectorIndexes, uint32(index))
+		}
+	}
+	s.mu.Unlock()
+
+	response.Processes = make([]*codev1.BatchDeleteProcessResult, 0, len(orderedTargets))
+	for _, target := range orderedTargets {
+		if err := ctx.Err(); err != nil {
+			return nil, status.FromContextError(err).Err()
+		}
+		_, err := s.deleteProcessByID(ctx, target.info.GetId())
+		response.Processes = append(response.Processes, &codev1.BatchDeleteProcessResult{
+			Process: &codev1.ProcessDeleteTarget{
+				Id: target.info.GetId(), Name: target.info.GetName(), Pid: target.info.GetPid(), State: target.info.GetState(),
+			},
+			SelectorIndexes: append([]uint32(nil), target.selectorIndexes...),
+			Status:          batchDeleteStatus(err),
+		})
+	}
+	return response, nil
+}
+
+func (s *Service) selectProcessesLocked(selector *codev1.ProcessSelector) ([]*managedProcess, error) {
+	if selector == nil || selector.GetValue() == nil {
+		return nil, status.Error(codes.InvalidArgument, "process selector is required")
+	}
+	switch value := selector.GetValue().(type) {
+	case *codev1.ProcessSelector_Reference:
+		record, err := s.lookupLocked(value.Reference)
+		if err != nil {
+			return nil, err
+		}
+		return []*managedProcess{record}, nil
+	case *codev1.ProcessSelector_NameGlob:
+		if value.NameGlob == "" {
+			return nil, status.Error(codes.InvalidArgument, "process name glob is required")
+		}
+		if len(value.NameGlob) > maxProcessNameGlobBytes {
+			return nil, status.Errorf(codes.InvalidArgument, "process name glob exceeds %d bytes", maxProcessNameGlobBytes)
+		}
+		if _, err := path.Match(value.NameGlob, ""); err != nil {
+			return nil, status.Error(codes.InvalidArgument, "process name glob is invalid")
+		}
+		records := make([]*managedProcess, 0)
+		for _, id := range s.order {
+			record := s.processes[id]
+			if record == nil {
+				continue
+			}
+			matched, _ := path.Match(value.NameGlob, record.info.GetName())
+			if matched {
+				records = append(records, record)
+			}
+		}
+		return records, nil
+	default:
+		return nil, status.Error(codes.InvalidArgument, "process selector is invalid")
+	}
+}
+
+func (s *Service) deleteProcessByID(ctx context.Context, id string) (*codev1.ProcessInfo, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, status.FromContextError(err).Err()
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record := s.processes[id]
+	if record == nil {
+		return nil, status.Error(codes.NotFound, "process not found")
+	}
+	return s.deleteRecordLocked(record)
+}
+
+func (s *Service) deleteRecordLocked(record *managedProcess) (*codev1.ProcessInfo, error) {
 	if isActiveState(record.info.GetState()) {
 		info := cloneProcessInfo(record.info)
-		s.mu.Unlock()
 		return nil, status.Errorf(codes.FailedPrecondition, "process %q is %s; stop it before deleting history", info.GetName(), processStateName(info.GetState()))
 	}
 	if record.logs != nil && !record.logs.lockForDeletion() {
-		s.mu.Unlock()
 		return nil, status.Error(codes.FailedPrecondition, "process logs are being observed")
 	}
 	if record.logs != nil {
@@ -341,12 +475,17 @@ func (s *Service) DeleteProcess(ctx context.Context, request *codev1.DeleteProce
 	}
 	info := cloneProcessInfo(record.info)
 	if err := s.store.remove(info.GetId()); err != nil {
-		s.mu.Unlock()
 		return nil, status.Error(codes.Internal, "delete persistent process record failed")
 	}
 	s.removeLocked(record)
-	s.mu.Unlock()
-	return &codev1.DeleteProcessResponse{Process: info}, nil
+	return info, nil
+}
+
+func batchDeleteStatus(err error) *statuspb.Status {
+	if err == nil {
+		return status.New(codes.OK, "").Proto()
+	}
+	return status.Convert(err).Proto()
 }
 
 // SignalProcess sends an allowed signal to the entire managed process group.
