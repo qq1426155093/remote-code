@@ -1,0 +1,121 @@
+version: 1
+namespace: process
+description: Example managed process tools
+language: expr
+
+tools:
+  - name: list
+    title: List managed processes
+    description: List active processes or include terminal persistent history when all is true.
+    capabilities: [processes.read]
+    timeout: 10s
+    annotations:
+      read_only: true
+      destructive: false
+      idempotent: true
+      open_world: false
+    input_schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required: [all]
+      additionalProperties: false
+      properties:
+        all:
+          type: boolean
+          description: Include exited, failed, and controller-lost process history.
+    output_schema:
+      type: array
+      items:
+        type: object
+    script: |-
+      process_list(args.all)
+
+  - name: start
+    title: Start a managed process
+    description: Start one executable directly without a shell and return its stable process UUID for later calls.
+    capabilities: [processes.start]
+    timeout: 30s
+    max_concurrency: 4
+    annotations:
+      read_only: false
+      destructive: false
+      idempotent: false
+      open_world: true
+    input_schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required: [command, arguments, working_directory, io_mode, input_mode]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: Optional logical process name; omit it to generate one.
+        command:
+          type: string
+          description: Concrete executable name or path, executed without a shell.
+          minLength: 1
+        arguments:
+          type: array
+          description: Exact argument vector passed to the executable.
+          items:
+            type: string
+        working_directory:
+          type: string
+          description: Workspace-relative working directory; use a dot for the root.
+        io_mode:
+          type: string
+          description: Process IO mode, either pipe or pty.
+          enum: [pipe, pty]
+        input_mode:
+          type: string
+          description: Input lifecycle mode, either disabled or managed.
+          enum: [disabled, managed]
+        environment:
+          type: object
+          description: Optional environment variable overrides; values are never returned or persisted.
+          additionalProperties:
+            type: string
+    output_schema:
+      type: object
+    script: |-
+      process_start(args)
+
+  - name: logs
+    title: Read a process log snapshot
+    description: Read a bounded non-following snapshot from the persistent stdout and stderr log.
+    capabilities: [processes.read]
+    timeout: 15s
+    max_concurrency: 8
+    annotations:
+      read_only: true
+      destructive: false
+      idempotent: true
+      open_world: false
+    input_schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required: [process_id, streams, tail_lines, max_bytes]
+      additionalProperties: false
+      properties:
+        process_id:
+          type: string
+          description: Stable lowercase process UUID returned by process.start.
+        streams:
+          type: array
+          description: Streams to include; an empty array selects both stdout and stderr.
+          items:
+            type: string
+            enum: [stdout, stderr]
+        tail_lines:
+          type: integer
+          description: Number of logical lines to replay from the tail.
+          minimum: 0
+        max_bytes:
+          type: integer
+          description: Maximum payload bytes to include in the snapshot.
+          minimum: 1
+          maximum: 16777216
+    output_schema:
+      type: object
+    script: |-
+      process_logs(args.process_id, args.streams, args.tail_lines, args.max_bytes)

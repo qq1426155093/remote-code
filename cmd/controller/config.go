@@ -11,14 +11,16 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 	"github.com/qq1426155093/remote-code/internal/auth"
+	mcpserver "github.com/qq1426155093/remote-code/internal/mcp"
 	processservice "github.com/qq1426155093/remote-code/internal/process"
 	"github.com/qq1426155093/remote-code/internal/server"
 )
 
 const (
-	controllerConfigVersion  = 1
-	maxControllerConfigBytes = 1 << 20
-	maxConfiguredProcesses   = 4096
+	controllerConfigVersionV1 = 1
+	controllerConfigVersionV2 = 2
+	maxControllerConfigBytes  = 1 << 20
+	maxConfiguredProcesses    = 4096
 )
 
 type controllerOptions struct {
@@ -51,10 +53,28 @@ type controllerFileConfig struct {
 		RetentionAfterExit *string `toml:"retention_after_exit"`
 		MaxObservers       *int    `toml:"max_observers_per_process"`
 	} `toml:"process_logs"`
+	MCP *mcpFileConfig `toml:"mcp"`
+}
+
+type mcpFileConfig struct {
+	Enabled                 *bool     `toml:"enabled"`
+	ListenAddress           *string   `toml:"listen_address"`
+	EndpointPath            *string   `toml:"endpoint_path"`
+	DefinitionFiles         *[]string `toml:"definition_files"`
+	AllowedOrigins          *[]string `toml:"allowed_origins"`
+	AllowedHostCapabilities *[]string `toml:"allowed_host_capabilities"`
+	MaxRequestBytes         *int64    `toml:"max_request_bytes"`
+	MaxResponseBytes        *int64    `toml:"max_response_bytes"`
+	MaxConcurrentCalls      *int      `toml:"max_concurrent_calls"`
+	RequestsPerSecond       *float64  `toml:"requests_per_second"`
+	RequestBurst            *int      `toml:"request_burst"`
+	DefaultToolTimeout      *string   `toml:"default_tool_timeout"`
+	MaxToolTimeout          *string   `toml:"max_tool_timeout"`
+	ToolListPageSize        *int      `toml:"tool_list_page_size"`
 }
 
 func defaultControllerOptions() controllerOptions {
-	return controllerOptions{serverConfig: server.Config{
+	options := controllerOptions{serverConfig: server.Config{
 		ListenAddress:    "127.0.0.1:9443",
 		MaxUploadBytes:   1 << 30,
 		RuntimeDirectory: "/var/run/remote-code-controller",
@@ -67,6 +87,8 @@ func defaultControllerOptions() controllerOptions {
 			MaxObservers:       8,
 		},
 	}}
+	options.serverConfig.MCP.ApplyDefaults()
+	return options
 }
 
 // parseControllerOptions loads TOML first and binds flags to the merged values,
@@ -196,8 +218,11 @@ func loadControllerConfig(name string) (controllerFileConfig, error) {
 		}
 		return controllerFileConfig{}, fmt.Errorf("decode controller config %q: %s", name, details)
 	}
-	if config.Version != controllerConfigVersion {
-		return controllerFileConfig{}, fmt.Errorf("controller config version must be %d", controllerConfigVersion)
+	if config.Version != controllerConfigVersionV1 && config.Version != controllerConfigVersionV2 {
+		return controllerFileConfig{}, fmt.Errorf("controller config version must be %d or %d", controllerConfigVersionV1, controllerConfigVersionV2)
+	}
+	if config.Version == controllerConfigVersionV1 && config.MCP != nil {
+		return controllerFileConfig{}, errors.New("controller config version 1 does not support the mcp table")
 	}
 	return config, nil
 }
@@ -249,6 +274,65 @@ func applyControllerFileConfig(options *controllerOptions, config controllerFile
 	if config.ProcessLogs.MaxObservers != nil {
 		options.serverConfig.ProcessLogs.MaxObservers = *config.ProcessLogs.MaxObservers
 	}
+	if config.MCP != nil {
+		if err := applyMCPFileConfig(&options.serverConfig.MCP, *config.MCP); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func applyMCPFileConfig(config *mcpserver.Config, file mcpFileConfig) error {
+	if file.Enabled != nil {
+		config.Enabled = *file.Enabled
+	}
+	if file.ListenAddress != nil {
+		config.ListenAddress = *file.ListenAddress
+	}
+	if file.EndpointPath != nil {
+		config.EndpointPath = *file.EndpointPath
+	}
+	if file.DefinitionFiles != nil {
+		config.DefinitionFiles = append([]string(nil), (*file.DefinitionFiles)...)
+	}
+	if file.AllowedOrigins != nil {
+		config.AllowedOrigins = append([]string(nil), (*file.AllowedOrigins)...)
+	}
+	if file.AllowedHostCapabilities != nil {
+		config.AllowedHostCapabilities = append([]string(nil), (*file.AllowedHostCapabilities)...)
+	}
+	if file.MaxRequestBytes != nil {
+		config.MaxRequestBytes = *file.MaxRequestBytes
+	}
+	if file.MaxResponseBytes != nil {
+		config.MaxResponseBytes = *file.MaxResponseBytes
+	}
+	if file.MaxConcurrentCalls != nil {
+		config.MaxConcurrentCalls = *file.MaxConcurrentCalls
+	}
+	if file.RequestsPerSecond != nil {
+		config.RequestsPerSecond = *file.RequestsPerSecond
+	}
+	if file.RequestBurst != nil {
+		config.RequestBurst = *file.RequestBurst
+	}
+	if file.ToolListPageSize != nil {
+		config.ToolListPageSize = *file.ToolListPageSize
+	}
+	if file.DefaultToolTimeout != nil {
+		value, err := time.ParseDuration(*file.DefaultToolTimeout)
+		if err != nil {
+			return fmt.Errorf("invalid mcp.default_tool_timeout: %w", err)
+		}
+		config.DefaultToolTimeout = value
+	}
+	if file.MaxToolTimeout != nil {
+		value, err := time.ParseDuration(*file.MaxToolTimeout)
+		if err != nil {
+			return fmt.Errorf("invalid mcp.max_tool_timeout: %w", err)
+		}
+		config.MaxToolTimeout = value
+	}
 	return nil
 }
 
@@ -289,6 +373,9 @@ func (o controllerOptions) validatedServerConfig() (server.Config, error) {
 		}
 		config.Token = token
 	}
+	config.MCP.Token = config.Token
+	config.MCP.TLSCertificateFile = config.TLSCertificateFile
+	config.MCP.TLSKeyFile = config.TLSKeyFile
 	if err := server.ValidateConfig(config); err != nil {
 		return server.Config{}, err
 	}

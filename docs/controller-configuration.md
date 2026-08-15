@@ -22,10 +22,10 @@ remote-code-controller \
 除 `max_processes` 被命令行覆盖外，其它值仍来自 TOML。布尔值可以显式反向覆盖，例如
 `--allow-insecure-remote=false`。
 
-## TOML schema v1
+## TOML schema v1 与 v2
 
 ```toml
-version = 1
+version = 2
 workspace = "/srv/remote-code/workspace"
 listen_address = "127.0.0.1:9443"
 runtime_directory = "/var/run/remote-code-controller"
@@ -46,9 +46,35 @@ key_file = "/etc/remote-code/tls/server.key"
 
 [auth]
 token_file = "/etc/remote-code/controller.token"
+
+[mcp]
+enabled = true
+listen_address = "127.0.0.1:9444"
+endpoint_path = "/mcp"
+definition_files = [
+  "/etc/remote-code/mcp/file.mcp.yaml",
+  "/etc/remote-code/mcp/process.mcp.yaml",
+]
+allowed_origins = []
+allowed_host_capabilities = [
+  "files.read",
+  "files.write",
+  "processes.read",
+  "processes.start",
+  "processes.signal",
+]
+max_request_bytes = 1048576
+max_response_bytes = 4194304
+max_concurrent_calls = 16
+requests_per_second = 20
+request_burst = 40
+default_tool_timeout = "30s"
+max_tool_timeout = "5m"
+tool_list_page_size = 100
 ```
 
-`version = 1` 必须存在。TLS certificate/key 必须同时配置。认证配置只接受 token 文件路径，
+`version` 必须存在。schema v1 继续兼容，但不允许 `[mcp]`；schema v2 可省略 `[mcp]`，此时 MCP
+保持关闭。TLS certificate/key 必须同时配置。认证配置只接受 token 文件路径，
 不允许直接把 token 放进 TOML。所有相对路径按 controller 进程的当前工作目录解释；生产
 配置建议使用绝对路径。
 
@@ -74,6 +100,33 @@ controller 拒绝启动。配置文件最大 1 MiB。
 | `tls.key_file` | `--tls-key` | 空 |
 | `auth.token_file` | `--token-file` | 空 |
 
+MCP 字段首版不提供命令行覆盖，以免列表字段产生不明确的替换/追加语义。默认值如下：
+
+| TOML | 默认值 |
+| --- | --- |
+| `mcp.enabled` | `false` |
+| `mcp.listen_address` | `127.0.0.1:9444` |
+| `mcp.endpoint_path` | `/mcp` |
+| `mcp.allowed_origins` | `[]` |
+| `mcp.allowed_host_capabilities` | `[]` |
+| `mcp.max_request_bytes` | `1048576` |
+| `mcp.max_response_bytes` | `4194304` |
+| `mcp.max_concurrent_calls` | `16` |
+| `mcp.requests_per_second` | `20` |
+| `mcp.request_burst` | `40` |
+| `mcp.default_tool_timeout` | `30s` |
+| `mcp.max_tool_timeout` | `5m` |
+| `mcp.tool_list_page_size` | `100` |
+
+启用 MCP 时 `definition_files` 至少包含一个以 `.mcp.yaml` 结尾的普通文件，且文件物理路径必须位于
+workspace 之外；最终符号链接、重复物理文件以及 `.mcp.yml`/`.mcp` 扩展名都会被拒绝。MCP 强制要求
+全局 token，并复用全局 TLS。MCP 与 gRPC 使用不同 listener；非 loopback 明文监听继续受
+`allow_insecure_remote` 限制。可用 host capability 为 `files.read`、`files.write`、`processes.read`、
+`processes.start` 和 `processes.signal`。
+
+首版安全 definition opener 使用 Linux `O_NOFOLLOW` 与 fd identity；在非 Linux 平台启用 MCP 会
+fail closed，普通 gRPC controller 在 MCP 关闭时不受影响。
+
 ## 校验
 
 以下命令解析、合并并校验配置，不启动 listener：
@@ -84,6 +137,6 @@ remote-code-controller --config /etc/remote-code/controller.toml --check-config
 
 成功时输出 `configuration OK`。日志尺寸包含 segment 与索引；segment 和单进程上限不得小于
 256 KiB，总日志上限不得小于单进程上限，保留周期不能为负数，单进程观察者上限为 1–1024。
-校验还包含 schema、字段类型、范围、TLS 配对、明文远端
-监听策略、workspace 目录和 token 文件；listener 是否可绑定、TLS 证书内容以及 runtime
-目录创建仍在实际启动时验证。
+校验还包含 schema、字段类型、范围、TLS 配对与证书内容、明文远端监听策略、workspace 目录、token
+文件，以及全部 MCP YAML/JSON Schema/Expr/capability。listener 是否可绑定以及 runtime 目录创建仍在
+实际启动时验证；检查过程不会执行 tool 或 host function。

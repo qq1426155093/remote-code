@@ -1,5 +1,5 @@
-# remote-code-controller configuration, TOML schema version 1.
-version = 1
+# remote-code-controller configuration, TOML schema version 2.
+version = 2
 
 # All file RPCs and relative process working directories are confined here.
 workspace = "/srv/remote-code/workspace"
@@ -27,3 +27,24 @@ max_observers_per_process = 8
 # Store only the path in this file; keep the token in a mode-0600 file.
 # [auth]
 # token_file = "/etc/remote-code/controller.token"
+
+# MCP is disabled by default. Enabling it requires auth.token_file and at
+# least one definition file outside the workspace. It reuses the global TLS.
+[mcp]
+enabled = false
+listen_address = "127.0.0.1:9444"
+endpoint_path = "/mcp"
+definition_files = [
+  "/etc/remote-code/mcp/file.mcp.yaml",
+  "/etc/remote-code/mcp/process.mcp.yaml",
+]
+allowed_origins = []
+allowed_host_capabilities = []
+max_request_bytes = 1048576
+max_response_bytes = 4194304
+max_concurrent_calls = 16
+requests_per_second = 20
+request_burst = 40
+default_tool_timeout = "30s"
+max_tool_timeout = "5m"
+tool_list_page_size = 100

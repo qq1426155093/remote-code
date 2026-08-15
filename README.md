@@ -6,7 +6,9 @@ Remote Code 是一个面向远程开发任务的 Code Agent 控制平面。它�
 
 > 项目状态：文件与基础进程控制已可运行，包含带 Tab 补全的交互式 CLI、结构化目录树、
 > gRPC controller、流式上传/下载、PTY/pipe 启动、可回放/跟随的持久化输出日志、进程列表、
-> 信号、历史删除、自动回收、重启历史恢复和可重连的远程 PTY attach。Agent 语义仍是后续版本计划。
+> 信号、历史删除、自动回收、重启历史恢复和可重连的远程 PTY attach。controller 也可从多个
+> `.mcp.yaml` 文件加载 Expr tool，并通过带认证的 Streamable HTTP MCP endpoint 暴露文件与进程能力。
+> Agent 语义仍是后续版本计划。
 
 ## 快速开始
 
@@ -52,7 +54,15 @@ remote-code:/> forget listing 'test-*' glob:reused-name
 [技术方案](docs/technical-design-v1.md)、[通用进程详细设计](docs/process-management-design-v1.md)、
 [进程日志观测详细设计](docs/process-log-observation-design-v1.md)、
 [进程标准输入详细设计](docs/process-input-design-v1.md)和
-[Controller 配置文件](docs/controller-configuration.md)。
+[Controller 配置文件](docs/controller-configuration.md)。可配置 MCP Server 的契约与实现依据见
+[MCP Server 需求](docs/mcp-server-requirements-v1.md)和
+[MCP Server 详细设计](docs/mcp-server-design-v1.md)。
+
+MCP 默认关闭。启用时使用 TOML schema v2，配置独立 HTTP listener、bearer token 和 workspace
+之外的定义文件。仓库提供可直接参考并通过启动期编译检查的
+[`file.mcp.yaml`](configs/mcp/file.mcp.yaml) 与
+[`process.mcp.yaml`](configs/mcp/process.mcp.yaml)。`--check-config` 会读取严格 YAML、编译 JSON Schema
+与 Expr，但不会绑定端口或执行 host function。
 
 controller 同时保留全部命令行参数。使用配置文件时，显式命令行参数覆盖 TOML，例如：
 

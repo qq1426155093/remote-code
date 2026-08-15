@@ -1,0 +1,104 @@
+version: 1
+namespace: file
+description: Example workspace file tools
+language: expr
+
+tools:
+  - name: list
+    title: List workspace files
+    description: List direct children of a workspace-relative path without following symbolic links.
+    capabilities: [files.read]
+    timeout: 10s
+    max_concurrency: 8
+    annotations:
+      read_only: true
+      destructive: false
+      idempotent: true
+      open_world: false
+    input_schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required: [path]
+      additionalProperties: false
+      properties:
+        path:
+          type: string
+          description: Workspace-relative directory path; use a dot for the root.
+          minLength: 1
+          maxLength: 4096
+    output_schema:
+      type: array
+      items:
+        type: object
+    script: |-
+      file_list(args.path)
+
+  - name: read_text
+    title: Read a workspace text file
+    description: Read a bounded regular UTF-8 file and return its path, content, size, and SHA-256 digest.
+    capabilities: [files.read]
+    timeout: 10s
+    max_concurrency: 8
+    annotations:
+      read_only: true
+      destructive: false
+      idempotent: true
+      open_world: false
+    input_schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required: [path, max_bytes]
+      additionalProperties: false
+      properties:
+        path:
+          type: string
+          description: Workspace-relative path to a regular UTF-8 file.
+          minLength: 1
+          maxLength: 4096
+        max_bytes:
+          type: integer
+          description: Maximum bytes to read before returning a resource-limit error.
+          minimum: 1
+          maximum: 16777216
+    output_schema:
+      type: object
+    script: |-
+      file_read_text(args.path, args.max_bytes)
+
+  - name: write_text
+    title: Write a workspace text file
+    description: Atomically write UTF-8 content; it can replace an existing regular file when overwrite is true.
+    capabilities: [files.write]
+    timeout: 30s
+    max_concurrency: 4
+    annotations:
+      read_only: false
+      destructive: true
+      idempotent: true
+      open_world: false
+    input_schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required: [path, content, overwrite, mode]
+      additionalProperties: false
+      properties:
+        path:
+          type: string
+          description: Workspace-relative target path.
+          minLength: 1
+          maxLength: 4096
+        content:
+          type: string
+          description: UTF-8 text to write.
+        overwrite:
+          type: boolean
+          description: Whether an existing regular file may be replaced.
+        mode:
+          type: integer
+          description: POSIX permission bits expressed as an integer from 0 through 511.
+          minimum: 0
+          maximum: 511
+    output_schema:
+      type: object
+    script: |-
+      file_write_text(args.path, args.content, args.overwrite, args.mode)

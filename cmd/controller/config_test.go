@@ -89,7 +89,7 @@ func TestLoadControllerConfigRejectsInvalidFiles(t *testing.T) {
 		want     string
 	}{
 		{name: "missing version", contents: `workspace = "/work"`, want: "version must be 1"},
-		{name: "future version", contents: "version = 2\n", want: "version must be 1"},
+		{name: "future version", contents: "version = 3\n", want: "version must be 1 or 2"},
 		{name: "unknown field", contents: "version = 1\nmax_proceses = 2\n", want: "unknown field"},
 		{name: "wrong type", contents: "version = 1\nmax_processes = \"many\"\n", want: "cannot decode"},
 		{name: "duplicate key", contents: "version = 1\nmax_processes = 2\nmax_processes = 3\n", want: "already defined"},
@@ -110,6 +110,39 @@ func TestLoadControllerConfigRejectsInvalidFiles(t *testing.T) {
 	}
 	if _, err := loadControllerConfig(empty); err == nil {
 		t.Fatal("loadControllerConfig(empty) succeeded")
+	}
+}
+
+func TestLoadControllerConfigV2MCP(t *testing.T) {
+	definition := filepath.Join(t.TempDir(), "file.mcp.yaml")
+	configFile := writeControllerConfig(t, `
+version = 2
+workspace = "/work"
+[mcp]
+enabled = true
+listen_address = "127.0.0.1:9555"
+definition_files = ["`+definition+`"]
+allowed_host_capabilities = ["files.read"]
+default_tool_timeout = "12s"
+max_tool_timeout = "2m"
+`)
+	file, err := loadControllerConfig(configFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := defaultControllerOptions()
+	if err := applyControllerFileConfig(&options, file); err != nil {
+		t.Fatal(err)
+	}
+	if !options.serverConfig.MCP.Enabled || options.serverConfig.MCP.ListenAddress != "127.0.0.1:9555" ||
+		len(options.serverConfig.MCP.DefinitionFiles) != 1 || options.serverConfig.MCP.DefaultToolTimeout != 12*time.Second ||
+		options.serverConfig.MCP.MaxToolTimeout != 2*time.Minute {
+		t.Fatalf("MCP config = %+v", options.serverConfig.MCP)
+	}
+
+	v1WithMCP := writeControllerConfig(t, "version = 1\n[mcp]\nenabled = false\n")
+	if _, err := loadControllerConfig(v1WithMCP); err == nil || !strings.Contains(err.Error(), "version 1") {
+		t.Fatalf("v1 MCP error = %v", err)
 	}
 }
 
@@ -195,6 +228,66 @@ func TestRunControllerChecksConfigurationAndHandlesHelp(t *testing.T) {
 	_, err := parseControllerOptions([]string{"unexpected"}, &bytes.Buffer{})
 	if err == nil {
 		t.Fatal("parseControllerOptions(positional) succeeded")
+	}
+}
+
+func TestRunControllerChecksMCPDefinitionsWithoutListening(t *testing.T) {
+	workspace := t.TempDir()
+	runtimeDirectory := t.TempDir()
+	tokenFile := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(tokenFile, []byte("test-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	definition := filepath.Join(t.TempDir(), "check.mcp.yaml")
+	definitionYAML := `
+version: 1
+namespace: check
+description: Check config tool
+language: expr
+tools:
+  - name: echo
+    title: Echo
+    description: Return the supplied value without side effects.
+    capabilities: []
+    annotations:
+      read_only: true
+      destructive: false
+      idempotent: true
+      open_world: false
+    input_schema:
+      type: object
+      required: [value]
+      additionalProperties: false
+      properties:
+        value:
+          type: string
+          description: Value to return.
+    output_schema:
+      type: string
+    script: |-
+      args.value
+`
+	if err := os.WriteFile(definition, []byte(strings.TrimSpace(definitionYAML)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	configFile := writeControllerConfig(t, `
+version = 2
+workspace = "`+workspace+`"
+runtime_directory = "`+runtimeDirectory+`"
+[auth]
+token_file = "`+tokenFile+`"
+[mcp]
+enabled = true
+listen_address = "127.0.0.1:0"
+definition_files = ["`+definition+`"]
+allowed_host_capabilities = []
+`)
+	var stdout bytes.Buffer
+	if err := runController([]string{"--config", configFile, "--check-config"}, &stdout, &bytes.Buffer{}); err != nil {
+		t.Fatalf("runController() error = %v", err)
+	}
+	if stdout.String() != "configuration OK\n" {
+		t.Fatalf("output = %q", stdout.String())
 	}
 }
 

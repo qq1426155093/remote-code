@@ -537,9 +537,7 @@ func (s *Service) SignalProcess(ctx context.Context, request *codev1.SignalProce
 // Shutdown rejects starts, waits for starts already in progress, terminates
 // running groups, and force-kills groups remaining when ctx expires.
 func (s *Service) Shutdown(ctx context.Context) error {
-	s.mu.Lock()
-	s.closing = true
-	s.mu.Unlock()
+	s.BeginShutdown()
 	s.starts.Wait()
 
 	s.mu.Lock()
@@ -558,6 +556,13 @@ func (s *Service) Shutdown(ctx context.Context) error {
 	defer cancel()
 	_ = waitForRecords(forceContext, remaining)
 	return ctx.Err()
+}
+
+// BeginShutdown prevents new process starts while transports drain.
+func (s *Service) BeginShutdown() {
+	s.mu.Lock()
+	s.closing = true
+	s.mu.Unlock()
 }
 
 // Close releases the pinned workspace handle after Shutdown has completed.

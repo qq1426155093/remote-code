@@ -2,15 +2,18 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 	"sync"
 
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
 	"github.com/qq1426155093/remote-code/internal/auth"
 	"github.com/qq1426155093/remote-code/internal/files"
+	mcpserver "github.com/qq1426155093/remote-code/internal/mcp"
 	processservice "github.com/qq1426155093/remote-code/internal/process"
 	"github.com/qq1426155093/remote-code/internal/version"
 	"google.golang.org/grpc"
@@ -33,6 +36,14 @@ type Config struct {
 	RuntimeDirectory    string
 	MaxProcesses        int
 	ProcessLogs         processservice.LogConfig
+	MCP                 mcpserver.Config
+}
+
+// Prepared contains validated controller configuration and compiled MCP tools.
+// Preparing does not bind listeners or invoke any tool host function.
+type Prepared struct {
+	Config Config
+	MCP    *mcpserver.Prepared
 }
 
 // Server owns the listener, gRPC server and workspace handle.
@@ -41,17 +52,57 @@ type Server struct {
 	listener   net.Listener
 	files      *files.Service
 	processes  *processservice.Service
+	mcpServer  *mcpserver.Server
 	closeOnce  sync.Once
 }
 
 // New validates the configuration and binds the listening socket.
 func New(config Config) (*Server, error) {
+	prepared, err := Prepare(config)
+	if err != nil {
+		return nil, err
+	}
+	return NewPrepared(prepared)
+}
+
+// Prepare validates transport configuration and compiles the optional MCP
+// registry without opening a listener.
+func Prepare(config Config) (*Prepared, error) {
 	if config.ListenAddress == "" {
 		config.ListenAddress = "127.0.0.1:9443"
 	}
+	config.MCP.ApplyDefaults()
 	if err := ValidateConfig(config); err != nil {
 		return nil, err
 	}
+	workspaceInfo, err := os.Stat(config.Workspace)
+	if err != nil {
+		return nil, fmt.Errorf("stat workspace: %w", err)
+	}
+	if !workspaceInfo.IsDir() {
+		return nil, fmt.Errorf("workspace %q is not a directory", config.Workspace)
+	}
+	if config.TLSCertificateFile != "" {
+		if _, err := tls.LoadX509KeyPair(config.TLSCertificateFile, config.TLSKeyFile); err != nil {
+			return nil, fmt.Errorf("load TLS certificate: %w", err)
+		}
+	}
+	config.MCP.Token = config.Token
+	config.MCP.TLSCertificateFile = config.TLSCertificateFile
+	config.MCP.TLSKeyFile = config.TLSKeyFile
+	mcpPrepared, err := mcpserver.Prepare(config.MCP, config.Workspace, config.ListenAddress)
+	if err != nil {
+		return nil, fmt.Errorf("prepare MCP server: %w", err)
+	}
+	return &Prepared{Config: config, MCP: mcpPrepared}, nil
+}
+
+// NewPrepared creates services and binds listeners from prepared configuration.
+func NewPrepared(prepared *Prepared) (*Server, error) {
+	if prepared == nil {
+		return nil, errors.New("prepared server configuration is required")
+	}
+	config := prepared.Config
 
 	fileService, err := files.New(files.Config{Workspace: config.Workspace, MaxUploadBytes: config.MaxUploadBytes})
 	if err != nil {
@@ -99,7 +150,17 @@ func New(config Config) (*Server, error) {
 	healthServer := health.NewServer()
 	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
-	return &Server{grpcServer: grpcServer, listener: listener, files: fileService, processes: processService}, nil
+	var mcpHTTPServer *mcpserver.Server
+	if config.MCP.Enabled {
+		mcpHTTPServer, err = mcpserver.NewServer(prepared.MCP, fileService, processService)
+		if err != nil {
+			_ = listener.Close()
+			_ = processService.Close()
+			_ = fileService.Close()
+			return nil, err
+		}
+	}
+	return &Server{grpcServer: grpcServer, listener: listener, files: fileService, processes: processService, mcpServer: mcpHTTPServer}, nil
 }
 
 // ValidateConfig checks transport-level invariants without opening files or a
@@ -114,6 +175,9 @@ func ValidateConfig(config Config) error {
 	if config.TLSCertificateFile == "" && !config.AllowInsecureRemote && !isLoopbackAddress(config.ListenAddress) {
 		return errors.New("refusing insecure non-loopback listener; configure TLS or pass --allow-insecure-remote")
 	}
+	if config.MCP.Enabled && config.TLSCertificateFile == "" && !config.AllowInsecureRemote && !isLoopbackAddress(config.MCP.ListenAddress) {
+		return errors.New("refusing insecure non-loopback MCP listener; configure TLS or pass --allow-insecure-remote")
+	}
 	return nil
 }
 
@@ -122,19 +186,42 @@ func (s *Server) Address() string {
 	return s.listener.Addr().String()
 }
 
+// MCPAddress returns the actual MCP address, or an empty string when disabled.
+func (s *Server) MCPAddress() string {
+	if s.mcpServer == nil {
+		return ""
+	}
+	return s.mcpServer.Address()
+}
+
 // Serve blocks while accepting gRPC traffic.
 func (s *Server) Serve() error {
-	return s.grpcServer.Serve(s.listener)
+	if s.mcpServer == nil {
+		return s.grpcServer.Serve(s.listener)
+	}
+	errorsChannel := make(chan error, 2)
+	go func() { errorsChannel <- fmt.Errorf("serve gRPC: %w", s.grpcServer.Serve(s.listener)) }()
+	go func() { errorsChannel <- fmt.Errorf("serve MCP HTTP: %w", s.mcpServer.Serve()) }()
+	return <-errorsChannel
 }
 
 // Shutdown gracefully drains requests until ctx expires, then forces a stop.
 func (s *Server) Shutdown(ctx context.Context) error {
-	shutdownErr := s.processes.Shutdown(ctx)
+	var shutdownErr error
+	s.processes.BeginShutdown()
+	if s.mcpServer != nil {
+		if err := s.mcpServer.Shutdown(ctx); err != nil {
+			shutdownErr = err
+		}
+	}
 	done := make(chan struct{})
 	go func() {
 		s.grpcServer.GracefulStop()
 		close(done)
 	}()
+	if err := s.processes.Shutdown(ctx); shutdownErr == nil {
+		shutdownErr = err
+	}
 	select {
 	case <-done:
 	case <-ctx.Done():

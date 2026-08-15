@@ -44,16 +44,23 @@ func runController(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
+	prepared, err := server.Prepare(config)
+	if err != nil {
+		return err
+	}
 	if options.checkConfig {
 		fmt.Fprintln(stdout, "configuration OK")
 		return nil
 	}
 
-	controller, err := server.New(config)
+	controller, err := server.NewPrepared(prepared)
 	if err != nil {
 		return err
 	}
 	log.Printf("remote-code-controller v%s listening on %s", version.Version, controller.Address())
+	if address := controller.MCPAddress(); address != "" {
+		log.Printf("MCP Streamable HTTP listening on %s%s", address, prepared.Config.MCP.EndpointPath)
+	}
 	serveErrors := make(chan error, 1)
 	go func() {
 		serveErrors <- controller.Serve()
@@ -67,7 +74,10 @@ func runController(args []string, stdout, stderr io.Writer) error {
 		log.Printf("received %s, shutting down", received)
 	case err := <-serveErrors:
 		if err != nil && !errors.Is(err, grpc.ErrServerStopped) {
-			return fmt.Errorf("serve gRPC: %w", err)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			_ = controller.Shutdown(ctx)
+			return fmt.Errorf("serve controller: %w", err)
 		}
 		return nil
 	}
