@@ -7,9 +7,11 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/pelletier/go-toml/v2"
 	"github.com/qq1426155093/remote-code/internal/auth"
+	processservice "github.com/qq1426155093/remote-code/internal/process"
 	"github.com/qq1426155093/remote-code/internal/server"
 )
 
@@ -42,6 +44,13 @@ type controllerFileConfig struct {
 	Auth struct {
 		TokenFile *string `toml:"token_file"`
 	} `toml:"auth"`
+	ProcessLogs struct {
+		MaxBytesPerProcess *int64  `toml:"max_bytes_per_process"`
+		MaxTotalBytes      *int64  `toml:"max_total_bytes"`
+		SegmentBytes       *int64  `toml:"segment_bytes"`
+		RetentionAfterExit *string `toml:"retention_after_exit"`
+		MaxObservers       *int    `toml:"max_observers_per_process"`
+	} `toml:"process_logs"`
 }
 
 func defaultControllerOptions() controllerOptions {
@@ -50,6 +59,13 @@ func defaultControllerOptions() controllerOptions {
 		MaxUploadBytes:   1 << 30,
 		RuntimeDirectory: "/var/run/remote-code-controller",
 		MaxProcesses:     16,
+		ProcessLogs: processservice.LogConfig{
+			MaxBytesPerProcess: 64 << 20,
+			MaxTotalBytes:      4 << 30,
+			SegmentBytes:       4 << 20,
+			RetentionAfterExit: 7 * 24 * time.Hour,
+			MaxObservers:       8,
+		},
 	}}
 }
 
@@ -66,7 +82,9 @@ func parseControllerOptions(args []string, output io.Writer) (controllerOptions,
 		if err != nil {
 			return controllerOptions{}, err
 		}
-		applyControllerFileConfig(&options, fileConfig)
+		if err := applyControllerFileConfig(&options, fileConfig); err != nil {
+			return controllerOptions{}, err
+		}
 		options.configFile = configFile
 	}
 
@@ -78,6 +96,11 @@ func parseControllerOptions(args []string, output io.Writer) (controllerOptions,
 	flags.Int64Var(&options.serverConfig.MaxUploadBytes, "max-upload-bytes", options.serverConfig.MaxUploadBytes, "maximum bytes per uploaded file")
 	flags.StringVar(&options.serverConfig.RuntimeDirectory, "runtime-dir", options.serverConfig.RuntimeDirectory, "persistent process runtime directory")
 	flags.IntVar(&options.serverConfig.MaxProcesses, "max-processes", options.serverConfig.MaxProcesses, "maximum concurrently active managed processes")
+	flags.Int64Var(&options.serverConfig.ProcessLogs.MaxBytesPerProcess, "process-log-max-bytes", options.serverConfig.ProcessLogs.MaxBytesPerProcess, "maximum retained log bytes per process")
+	flags.Int64Var(&options.serverConfig.ProcessLogs.MaxTotalBytes, "process-log-max-total-bytes", options.serverConfig.ProcessLogs.MaxTotalBytes, "maximum retained process log bytes in total")
+	flags.Int64Var(&options.serverConfig.ProcessLogs.SegmentBytes, "process-log-segment-bytes", options.serverConfig.ProcessLogs.SegmentBytes, "target process log segment size")
+	flags.DurationVar(&options.serverConfig.ProcessLogs.RetentionAfterExit, "process-log-retention", options.serverConfig.ProcessLogs.RetentionAfterExit, "process log retention after exit")
+	flags.IntVar(&options.serverConfig.ProcessLogs.MaxObservers, "process-log-max-observers", options.serverConfig.ProcessLogs.MaxObservers, "maximum concurrent log observers per process")
 	flags.StringVar(&options.serverConfig.TLSCertificateFile, "tls-cert", options.serverConfig.TLSCertificateFile, "TLS certificate PEM file")
 	flags.StringVar(&options.serverConfig.TLSKeyFile, "tls-key", options.serverConfig.TLSKeyFile, "TLS private key PEM file")
 	flags.StringVar(&options.tokenFile, "token-file", options.tokenFile, "optional bearer token file")
@@ -97,7 +120,9 @@ func findConfigFile(args []string) (string, error) {
 	valueFlags := map[string]bool{
 		"workspace": true, "listen-addr": true, "max-upload-bytes": true,
 		"runtime-dir": true, "max-processes": true, "tls-cert": true,
-		"tls-key": true, "token-file": true,
+		"tls-key": true, "token-file": true, "process-log-max-bytes": true,
+		"process-log-max-total-bytes": true, "process-log-segment-bytes": true,
+		"process-log-retention": true, "process-log-max-observers": true,
 	}
 	var result string
 	for index := 0; index < len(args); index++ {
@@ -177,7 +202,7 @@ func loadControllerConfig(name string) (controllerFileConfig, error) {
 	return config, nil
 }
 
-func applyControllerFileConfig(options *controllerOptions, config controllerFileConfig) {
+func applyControllerFileConfig(options *controllerOptions, config controllerFileConfig) error {
 	if config.Workspace != nil {
 		options.serverConfig.Workspace = *config.Workspace
 	}
@@ -205,6 +230,26 @@ func applyControllerFileConfig(options *controllerOptions, config controllerFile
 	if config.Auth.TokenFile != nil {
 		options.tokenFile = *config.Auth.TokenFile
 	}
+	if config.ProcessLogs.MaxBytesPerProcess != nil {
+		options.serverConfig.ProcessLogs.MaxBytesPerProcess = *config.ProcessLogs.MaxBytesPerProcess
+	}
+	if config.ProcessLogs.MaxTotalBytes != nil {
+		options.serverConfig.ProcessLogs.MaxTotalBytes = *config.ProcessLogs.MaxTotalBytes
+	}
+	if config.ProcessLogs.SegmentBytes != nil {
+		options.serverConfig.ProcessLogs.SegmentBytes = *config.ProcessLogs.SegmentBytes
+	}
+	if config.ProcessLogs.RetentionAfterExit != nil {
+		retention, err := time.ParseDuration(*config.ProcessLogs.RetentionAfterExit)
+		if err != nil {
+			return fmt.Errorf("invalid process_logs.retention_after_exit: %w", err)
+		}
+		options.serverConfig.ProcessLogs.RetentionAfterExit = retention
+	}
+	if config.ProcessLogs.MaxObservers != nil {
+		options.serverConfig.ProcessLogs.MaxObservers = *config.ProcessLogs.MaxObservers
+	}
+	return nil
 }
 
 func (o controllerOptions) validatedServerConfig() (server.Config, error) {
@@ -223,6 +268,9 @@ func (o controllerOptions) validatedServerConfig() (server.Config, error) {
 	}
 	if config.MaxProcesses <= 0 || config.MaxProcesses > maxConfiguredProcesses {
 		return server.Config{}, fmt.Errorf("max processes must be between 1 and %d", maxConfiguredProcesses)
+	}
+	if err := processservice.ValidateLogConfig(config.ProcessLogs); err != nil {
+		return server.Config{}, err
 	}
 	if (config.TLSCertificateFile == "") != (config.TLSKeyFile == "") {
 		return server.Config{}, errors.New("tls certificate and key must be provided together")

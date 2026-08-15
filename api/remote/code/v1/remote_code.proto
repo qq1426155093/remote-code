@@ -26,6 +26,7 @@ service ProcessService {
   rpc StartProcess(StartProcessRequest) returns (StartProcessResponse);
   rpc ListProcesses(ListProcessesRequest) returns (ListProcessesResponse);
   rpc SignalProcess(SignalProcessRequest) returns (SignalProcessResponse);
+  rpc ObserveProcessLogs(ObserveProcessLogsRequest) returns (stream ObserveProcessLogsResponse);
 }
 
 message GetInfoRequest {}
@@ -198,6 +199,18 @@ enum ProcessSignal {
   PROCESS_SIGNAL_CONT = 9;
 }
 
+enum ProcessLogStream {
+  PROCESS_LOG_STREAM_UNSPECIFIED = 0;
+  PROCESS_LOG_STREAM_STDOUT = 1;
+  PROCESS_LOG_STREAM_STDERR = 2;
+}
+
+enum ProcessLogEndReason {
+  PROCESS_LOG_END_REASON_UNSPECIFIED = 0;
+  PROCESS_LOG_END_REASON_SNAPSHOT_COMPLETE = 1;
+  PROCESS_LOG_END_REASON_PROCESS_EXITED = 2;
+}
+
 message ProcessInfo {
   string id = 1;
   string name = 2;
@@ -258,4 +271,68 @@ message SignalProcessRequest {
 
 message SignalProcessResponse {
   ProcessInfo process = 1;
+}
+
+message ObserveProcessLogsRequest {
+  // Logs use the stable UUID only; names and PIDs can be reused.
+  string process_id = 1;
+  // Empty selects both streams. PTY output is exposed as stdout only.
+  repeated ProcessLogStream streams = 2;
+  oneof start {
+    // Inclusive logical record offset. Zero is the first process log record.
+    uint64 offset = 3;
+    // Number of logical lines to replay across all selected streams.
+    uint64 tail_lines = 4;
+  }
+  // Continue from the captured snapshot until process exit or cancellation.
+  bool follow = 5;
+}
+
+message ProcessLogHeader {
+  string process_id = 1;
+  ProcessIOMode io_mode = 2;
+  repeated ProcessLogStream streams = 3;
+  uint64 earliest_offset = 4;
+  uint64 snapshot_end_offset = 5;
+  uint64 resolved_start_offset = 6;
+  bool history_truncated = 7;
+  bool tail_truncated = 8;
+  bool follow = 9;
+  uint32 format_version = 10;
+}
+
+message ProcessLogChunk {
+  uint64 offset = 1;
+  uint64 next_offset = 2;
+  uint64 line_offset = 3;
+  google.protobuf.Timestamp timestamp = 4;
+  ProcessLogStream stream = 5;
+  bytes data = 6;
+  bool line_start = 7;
+  bool line_end = 8;
+  // The beginning of this logical line was removed by retention.
+  bool line_truncated = 9;
+}
+
+message ProcessLogCheckpoint {
+  uint64 next_offset = 1;
+  bool replay_complete = 2;
+}
+
+message ProcessLogEnd {
+  uint64 next_offset = 1;
+  ProcessLogEndReason reason = 2;
+  ProcessState state = 3;
+  optional int32 exit_code = 4;
+  optional int32 exit_signal = 5;
+  bool logs_complete = 6;
+}
+
+message ObserveProcessLogsResponse {
+  oneof payload {
+    ProcessLogHeader header = 1;
+    ProcessLogChunk chunk = 2;
+    ProcessLogCheckpoint checkpoint = 3;
+    ProcessLogEnd end = 4;
+  }
 }

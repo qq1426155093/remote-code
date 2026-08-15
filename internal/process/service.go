@@ -50,6 +50,7 @@ type Config struct {
 	Workspace        string
 	RuntimeDirectory string
 	MaxProcesses     int
+	Logs             LogConfig
 }
 
 // Service manages process lifecycle and implements the gRPC process API.
@@ -69,12 +70,16 @@ type Service struct {
 	byName      map[string]string
 	byPID       map[int64]string
 	order       []string
+	logConfig   LogConfig
+	janitorStop chan struct{}
+	janitorDone chan struct{}
 }
 
 type managedProcess struct {
 	info    *codev1.ProcessInfo
 	command *runningCommand
 	output  *recordOutput
+	logs    *processLog
 	done    chan struct{}
 }
 
@@ -108,7 +113,12 @@ func New(config Config) (*Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open workspace: %w", err)
 	}
-	store, err := openRecordStore(config.RuntimeDirectory)
+	logConfig, err := normalizeLogConfig(config.Logs)
+	if err != nil {
+		_ = root.Close()
+		return nil, err
+	}
+	store, err := openRecordStore(config.RuntimeDirectory, logConfig)
 	if err != nil {
 		_ = root.Close()
 		return nil, err
@@ -125,6 +135,7 @@ func New(config Config) (*Service, error) {
 		root: root, store: store, maxProcesses: maxProcesses,
 		processes: make(map[string]*managedProcess), activeNames: make(map[string]string),
 		byName: make(map[string]string), byPID: make(map[int64]string),
+		logConfig: logConfig, janitorStop: make(chan struct{}), janitorDone: make(chan struct{}),
 	}
 	loaded, err := store.load()
 	if err != nil {
@@ -132,11 +143,17 @@ func New(config Config) (*Service, error) {
 		return nil, err
 	}
 	for _, info := range loaded {
-		record := &managedProcess{info: info, done: closedChannel()}
+		logs, openErr := store.openLog(info)
+		if openErr != nil {
+			_ = root.Close()
+			return nil, fmt.Errorf("open process logs for %s: %w", info.GetId(), openErr)
+		}
+		record := &managedProcess{info: info, logs: logs, done: closedChannel()}
 		service.processes[info.GetId()] = record
 		service.byName[info.GetName()] = info.GetId()
 		service.order = append(service.order, info.GetId())
 	}
+	go service.runLogJanitor()
 	return service, nil
 }
 
@@ -211,6 +228,7 @@ func (s *Service) StartProcess(ctx context.Context, request *codev1.StartProcess
 		return nil, status.Error(codes.Internal, "create persistent process record failed")
 	}
 	record.output = output
+	record.logs = output.log
 	running, startErr := startCommand(directory, start.command, start.arguments, start.environment, start.ioMode, output)
 	if startErr != nil {
 		output.close()
@@ -358,6 +376,12 @@ func (s *Service) Shutdown(ctx context.Context) error {
 
 // Close releases the pinned workspace handle after Shutdown has completed.
 func (s *Service) Close() error {
+	select {
+	case <-s.janitorStop:
+	default:
+		close(s.janitorStop)
+	}
+	<-s.janitorDone
 	return s.root.Close()
 }
 

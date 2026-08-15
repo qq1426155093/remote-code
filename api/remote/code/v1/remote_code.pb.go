@@ -256,6 +256,104 @@ func (ProcessSignal) EnumDescriptor() ([]byte, []int) {
 	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{3}
 }
 
+type ProcessLogStream int32
+
+const (
+	ProcessLogStream_PROCESS_LOG_STREAM_UNSPECIFIED ProcessLogStream = 0
+	ProcessLogStream_PROCESS_LOG_STREAM_STDOUT      ProcessLogStream = 1
+	ProcessLogStream_PROCESS_LOG_STREAM_STDERR      ProcessLogStream = 2
+)
+
+// Enum value maps for ProcessLogStream.
+var (
+	ProcessLogStream_name = map[int32]string{
+		0: "PROCESS_LOG_STREAM_UNSPECIFIED",
+		1: "PROCESS_LOG_STREAM_STDOUT",
+		2: "PROCESS_LOG_STREAM_STDERR",
+	}
+	ProcessLogStream_value = map[string]int32{
+		"PROCESS_LOG_STREAM_UNSPECIFIED": 0,
+		"PROCESS_LOG_STREAM_STDOUT":      1,
+		"PROCESS_LOG_STREAM_STDERR":      2,
+	}
+)
+
+func (x ProcessLogStream) Enum() *ProcessLogStream {
+	p := new(ProcessLogStream)
+	*p = x
+	return p
+}
+
+func (x ProcessLogStream) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ProcessLogStream) Descriptor() protoreflect.EnumDescriptor {
+	return file_remote_code_v1_remote_code_proto_enumTypes[4].Descriptor()
+}
+
+func (ProcessLogStream) Type() protoreflect.EnumType {
+	return &file_remote_code_v1_remote_code_proto_enumTypes[4]
+}
+
+func (x ProcessLogStream) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ProcessLogStream.Descriptor instead.
+func (ProcessLogStream) EnumDescriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{4}
+}
+
+type ProcessLogEndReason int32
+
+const (
+	ProcessLogEndReason_PROCESS_LOG_END_REASON_UNSPECIFIED       ProcessLogEndReason = 0
+	ProcessLogEndReason_PROCESS_LOG_END_REASON_SNAPSHOT_COMPLETE ProcessLogEndReason = 1
+	ProcessLogEndReason_PROCESS_LOG_END_REASON_PROCESS_EXITED    ProcessLogEndReason = 2
+)
+
+// Enum value maps for ProcessLogEndReason.
+var (
+	ProcessLogEndReason_name = map[int32]string{
+		0: "PROCESS_LOG_END_REASON_UNSPECIFIED",
+		1: "PROCESS_LOG_END_REASON_SNAPSHOT_COMPLETE",
+		2: "PROCESS_LOG_END_REASON_PROCESS_EXITED",
+	}
+	ProcessLogEndReason_value = map[string]int32{
+		"PROCESS_LOG_END_REASON_UNSPECIFIED":       0,
+		"PROCESS_LOG_END_REASON_SNAPSHOT_COMPLETE": 1,
+		"PROCESS_LOG_END_REASON_PROCESS_EXITED":    2,
+	}
+)
+
+func (x ProcessLogEndReason) Enum() *ProcessLogEndReason {
+	p := new(ProcessLogEndReason)
+	*p = x
+	return p
+}
+
+func (x ProcessLogEndReason) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ProcessLogEndReason) Descriptor() protoreflect.EnumDescriptor {
+	return file_remote_code_v1_remote_code_proto_enumTypes[5].Descriptor()
+}
+
+func (ProcessLogEndReason) Type() protoreflect.EnumType {
+	return &file_remote_code_v1_remote_code_proto_enumTypes[5]
+}
+
+func (x ProcessLogEndReason) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ProcessLogEndReason.Descriptor instead.
+func (ProcessLogEndReason) EnumDescriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{5}
+}
+
 type GetInfoRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -2206,6 +2304,592 @@ func (x *SignalProcessResponse) GetProcess() *ProcessInfo {
 	return nil
 }
 
+type ObserveProcessLogsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Logs use the stable UUID only; names and PIDs can be reused.
+	ProcessId string `protobuf:"bytes,1,opt,name=process_id,json=processId,proto3" json:"process_id,omitempty"`
+	// Empty selects both streams. PTY output is exposed as stdout only.
+	Streams []ProcessLogStream `protobuf:"varint,2,rep,packed,name=streams,proto3,enum=remote.code.v1.ProcessLogStream" json:"streams,omitempty"`
+	// Types that are valid to be assigned to Start:
+	//
+	//	*ObserveProcessLogsRequest_Offset
+	//	*ObserveProcessLogsRequest_TailLines
+	Start isObserveProcessLogsRequest_Start `protobuf_oneof:"start"`
+	// Continue from the captured snapshot until process exit or cancellation.
+	Follow        bool `protobuf:"varint,5,opt,name=follow,proto3" json:"follow,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ObserveProcessLogsRequest) Reset() {
+	*x = ObserveProcessLogsRequest{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ObserveProcessLogsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ObserveProcessLogsRequest) ProtoMessage() {}
+
+func (x *ObserveProcessLogsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ObserveProcessLogsRequest.ProtoReflect.Descriptor instead.
+func (*ObserveProcessLogsRequest) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *ObserveProcessLogsRequest) GetProcessId() string {
+	if x != nil {
+		return x.ProcessId
+	}
+	return ""
+}
+
+func (x *ObserveProcessLogsRequest) GetStreams() []ProcessLogStream {
+	if x != nil {
+		return x.Streams
+	}
+	return nil
+}
+
+func (x *ObserveProcessLogsRequest) GetStart() isObserveProcessLogsRequest_Start {
+	if x != nil {
+		return x.Start
+	}
+	return nil
+}
+
+func (x *ObserveProcessLogsRequest) GetOffset() uint64 {
+	if x != nil {
+		if x, ok := x.Start.(*ObserveProcessLogsRequest_Offset); ok {
+			return x.Offset
+		}
+	}
+	return 0
+}
+
+func (x *ObserveProcessLogsRequest) GetTailLines() uint64 {
+	if x != nil {
+		if x, ok := x.Start.(*ObserveProcessLogsRequest_TailLines); ok {
+			return x.TailLines
+		}
+	}
+	return 0
+}
+
+func (x *ObserveProcessLogsRequest) GetFollow() bool {
+	if x != nil {
+		return x.Follow
+	}
+	return false
+}
+
+type isObserveProcessLogsRequest_Start interface {
+	isObserveProcessLogsRequest_Start()
+}
+
+type ObserveProcessLogsRequest_Offset struct {
+	// Inclusive logical record offset. Zero is the first process log record.
+	Offset uint64 `protobuf:"varint,3,opt,name=offset,proto3,oneof"`
+}
+
+type ObserveProcessLogsRequest_TailLines struct {
+	// Number of logical lines to replay across all selected streams.
+	TailLines uint64 `protobuf:"varint,4,opt,name=tail_lines,json=tailLines,proto3,oneof"`
+}
+
+func (*ObserveProcessLogsRequest_Offset) isObserveProcessLogsRequest_Start() {}
+
+func (*ObserveProcessLogsRequest_TailLines) isObserveProcessLogsRequest_Start() {}
+
+type ProcessLogHeader struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	ProcessId           string                 `protobuf:"bytes,1,opt,name=process_id,json=processId,proto3" json:"process_id,omitempty"`
+	IoMode              ProcessIOMode          `protobuf:"varint,2,opt,name=io_mode,json=ioMode,proto3,enum=remote.code.v1.ProcessIOMode" json:"io_mode,omitempty"`
+	Streams             []ProcessLogStream     `protobuf:"varint,3,rep,packed,name=streams,proto3,enum=remote.code.v1.ProcessLogStream" json:"streams,omitempty"`
+	EarliestOffset      uint64                 `protobuf:"varint,4,opt,name=earliest_offset,json=earliestOffset,proto3" json:"earliest_offset,omitempty"`
+	SnapshotEndOffset   uint64                 `protobuf:"varint,5,opt,name=snapshot_end_offset,json=snapshotEndOffset,proto3" json:"snapshot_end_offset,omitempty"`
+	ResolvedStartOffset uint64                 `protobuf:"varint,6,opt,name=resolved_start_offset,json=resolvedStartOffset,proto3" json:"resolved_start_offset,omitempty"`
+	HistoryTruncated    bool                   `protobuf:"varint,7,opt,name=history_truncated,json=historyTruncated,proto3" json:"history_truncated,omitempty"`
+	TailTruncated       bool                   `protobuf:"varint,8,opt,name=tail_truncated,json=tailTruncated,proto3" json:"tail_truncated,omitempty"`
+	Follow              bool                   `protobuf:"varint,9,opt,name=follow,proto3" json:"follow,omitempty"`
+	FormatVersion       uint32                 `protobuf:"varint,10,opt,name=format_version,json=formatVersion,proto3" json:"format_version,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *ProcessLogHeader) Reset() {
+	*x = ProcessLogHeader{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProcessLogHeader) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProcessLogHeader) ProtoMessage() {}
+
+func (x *ProcessLogHeader) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProcessLogHeader.ProtoReflect.Descriptor instead.
+func (*ProcessLogHeader) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *ProcessLogHeader) GetProcessId() string {
+	if x != nil {
+		return x.ProcessId
+	}
+	return ""
+}
+
+func (x *ProcessLogHeader) GetIoMode() ProcessIOMode {
+	if x != nil {
+		return x.IoMode
+	}
+	return ProcessIOMode_PROCESS_IO_MODE_UNSPECIFIED
+}
+
+func (x *ProcessLogHeader) GetStreams() []ProcessLogStream {
+	if x != nil {
+		return x.Streams
+	}
+	return nil
+}
+
+func (x *ProcessLogHeader) GetEarliestOffset() uint64 {
+	if x != nil {
+		return x.EarliestOffset
+	}
+	return 0
+}
+
+func (x *ProcessLogHeader) GetSnapshotEndOffset() uint64 {
+	if x != nil {
+		return x.SnapshotEndOffset
+	}
+	return 0
+}
+
+func (x *ProcessLogHeader) GetResolvedStartOffset() uint64 {
+	if x != nil {
+		return x.ResolvedStartOffset
+	}
+	return 0
+}
+
+func (x *ProcessLogHeader) GetHistoryTruncated() bool {
+	if x != nil {
+		return x.HistoryTruncated
+	}
+	return false
+}
+
+func (x *ProcessLogHeader) GetTailTruncated() bool {
+	if x != nil {
+		return x.TailTruncated
+	}
+	return false
+}
+
+func (x *ProcessLogHeader) GetFollow() bool {
+	if x != nil {
+		return x.Follow
+	}
+	return false
+}
+
+func (x *ProcessLogHeader) GetFormatVersion() uint32 {
+	if x != nil {
+		return x.FormatVersion
+	}
+	return 0
+}
+
+type ProcessLogChunk struct {
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Offset     uint64                 `protobuf:"varint,1,opt,name=offset,proto3" json:"offset,omitempty"`
+	NextOffset uint64                 `protobuf:"varint,2,opt,name=next_offset,json=nextOffset,proto3" json:"next_offset,omitempty"`
+	LineOffset uint64                 `protobuf:"varint,3,opt,name=line_offset,json=lineOffset,proto3" json:"line_offset,omitempty"`
+	Timestamp  *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	Stream     ProcessLogStream       `protobuf:"varint,5,opt,name=stream,proto3,enum=remote.code.v1.ProcessLogStream" json:"stream,omitempty"`
+	Data       []byte                 `protobuf:"bytes,6,opt,name=data,proto3" json:"data,omitempty"`
+	LineStart  bool                   `protobuf:"varint,7,opt,name=line_start,json=lineStart,proto3" json:"line_start,omitempty"`
+	LineEnd    bool                   `protobuf:"varint,8,opt,name=line_end,json=lineEnd,proto3" json:"line_end,omitempty"`
+	// The beginning of this logical line was removed by retention.
+	LineTruncated bool `protobuf:"varint,9,opt,name=line_truncated,json=lineTruncated,proto3" json:"line_truncated,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProcessLogChunk) Reset() {
+	*x = ProcessLogChunk{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[35]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProcessLogChunk) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProcessLogChunk) ProtoMessage() {}
+
+func (x *ProcessLogChunk) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[35]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProcessLogChunk.ProtoReflect.Descriptor instead.
+func (*ProcessLogChunk) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{35}
+}
+
+func (x *ProcessLogChunk) GetOffset() uint64 {
+	if x != nil {
+		return x.Offset
+	}
+	return 0
+}
+
+func (x *ProcessLogChunk) GetNextOffset() uint64 {
+	if x != nil {
+		return x.NextOffset
+	}
+	return 0
+}
+
+func (x *ProcessLogChunk) GetLineOffset() uint64 {
+	if x != nil {
+		return x.LineOffset
+	}
+	return 0
+}
+
+func (x *ProcessLogChunk) GetTimestamp() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Timestamp
+	}
+	return nil
+}
+
+func (x *ProcessLogChunk) GetStream() ProcessLogStream {
+	if x != nil {
+		return x.Stream
+	}
+	return ProcessLogStream_PROCESS_LOG_STREAM_UNSPECIFIED
+}
+
+func (x *ProcessLogChunk) GetData() []byte {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
+func (x *ProcessLogChunk) GetLineStart() bool {
+	if x != nil {
+		return x.LineStart
+	}
+	return false
+}
+
+func (x *ProcessLogChunk) GetLineEnd() bool {
+	if x != nil {
+		return x.LineEnd
+	}
+	return false
+}
+
+func (x *ProcessLogChunk) GetLineTruncated() bool {
+	if x != nil {
+		return x.LineTruncated
+	}
+	return false
+}
+
+type ProcessLogCheckpoint struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	NextOffset     uint64                 `protobuf:"varint,1,opt,name=next_offset,json=nextOffset,proto3" json:"next_offset,omitempty"`
+	ReplayComplete bool                   `protobuf:"varint,2,opt,name=replay_complete,json=replayComplete,proto3" json:"replay_complete,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ProcessLogCheckpoint) Reset() {
+	*x = ProcessLogCheckpoint{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProcessLogCheckpoint) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProcessLogCheckpoint) ProtoMessage() {}
+
+func (x *ProcessLogCheckpoint) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProcessLogCheckpoint.ProtoReflect.Descriptor instead.
+func (*ProcessLogCheckpoint) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *ProcessLogCheckpoint) GetNextOffset() uint64 {
+	if x != nil {
+		return x.NextOffset
+	}
+	return 0
+}
+
+func (x *ProcessLogCheckpoint) GetReplayComplete() bool {
+	if x != nil {
+		return x.ReplayComplete
+	}
+	return false
+}
+
+type ProcessLogEnd struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NextOffset    uint64                 `protobuf:"varint,1,opt,name=next_offset,json=nextOffset,proto3" json:"next_offset,omitempty"`
+	Reason        ProcessLogEndReason    `protobuf:"varint,2,opt,name=reason,proto3,enum=remote.code.v1.ProcessLogEndReason" json:"reason,omitempty"`
+	State         ProcessState           `protobuf:"varint,3,opt,name=state,proto3,enum=remote.code.v1.ProcessState" json:"state,omitempty"`
+	ExitCode      *int32                 `protobuf:"varint,4,opt,name=exit_code,json=exitCode,proto3,oneof" json:"exit_code,omitempty"`
+	ExitSignal    *int32                 `protobuf:"varint,5,opt,name=exit_signal,json=exitSignal,proto3,oneof" json:"exit_signal,omitempty"`
+	LogsComplete  bool                   `protobuf:"varint,6,opt,name=logs_complete,json=logsComplete,proto3" json:"logs_complete,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProcessLogEnd) Reset() {
+	*x = ProcessLogEnd{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProcessLogEnd) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProcessLogEnd) ProtoMessage() {}
+
+func (x *ProcessLogEnd) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProcessLogEnd.ProtoReflect.Descriptor instead.
+func (*ProcessLogEnd) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{37}
+}
+
+func (x *ProcessLogEnd) GetNextOffset() uint64 {
+	if x != nil {
+		return x.NextOffset
+	}
+	return 0
+}
+
+func (x *ProcessLogEnd) GetReason() ProcessLogEndReason {
+	if x != nil {
+		return x.Reason
+	}
+	return ProcessLogEndReason_PROCESS_LOG_END_REASON_UNSPECIFIED
+}
+
+func (x *ProcessLogEnd) GetState() ProcessState {
+	if x != nil {
+		return x.State
+	}
+	return ProcessState_PROCESS_STATE_UNSPECIFIED
+}
+
+func (x *ProcessLogEnd) GetExitCode() int32 {
+	if x != nil && x.ExitCode != nil {
+		return *x.ExitCode
+	}
+	return 0
+}
+
+func (x *ProcessLogEnd) GetExitSignal() int32 {
+	if x != nil && x.ExitSignal != nil {
+		return *x.ExitSignal
+	}
+	return 0
+}
+
+func (x *ProcessLogEnd) GetLogsComplete() bool {
+	if x != nil {
+		return x.LogsComplete
+	}
+	return false
+}
+
+type ObserveProcessLogsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Payload:
+	//
+	//	*ObserveProcessLogsResponse_Header
+	//	*ObserveProcessLogsResponse_Chunk
+	//	*ObserveProcessLogsResponse_Checkpoint
+	//	*ObserveProcessLogsResponse_End
+	Payload       isObserveProcessLogsResponse_Payload `protobuf_oneof:"payload"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ObserveProcessLogsResponse) Reset() {
+	*x = ObserveProcessLogsResponse{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ObserveProcessLogsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ObserveProcessLogsResponse) ProtoMessage() {}
+
+func (x *ObserveProcessLogsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ObserveProcessLogsResponse.ProtoReflect.Descriptor instead.
+func (*ObserveProcessLogsResponse) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{38}
+}
+
+func (x *ObserveProcessLogsResponse) GetPayload() isObserveProcessLogsResponse_Payload {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
+func (x *ObserveProcessLogsResponse) GetHeader() *ProcessLogHeader {
+	if x != nil {
+		if x, ok := x.Payload.(*ObserveProcessLogsResponse_Header); ok {
+			return x.Header
+		}
+	}
+	return nil
+}
+
+func (x *ObserveProcessLogsResponse) GetChunk() *ProcessLogChunk {
+	if x != nil {
+		if x, ok := x.Payload.(*ObserveProcessLogsResponse_Chunk); ok {
+			return x.Chunk
+		}
+	}
+	return nil
+}
+
+func (x *ObserveProcessLogsResponse) GetCheckpoint() *ProcessLogCheckpoint {
+	if x != nil {
+		if x, ok := x.Payload.(*ObserveProcessLogsResponse_Checkpoint); ok {
+			return x.Checkpoint
+		}
+	}
+	return nil
+}
+
+func (x *ObserveProcessLogsResponse) GetEnd() *ProcessLogEnd {
+	if x != nil {
+		if x, ok := x.Payload.(*ObserveProcessLogsResponse_End); ok {
+			return x.End
+		}
+	}
+	return nil
+}
+
+type isObserveProcessLogsResponse_Payload interface {
+	isObserveProcessLogsResponse_Payload()
+}
+
+type ObserveProcessLogsResponse_Header struct {
+	Header *ProcessLogHeader `protobuf:"bytes,1,opt,name=header,proto3,oneof"`
+}
+
+type ObserveProcessLogsResponse_Chunk struct {
+	Chunk *ProcessLogChunk `protobuf:"bytes,2,opt,name=chunk,proto3,oneof"`
+}
+
+type ObserveProcessLogsResponse_Checkpoint struct {
+	Checkpoint *ProcessLogCheckpoint `protobuf:"bytes,3,opt,name=checkpoint,proto3,oneof"`
+}
+
+type ObserveProcessLogsResponse_End struct {
+	End *ProcessLogEnd `protobuf:"bytes,4,opt,name=end,proto3,oneof"`
+}
+
+func (*ObserveProcessLogsResponse_Header) isObserveProcessLogsResponse_Payload() {}
+
+func (*ObserveProcessLogsResponse_Chunk) isObserveProcessLogsResponse_Payload() {}
+
+func (*ObserveProcessLogsResponse_Checkpoint) isObserveProcessLogsResponse_Payload() {}
+
+func (*ObserveProcessLogsResponse_End) isObserveProcessLogsResponse_Payload() {}
+
 var File_remote_code_v1_remote_code_proto protoreflect.FileDescriptor
 
 const file_remote_code_v1_remote_code_proto_rawDesc = "" +
@@ -2339,7 +3023,66 @@ const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	"\x06signal\x18\x02 \x01(\x0e2\x1d.remote.code.v1.ProcessSignalR\x06signal\x12\x12\n" +
 	"\x04wait\x18\x03 \x01(\bR\x04wait\"N\n" +
 	"\x15SignalProcessResponse\x125\n" +
-	"\aprocess\x18\x01 \x01(\v2\x1b.remote.code.v1.ProcessInfoR\aprocess*\x81\x01\n" +
+	"\aprocess\x18\x01 \x01(\v2\x1b.remote.code.v1.ProcessInfoR\aprocess\"\xd2\x01\n" +
+	"\x19ObserveProcessLogsRequest\x12\x1d\n" +
+	"\n" +
+	"process_id\x18\x01 \x01(\tR\tprocessId\x12:\n" +
+	"\astreams\x18\x02 \x03(\x0e2 .remote.code.v1.ProcessLogStreamR\astreams\x12\x18\n" +
+	"\x06offset\x18\x03 \x01(\x04H\x00R\x06offset\x12\x1f\n" +
+	"\n" +
+	"tail_lines\x18\x04 \x01(\x04H\x00R\ttailLines\x12\x16\n" +
+	"\x06follow\x18\x05 \x01(\bR\x06followB\a\n" +
+	"\x05start\"\xc5\x03\n" +
+	"\x10ProcessLogHeader\x12\x1d\n" +
+	"\n" +
+	"process_id\x18\x01 \x01(\tR\tprocessId\x126\n" +
+	"\aio_mode\x18\x02 \x01(\x0e2\x1d.remote.code.v1.ProcessIOModeR\x06ioMode\x12:\n" +
+	"\astreams\x18\x03 \x03(\x0e2 .remote.code.v1.ProcessLogStreamR\astreams\x12'\n" +
+	"\x0fearliest_offset\x18\x04 \x01(\x04R\x0eearliestOffset\x12.\n" +
+	"\x13snapshot_end_offset\x18\x05 \x01(\x04R\x11snapshotEndOffset\x122\n" +
+	"\x15resolved_start_offset\x18\x06 \x01(\x04R\x13resolvedStartOffset\x12+\n" +
+	"\x11history_truncated\x18\a \x01(\bR\x10historyTruncated\x12%\n" +
+	"\x0etail_truncated\x18\b \x01(\bR\rtailTruncated\x12\x16\n" +
+	"\x06follow\x18\t \x01(\bR\x06follow\x12%\n" +
+	"\x0eformat_version\x18\n" +
+	" \x01(\rR\rformatVersion\"\xd4\x02\n" +
+	"\x0fProcessLogChunk\x12\x16\n" +
+	"\x06offset\x18\x01 \x01(\x04R\x06offset\x12\x1f\n" +
+	"\vnext_offset\x18\x02 \x01(\x04R\n" +
+	"nextOffset\x12\x1f\n" +
+	"\vline_offset\x18\x03 \x01(\x04R\n" +
+	"lineOffset\x128\n" +
+	"\ttimestamp\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x128\n" +
+	"\x06stream\x18\x05 \x01(\x0e2 .remote.code.v1.ProcessLogStreamR\x06stream\x12\x12\n" +
+	"\x04data\x18\x06 \x01(\fR\x04data\x12\x1d\n" +
+	"\n" +
+	"line_start\x18\a \x01(\bR\tlineStart\x12\x19\n" +
+	"\bline_end\x18\b \x01(\bR\alineEnd\x12%\n" +
+	"\x0eline_truncated\x18\t \x01(\bR\rlineTruncated\"`\n" +
+	"\x14ProcessLogCheckpoint\x12\x1f\n" +
+	"\vnext_offset\x18\x01 \x01(\x04R\n" +
+	"nextOffset\x12'\n" +
+	"\x0freplay_complete\x18\x02 \x01(\bR\x0ereplayComplete\"\xac\x02\n" +
+	"\rProcessLogEnd\x12\x1f\n" +
+	"\vnext_offset\x18\x01 \x01(\x04R\n" +
+	"nextOffset\x12;\n" +
+	"\x06reason\x18\x02 \x01(\x0e2#.remote.code.v1.ProcessLogEndReasonR\x06reason\x122\n" +
+	"\x05state\x18\x03 \x01(\x0e2\x1c.remote.code.v1.ProcessStateR\x05state\x12 \n" +
+	"\texit_code\x18\x04 \x01(\x05H\x00R\bexitCode\x88\x01\x01\x12$\n" +
+	"\vexit_signal\x18\x05 \x01(\x05H\x01R\n" +
+	"exitSignal\x88\x01\x01\x12#\n" +
+	"\rlogs_complete\x18\x06 \x01(\bR\flogsCompleteB\f\n" +
+	"\n" +
+	"_exit_codeB\x0e\n" +
+	"\f_exit_signal\"\x97\x02\n" +
+	"\x1aObserveProcessLogsResponse\x12:\n" +
+	"\x06header\x18\x01 \x01(\v2 .remote.code.v1.ProcessLogHeaderH\x00R\x06header\x127\n" +
+	"\x05chunk\x18\x02 \x01(\v2\x1f.remote.code.v1.ProcessLogChunkH\x00R\x05chunk\x12F\n" +
+	"\n" +
+	"checkpoint\x18\x03 \x01(\v2$.remote.code.v1.ProcessLogCheckpointH\x00R\n" +
+	"checkpoint\x121\n" +
+	"\x03end\x18\x04 \x01(\v2\x1d.remote.code.v1.ProcessLogEndH\x00R\x03endB\t\n" +
+	"\apayload*\x81\x01\n" +
 	"\bFileType\x12\x19\n" +
 	"\x15FILE_TYPE_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11FILE_TYPE_REGULAR\x10\x01\x12\x17\n" +
@@ -2367,7 +3110,15 @@ const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	"\x13PROCESS_SIGNAL_USR1\x10\x06\x12\x17\n" +
 	"\x13PROCESS_SIGNAL_USR2\x10\a\x12\x17\n" +
 	"\x13PROCESS_SIGNAL_STOP\x10\b\x12\x17\n" +
-	"\x13PROCESS_SIGNAL_CONT\x10\t2_\n" +
+	"\x13PROCESS_SIGNAL_CONT\x10\t*t\n" +
+	"\x10ProcessLogStream\x12\"\n" +
+	"\x1ePROCESS_LOG_STREAM_UNSPECIFIED\x10\x00\x12\x1d\n" +
+	"\x19PROCESS_LOG_STREAM_STDOUT\x10\x01\x12\x1d\n" +
+	"\x19PROCESS_LOG_STREAM_STDERR\x10\x02*\x96\x01\n" +
+	"\x13ProcessLogEndReason\x12&\n" +
+	"\"PROCESS_LOG_END_REASON_UNSPECIFIED\x10\x00\x12,\n" +
+	"(PROCESS_LOG_END_REASON_SNAPSHOT_COMPLETE\x10\x01\x12)\n" +
+	"%PROCESS_LOG_END_REASON_PROCESS_EXITED\x10\x022_\n" +
 	"\x11ControllerService\x12J\n" +
 	"\aGetInfo\x12\x1e.remote.code.v1.GetInfoRequest\x1a\x1f.remote.code.v1.GetInfoResponse2\x8a\x05\n" +
 	"\vFileService\x12A\n" +
@@ -2379,11 +3130,12 @@ const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	"\x06Remove\x12\x1d.remote.code.v1.RemoveRequest\x1a\x1e.remote.code.v1.RemoveResponse\x12A\n" +
 	"\x04Move\x12\x1b.remote.code.v1.MoveRequest\x1a\x1c.remote.code.v1.MoveResponse\x12D\n" +
 	"\x05Chmod\x12\x1c.remote.code.v1.ChmodRequest\x1a\x1d.remote.code.v1.ChmodResponse\x12D\n" +
-	"\x05Mkdir\x12\x1c.remote.code.v1.MkdirRequest\x1a\x1d.remote.code.v1.MkdirResponse2\xa7\x02\n" +
+	"\x05Mkdir\x12\x1c.remote.code.v1.MkdirRequest\x1a\x1d.remote.code.v1.MkdirResponse2\x96\x03\n" +
 	"\x0eProcessService\x12Y\n" +
 	"\fStartProcess\x12#.remote.code.v1.StartProcessRequest\x1a$.remote.code.v1.StartProcessResponse\x12\\\n" +
 	"\rListProcesses\x12$.remote.code.v1.ListProcessesRequest\x1a%.remote.code.v1.ListProcessesResponse\x12\\\n" +
-	"\rSignalProcess\x12$.remote.code.v1.SignalProcessRequest\x1a%.remote.code.v1.SignalProcessResponseB?Z=github.com/qq1426155093/remote-code/api/remote/code/v1;codev1b\x06proto3"
+	"\rSignalProcess\x12$.remote.code.v1.SignalProcessRequest\x1a%.remote.code.v1.SignalProcessResponse\x12m\n" +
+	"\x12ObserveProcessLogs\x12).remote.code.v1.ObserveProcessLogsRequest\x1a*.remote.code.v1.ObserveProcessLogsResponse0\x01B?Z=github.com/qq1426155093/remote-code/api/remote/code/v1;codev1b\x06proto3"
 
 var (
 	file_remote_code_v1_remote_code_proto_rawDescOnce sync.Once
@@ -2397,108 +3149,129 @@ func file_remote_code_v1_remote_code_proto_rawDescGZIP() []byte {
 	return file_remote_code_v1_remote_code_proto_rawDescData
 }
 
-var file_remote_code_v1_remote_code_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_remote_code_v1_remote_code_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
+var file_remote_code_v1_remote_code_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
+var file_remote_code_v1_remote_code_proto_msgTypes = make([]protoimpl.MessageInfo, 40)
 var file_remote_code_v1_remote_code_proto_goTypes = []any{
-	(FileType)(0),                 // 0: remote.code.v1.FileType
-	(ProcessIOMode)(0),            // 1: remote.code.v1.ProcessIOMode
-	(ProcessState)(0),             // 2: remote.code.v1.ProcessState
-	(ProcessSignal)(0),            // 3: remote.code.v1.ProcessSignal
-	(*GetInfoRequest)(nil),        // 4: remote.code.v1.GetInfoRequest
-	(*GetInfoResponse)(nil),       // 5: remote.code.v1.GetInfoResponse
-	(*FileInfo)(nil),              // 6: remote.code.v1.FileInfo
-	(*StatRequest)(nil),           // 7: remote.code.v1.StatRequest
-	(*StatResponse)(nil),          // 8: remote.code.v1.StatResponse
-	(*ListRequest)(nil),           // 9: remote.code.v1.ListRequest
-	(*ListResponse)(nil),          // 10: remote.code.v1.ListResponse
-	(*TreeNode)(nil),              // 11: remote.code.v1.TreeNode
-	(*TreeRequest)(nil),           // 12: remote.code.v1.TreeRequest
-	(*TreeResponse)(nil),          // 13: remote.code.v1.TreeResponse
-	(*UploadMetadata)(nil),        // 14: remote.code.v1.UploadMetadata
-	(*UploadRequest)(nil),         // 15: remote.code.v1.UploadRequest
-	(*UploadResponse)(nil),        // 16: remote.code.v1.UploadResponse
-	(*DownloadRequest)(nil),       // 17: remote.code.v1.DownloadRequest
-	(*DownloadMetadata)(nil),      // 18: remote.code.v1.DownloadMetadata
-	(*DownloadSummary)(nil),       // 19: remote.code.v1.DownloadSummary
-	(*DownloadResponse)(nil),      // 20: remote.code.v1.DownloadResponse
-	(*RemoveRequest)(nil),         // 21: remote.code.v1.RemoveRequest
-	(*RemoveResponse)(nil),        // 22: remote.code.v1.RemoveResponse
-	(*MoveRequest)(nil),           // 23: remote.code.v1.MoveRequest
-	(*MoveResponse)(nil),          // 24: remote.code.v1.MoveResponse
-	(*ChmodRequest)(nil),          // 25: remote.code.v1.ChmodRequest
-	(*ChmodResponse)(nil),         // 26: remote.code.v1.ChmodResponse
-	(*MkdirRequest)(nil),          // 27: remote.code.v1.MkdirRequest
-	(*MkdirResponse)(nil),         // 28: remote.code.v1.MkdirResponse
-	(*ProcessInfo)(nil),           // 29: remote.code.v1.ProcessInfo
-	(*ProcessReference)(nil),      // 30: remote.code.v1.ProcessReference
-	(*StartProcessRequest)(nil),   // 31: remote.code.v1.StartProcessRequest
-	(*StartProcessResponse)(nil),  // 32: remote.code.v1.StartProcessResponse
-	(*ListProcessesRequest)(nil),  // 33: remote.code.v1.ListProcessesRequest
-	(*ListProcessesResponse)(nil), // 34: remote.code.v1.ListProcessesResponse
-	(*SignalProcessRequest)(nil),  // 35: remote.code.v1.SignalProcessRequest
-	(*SignalProcessResponse)(nil), // 36: remote.code.v1.SignalProcessResponse
-	nil,                           // 37: remote.code.v1.StartProcessRequest.EnvironmentEntry
-	(*timestamppb.Timestamp)(nil), // 38: google.protobuf.Timestamp
+	(FileType)(0),                      // 0: remote.code.v1.FileType
+	(ProcessIOMode)(0),                 // 1: remote.code.v1.ProcessIOMode
+	(ProcessState)(0),                  // 2: remote.code.v1.ProcessState
+	(ProcessSignal)(0),                 // 3: remote.code.v1.ProcessSignal
+	(ProcessLogStream)(0),              // 4: remote.code.v1.ProcessLogStream
+	(ProcessLogEndReason)(0),           // 5: remote.code.v1.ProcessLogEndReason
+	(*GetInfoRequest)(nil),             // 6: remote.code.v1.GetInfoRequest
+	(*GetInfoResponse)(nil),            // 7: remote.code.v1.GetInfoResponse
+	(*FileInfo)(nil),                   // 8: remote.code.v1.FileInfo
+	(*StatRequest)(nil),                // 9: remote.code.v1.StatRequest
+	(*StatResponse)(nil),               // 10: remote.code.v1.StatResponse
+	(*ListRequest)(nil),                // 11: remote.code.v1.ListRequest
+	(*ListResponse)(nil),               // 12: remote.code.v1.ListResponse
+	(*TreeNode)(nil),                   // 13: remote.code.v1.TreeNode
+	(*TreeRequest)(nil),                // 14: remote.code.v1.TreeRequest
+	(*TreeResponse)(nil),               // 15: remote.code.v1.TreeResponse
+	(*UploadMetadata)(nil),             // 16: remote.code.v1.UploadMetadata
+	(*UploadRequest)(nil),              // 17: remote.code.v1.UploadRequest
+	(*UploadResponse)(nil),             // 18: remote.code.v1.UploadResponse
+	(*DownloadRequest)(nil),            // 19: remote.code.v1.DownloadRequest
+	(*DownloadMetadata)(nil),           // 20: remote.code.v1.DownloadMetadata
+	(*DownloadSummary)(nil),            // 21: remote.code.v1.DownloadSummary
+	(*DownloadResponse)(nil),           // 22: remote.code.v1.DownloadResponse
+	(*RemoveRequest)(nil),              // 23: remote.code.v1.RemoveRequest
+	(*RemoveResponse)(nil),             // 24: remote.code.v1.RemoveResponse
+	(*MoveRequest)(nil),                // 25: remote.code.v1.MoveRequest
+	(*MoveResponse)(nil),               // 26: remote.code.v1.MoveResponse
+	(*ChmodRequest)(nil),               // 27: remote.code.v1.ChmodRequest
+	(*ChmodResponse)(nil),              // 28: remote.code.v1.ChmodResponse
+	(*MkdirRequest)(nil),               // 29: remote.code.v1.MkdirRequest
+	(*MkdirResponse)(nil),              // 30: remote.code.v1.MkdirResponse
+	(*ProcessInfo)(nil),                // 31: remote.code.v1.ProcessInfo
+	(*ProcessReference)(nil),           // 32: remote.code.v1.ProcessReference
+	(*StartProcessRequest)(nil),        // 33: remote.code.v1.StartProcessRequest
+	(*StartProcessResponse)(nil),       // 34: remote.code.v1.StartProcessResponse
+	(*ListProcessesRequest)(nil),       // 35: remote.code.v1.ListProcessesRequest
+	(*ListProcessesResponse)(nil),      // 36: remote.code.v1.ListProcessesResponse
+	(*SignalProcessRequest)(nil),       // 37: remote.code.v1.SignalProcessRequest
+	(*SignalProcessResponse)(nil),      // 38: remote.code.v1.SignalProcessResponse
+	(*ObserveProcessLogsRequest)(nil),  // 39: remote.code.v1.ObserveProcessLogsRequest
+	(*ProcessLogHeader)(nil),           // 40: remote.code.v1.ProcessLogHeader
+	(*ProcessLogChunk)(nil),            // 41: remote.code.v1.ProcessLogChunk
+	(*ProcessLogCheckpoint)(nil),       // 42: remote.code.v1.ProcessLogCheckpoint
+	(*ProcessLogEnd)(nil),              // 43: remote.code.v1.ProcessLogEnd
+	(*ObserveProcessLogsResponse)(nil), // 44: remote.code.v1.ObserveProcessLogsResponse
+	nil,                                // 45: remote.code.v1.StartProcessRequest.EnvironmentEntry
+	(*timestamppb.Timestamp)(nil),      // 46: google.protobuf.Timestamp
 }
 var file_remote_code_v1_remote_code_proto_depIdxs = []int32{
 	0,  // 0: remote.code.v1.FileInfo.type:type_name -> remote.code.v1.FileType
-	38, // 1: remote.code.v1.FileInfo.modified_at:type_name -> google.protobuf.Timestamp
-	6,  // 2: remote.code.v1.StatResponse.file:type_name -> remote.code.v1.FileInfo
-	6,  // 3: remote.code.v1.ListResponse.files:type_name -> remote.code.v1.FileInfo
-	6,  // 4: remote.code.v1.TreeNode.file:type_name -> remote.code.v1.FileInfo
-	11, // 5: remote.code.v1.TreeNode.children:type_name -> remote.code.v1.TreeNode
-	11, // 6: remote.code.v1.TreeResponse.root:type_name -> remote.code.v1.TreeNode
-	14, // 7: remote.code.v1.UploadRequest.metadata:type_name -> remote.code.v1.UploadMetadata
-	6,  // 8: remote.code.v1.UploadResponse.file:type_name -> remote.code.v1.FileInfo
-	6,  // 9: remote.code.v1.DownloadMetadata.file:type_name -> remote.code.v1.FileInfo
-	18, // 10: remote.code.v1.DownloadResponse.metadata:type_name -> remote.code.v1.DownloadMetadata
-	19, // 11: remote.code.v1.DownloadResponse.summary:type_name -> remote.code.v1.DownloadSummary
-	6,  // 12: remote.code.v1.MoveResponse.file:type_name -> remote.code.v1.FileInfo
-	6,  // 13: remote.code.v1.ChmodResponse.file:type_name -> remote.code.v1.FileInfo
-	6,  // 14: remote.code.v1.MkdirResponse.file:type_name -> remote.code.v1.FileInfo
+	46, // 1: remote.code.v1.FileInfo.modified_at:type_name -> google.protobuf.Timestamp
+	8,  // 2: remote.code.v1.StatResponse.file:type_name -> remote.code.v1.FileInfo
+	8,  // 3: remote.code.v1.ListResponse.files:type_name -> remote.code.v1.FileInfo
+	8,  // 4: remote.code.v1.TreeNode.file:type_name -> remote.code.v1.FileInfo
+	13, // 5: remote.code.v1.TreeNode.children:type_name -> remote.code.v1.TreeNode
+	13, // 6: remote.code.v1.TreeResponse.root:type_name -> remote.code.v1.TreeNode
+	16, // 7: remote.code.v1.UploadRequest.metadata:type_name -> remote.code.v1.UploadMetadata
+	8,  // 8: remote.code.v1.UploadResponse.file:type_name -> remote.code.v1.FileInfo
+	8,  // 9: remote.code.v1.DownloadMetadata.file:type_name -> remote.code.v1.FileInfo
+	20, // 10: remote.code.v1.DownloadResponse.metadata:type_name -> remote.code.v1.DownloadMetadata
+	21, // 11: remote.code.v1.DownloadResponse.summary:type_name -> remote.code.v1.DownloadSummary
+	8,  // 12: remote.code.v1.MoveResponse.file:type_name -> remote.code.v1.FileInfo
+	8,  // 13: remote.code.v1.ChmodResponse.file:type_name -> remote.code.v1.FileInfo
+	8,  // 14: remote.code.v1.MkdirResponse.file:type_name -> remote.code.v1.FileInfo
 	1,  // 15: remote.code.v1.ProcessInfo.io_mode:type_name -> remote.code.v1.ProcessIOMode
 	2,  // 16: remote.code.v1.ProcessInfo.state:type_name -> remote.code.v1.ProcessState
-	38, // 17: remote.code.v1.ProcessInfo.started_at:type_name -> google.protobuf.Timestamp
-	38, // 18: remote.code.v1.ProcessInfo.exited_at:type_name -> google.protobuf.Timestamp
-	38, // 19: remote.code.v1.ProcessInfo.created_at:type_name -> google.protobuf.Timestamp
+	46, // 17: remote.code.v1.ProcessInfo.started_at:type_name -> google.protobuf.Timestamp
+	46, // 18: remote.code.v1.ProcessInfo.exited_at:type_name -> google.protobuf.Timestamp
+	46, // 19: remote.code.v1.ProcessInfo.created_at:type_name -> google.protobuf.Timestamp
 	1,  // 20: remote.code.v1.StartProcessRequest.io_mode:type_name -> remote.code.v1.ProcessIOMode
-	37, // 21: remote.code.v1.StartProcessRequest.environment:type_name -> remote.code.v1.StartProcessRequest.EnvironmentEntry
-	29, // 22: remote.code.v1.StartProcessResponse.process:type_name -> remote.code.v1.ProcessInfo
-	29, // 23: remote.code.v1.ListProcessesResponse.processes:type_name -> remote.code.v1.ProcessInfo
-	30, // 24: remote.code.v1.SignalProcessRequest.process:type_name -> remote.code.v1.ProcessReference
+	45, // 21: remote.code.v1.StartProcessRequest.environment:type_name -> remote.code.v1.StartProcessRequest.EnvironmentEntry
+	31, // 22: remote.code.v1.StartProcessResponse.process:type_name -> remote.code.v1.ProcessInfo
+	31, // 23: remote.code.v1.ListProcessesResponse.processes:type_name -> remote.code.v1.ProcessInfo
+	32, // 24: remote.code.v1.SignalProcessRequest.process:type_name -> remote.code.v1.ProcessReference
 	3,  // 25: remote.code.v1.SignalProcessRequest.signal:type_name -> remote.code.v1.ProcessSignal
-	29, // 26: remote.code.v1.SignalProcessResponse.process:type_name -> remote.code.v1.ProcessInfo
-	4,  // 27: remote.code.v1.ControllerService.GetInfo:input_type -> remote.code.v1.GetInfoRequest
-	7,  // 28: remote.code.v1.FileService.Stat:input_type -> remote.code.v1.StatRequest
-	9,  // 29: remote.code.v1.FileService.List:input_type -> remote.code.v1.ListRequest
-	12, // 30: remote.code.v1.FileService.Tree:input_type -> remote.code.v1.TreeRequest
-	15, // 31: remote.code.v1.FileService.Upload:input_type -> remote.code.v1.UploadRequest
-	17, // 32: remote.code.v1.FileService.Download:input_type -> remote.code.v1.DownloadRequest
-	21, // 33: remote.code.v1.FileService.Remove:input_type -> remote.code.v1.RemoveRequest
-	23, // 34: remote.code.v1.FileService.Move:input_type -> remote.code.v1.MoveRequest
-	25, // 35: remote.code.v1.FileService.Chmod:input_type -> remote.code.v1.ChmodRequest
-	27, // 36: remote.code.v1.FileService.Mkdir:input_type -> remote.code.v1.MkdirRequest
-	31, // 37: remote.code.v1.ProcessService.StartProcess:input_type -> remote.code.v1.StartProcessRequest
-	33, // 38: remote.code.v1.ProcessService.ListProcesses:input_type -> remote.code.v1.ListProcessesRequest
-	35, // 39: remote.code.v1.ProcessService.SignalProcess:input_type -> remote.code.v1.SignalProcessRequest
-	5,  // 40: remote.code.v1.ControllerService.GetInfo:output_type -> remote.code.v1.GetInfoResponse
-	8,  // 41: remote.code.v1.FileService.Stat:output_type -> remote.code.v1.StatResponse
-	10, // 42: remote.code.v1.FileService.List:output_type -> remote.code.v1.ListResponse
-	13, // 43: remote.code.v1.FileService.Tree:output_type -> remote.code.v1.TreeResponse
-	16, // 44: remote.code.v1.FileService.Upload:output_type -> remote.code.v1.UploadResponse
-	20, // 45: remote.code.v1.FileService.Download:output_type -> remote.code.v1.DownloadResponse
-	22, // 46: remote.code.v1.FileService.Remove:output_type -> remote.code.v1.RemoveResponse
-	24, // 47: remote.code.v1.FileService.Move:output_type -> remote.code.v1.MoveResponse
-	26, // 48: remote.code.v1.FileService.Chmod:output_type -> remote.code.v1.ChmodResponse
-	28, // 49: remote.code.v1.FileService.Mkdir:output_type -> remote.code.v1.MkdirResponse
-	32, // 50: remote.code.v1.ProcessService.StartProcess:output_type -> remote.code.v1.StartProcessResponse
-	34, // 51: remote.code.v1.ProcessService.ListProcesses:output_type -> remote.code.v1.ListProcessesResponse
-	36, // 52: remote.code.v1.ProcessService.SignalProcess:output_type -> remote.code.v1.SignalProcessResponse
-	40, // [40:53] is the sub-list for method output_type
-	27, // [27:40] is the sub-list for method input_type
-	27, // [27:27] is the sub-list for extension type_name
-	27, // [27:27] is the sub-list for extension extendee
-	0,  // [0:27] is the sub-list for field type_name
+	31, // 26: remote.code.v1.SignalProcessResponse.process:type_name -> remote.code.v1.ProcessInfo
+	4,  // 27: remote.code.v1.ObserveProcessLogsRequest.streams:type_name -> remote.code.v1.ProcessLogStream
+	1,  // 28: remote.code.v1.ProcessLogHeader.io_mode:type_name -> remote.code.v1.ProcessIOMode
+	4,  // 29: remote.code.v1.ProcessLogHeader.streams:type_name -> remote.code.v1.ProcessLogStream
+	46, // 30: remote.code.v1.ProcessLogChunk.timestamp:type_name -> google.protobuf.Timestamp
+	4,  // 31: remote.code.v1.ProcessLogChunk.stream:type_name -> remote.code.v1.ProcessLogStream
+	5,  // 32: remote.code.v1.ProcessLogEnd.reason:type_name -> remote.code.v1.ProcessLogEndReason
+	2,  // 33: remote.code.v1.ProcessLogEnd.state:type_name -> remote.code.v1.ProcessState
+	40, // 34: remote.code.v1.ObserveProcessLogsResponse.header:type_name -> remote.code.v1.ProcessLogHeader
+	41, // 35: remote.code.v1.ObserveProcessLogsResponse.chunk:type_name -> remote.code.v1.ProcessLogChunk
+	42, // 36: remote.code.v1.ObserveProcessLogsResponse.checkpoint:type_name -> remote.code.v1.ProcessLogCheckpoint
+	43, // 37: remote.code.v1.ObserveProcessLogsResponse.end:type_name -> remote.code.v1.ProcessLogEnd
+	6,  // 38: remote.code.v1.ControllerService.GetInfo:input_type -> remote.code.v1.GetInfoRequest
+	9,  // 39: remote.code.v1.FileService.Stat:input_type -> remote.code.v1.StatRequest
+	11, // 40: remote.code.v1.FileService.List:input_type -> remote.code.v1.ListRequest
+	14, // 41: remote.code.v1.FileService.Tree:input_type -> remote.code.v1.TreeRequest
+	17, // 42: remote.code.v1.FileService.Upload:input_type -> remote.code.v1.UploadRequest
+	19, // 43: remote.code.v1.FileService.Download:input_type -> remote.code.v1.DownloadRequest
+	23, // 44: remote.code.v1.FileService.Remove:input_type -> remote.code.v1.RemoveRequest
+	25, // 45: remote.code.v1.FileService.Move:input_type -> remote.code.v1.MoveRequest
+	27, // 46: remote.code.v1.FileService.Chmod:input_type -> remote.code.v1.ChmodRequest
+	29, // 47: remote.code.v1.FileService.Mkdir:input_type -> remote.code.v1.MkdirRequest
+	33, // 48: remote.code.v1.ProcessService.StartProcess:input_type -> remote.code.v1.StartProcessRequest
+	35, // 49: remote.code.v1.ProcessService.ListProcesses:input_type -> remote.code.v1.ListProcessesRequest
+	37, // 50: remote.code.v1.ProcessService.SignalProcess:input_type -> remote.code.v1.SignalProcessRequest
+	39, // 51: remote.code.v1.ProcessService.ObserveProcessLogs:input_type -> remote.code.v1.ObserveProcessLogsRequest
+	7,  // 52: remote.code.v1.ControllerService.GetInfo:output_type -> remote.code.v1.GetInfoResponse
+	10, // 53: remote.code.v1.FileService.Stat:output_type -> remote.code.v1.StatResponse
+	12, // 54: remote.code.v1.FileService.List:output_type -> remote.code.v1.ListResponse
+	15, // 55: remote.code.v1.FileService.Tree:output_type -> remote.code.v1.TreeResponse
+	18, // 56: remote.code.v1.FileService.Upload:output_type -> remote.code.v1.UploadResponse
+	22, // 57: remote.code.v1.FileService.Download:output_type -> remote.code.v1.DownloadResponse
+	24, // 58: remote.code.v1.FileService.Remove:output_type -> remote.code.v1.RemoveResponse
+	26, // 59: remote.code.v1.FileService.Move:output_type -> remote.code.v1.MoveResponse
+	28, // 60: remote.code.v1.FileService.Chmod:output_type -> remote.code.v1.ChmodResponse
+	30, // 61: remote.code.v1.FileService.Mkdir:output_type -> remote.code.v1.MkdirResponse
+	34, // 62: remote.code.v1.ProcessService.StartProcess:output_type -> remote.code.v1.StartProcessResponse
+	36, // 63: remote.code.v1.ProcessService.ListProcesses:output_type -> remote.code.v1.ListProcessesResponse
+	38, // 64: remote.code.v1.ProcessService.SignalProcess:output_type -> remote.code.v1.SignalProcessResponse
+	44, // 65: remote.code.v1.ProcessService.ObserveProcessLogs:output_type -> remote.code.v1.ObserveProcessLogsResponse
+	52, // [52:66] is the sub-list for method output_type
+	38, // [38:52] is the sub-list for method input_type
+	38, // [38:38] is the sub-list for extension type_name
+	38, // [38:38] is the sub-list for extension extendee
+	0,  // [0:38] is the sub-list for field type_name
 }
 
 func init() { file_remote_code_v1_remote_code_proto_init() }
@@ -2521,13 +3294,24 @@ func file_remote_code_v1_remote_code_proto_init() {
 		(*ProcessReference_Name)(nil),
 		(*ProcessReference_Pid)(nil),
 	}
+	file_remote_code_v1_remote_code_proto_msgTypes[33].OneofWrappers = []any{
+		(*ObserveProcessLogsRequest_Offset)(nil),
+		(*ObserveProcessLogsRequest_TailLines)(nil),
+	}
+	file_remote_code_v1_remote_code_proto_msgTypes[37].OneofWrappers = []any{}
+	file_remote_code_v1_remote_code_proto_msgTypes[38].OneofWrappers = []any{
+		(*ObserveProcessLogsResponse_Header)(nil),
+		(*ObserveProcessLogsResponse_Chunk)(nil),
+		(*ObserveProcessLogsResponse_Checkpoint)(nil),
+		(*ObserveProcessLogsResponse_End)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_remote_code_v1_remote_code_proto_rawDesc), len(file_remote_code_v1_remote_code_proto_rawDesc)),
-			NumEnums:      4,
-			NumMessages:   34,
+			NumEnums:      6,
+			NumMessages:   40,
 			NumExtensions: 0,
 			NumServices:   3,
 		},

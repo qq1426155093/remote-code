@@ -134,8 +134,57 @@ func (c *commandCompleter) Do(line []rune, pos int) ([][]rune, int) {
 		}
 	case "kill":
 		candidates = c.completeKill(previous, current)
+	case "logs":
+		candidates = c.completeLogs(previous, current)
 	}
 	return formatCompletions(input, candidates)
+}
+
+func (c *commandCompleter) completeLogs(previous []string, current string) []completionCandidate {
+	used := make(map[string]bool)
+	expectValue := false
+	targetSeen := false
+	for _, argument := range previous {
+		if expectValue {
+			expectValue = false
+			continue
+		}
+		switch argument {
+		case "-n", "--tail":
+			used["start"] = true
+			expectValue = true
+		case "--offset":
+			used["start"] = true
+			expectValue = true
+		case "-f", "--follow":
+			used["follow"] = true
+		case "--stdout":
+			used["stdout"] = true
+		case "--stderr":
+			used["stderr"] = true
+		default:
+			targetSeen = true
+		}
+	}
+	if expectValue || targetSeen || (current != "" && !strings.HasPrefix(current, "-")) {
+		return nil
+	}
+	var candidates []completionCandidate
+	for _, option := range []struct {
+		value string
+		key   string
+	}{
+		{value: "-f", key: "follow"},
+		{value: "-n", key: "start"},
+		{value: "--offset", key: "start"},
+		{value: "--stdout", key: "stdout"},
+		{value: "--stderr", key: "stderr"},
+	} {
+		if !used[option.key] {
+			candidates = append(candidates, completionCandidate{value: option.value, finish: true})
+		}
+	}
+	return candidates
 }
 
 func (c *commandCompleter) completeExec(previous []string, current string) []completionCandidate {

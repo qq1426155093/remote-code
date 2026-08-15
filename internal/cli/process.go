@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"io"
 	"regexp"
 	"strconv"
 	"strings"
@@ -29,6 +30,14 @@ type processSignalOptions struct {
 	reference *codev1.ProcessReference
 	signal    codev1.ProcessSignal
 	wait      bool
+}
+
+type processLogOptions struct {
+	processID string
+	streams   []codev1.ProcessLogStream
+	offset    *uint64
+	tail      *uint64
+	follow    bool
 }
 
 func (r *REPL) startProcess(arguments []string) error {
@@ -96,6 +105,107 @@ func (r *REPL) signalProcess(arguments []string) error {
 		fmt.Fprintf(r.stdout, "sent %s to %s (%s), pid %d\n", processSignalName(options.signal), info.GetName(), info.GetId(), info.GetPid())
 	}
 	return nil
+}
+
+func (r *REPL) observeProcessLogs(arguments []string) error {
+	options, err := parseProcessLogOptions(arguments)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := r.commandContext()
+	defer cancel()
+	stream, err := r.client.ObserveProcessLogs(ctx, options.processID, remoteclient.ProcessLogOptions{
+		Streams: options.streams, Offset: options.offset, TailLines: options.tail, Follow: options.follow,
+	})
+	if err != nil {
+		return err
+	}
+	for {
+		response, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		chunk := response.GetChunk()
+		if chunk == nil || len(chunk.GetData()) == 0 {
+			continue
+		}
+		writer := r.stdout
+		if chunk.GetStream() == codev1.ProcessLogStream_PROCESS_LOG_STREAM_STDERR {
+			writer = r.stderr
+		}
+		n, err := writer.Write(chunk.GetData())
+		if err != nil {
+			return fmt.Errorf("write process log output: %w", err)
+		}
+		if n != len(chunk.GetData()) {
+			return io.ErrShortWrite
+		}
+	}
+}
+
+func parseProcessLogOptions(arguments []string) (processLogOptions, error) {
+	var options processLogOptions
+	values := make([]string, 0, 1)
+	stdoutSet := false
+	stderrSet := false
+	for index := 0; index < len(arguments); index++ {
+		switch arguments[index] {
+		case "-f", "--follow":
+			options.follow = true
+		case "-n", "--tail":
+			if index+1 >= len(arguments) || options.tail != nil || options.offset != nil {
+				return processLogOptions{}, errors.New(commandUsage["logs"])
+			}
+			index++
+			value, err := strconv.ParseUint(arguments[index], 10, 64)
+			if err != nil {
+				return processLogOptions{}, errors.New("log tail lines must be a non-negative integer")
+			}
+			options.tail = &value
+		case "--offset":
+			if index+1 >= len(arguments) || options.offset != nil || options.tail != nil {
+				return processLogOptions{}, errors.New(commandUsage["logs"])
+			}
+			index++
+			value, err := strconv.ParseUint(arguments[index], 10, 64)
+			if err != nil {
+				return processLogOptions{}, errors.New("log offset must be a non-negative integer")
+			}
+			options.offset = &value
+		case "--stdout":
+			if stdoutSet {
+				return processLogOptions{}, errors.New("--stdout is specified more than once")
+			}
+			stdoutSet = true
+		case "--stderr":
+			if stderrSet {
+				return processLogOptions{}, errors.New("--stderr is specified more than once")
+			}
+			stderrSet = true
+		case "--":
+			values = append(values, arguments[index+1:]...)
+			index = len(arguments)
+		default:
+			if strings.HasPrefix(arguments[index], "-") {
+				return processLogOptions{}, fmt.Errorf("unknown logs option %q; %s", arguments[index], commandUsage["logs"])
+			}
+			values = append(values, arguments[index])
+		}
+	}
+	if len(values) != 1 || !uuidPattern.MatchString(values[0]) {
+		return processLogOptions{}, errors.New(commandUsage["logs"])
+	}
+	options.processID = strings.ToLower(values[0])
+	if stdoutSet {
+		options.streams = append(options.streams, codev1.ProcessLogStream_PROCESS_LOG_STREAM_STDOUT)
+	}
+	if stderrSet {
+		options.streams = append(options.streams, codev1.ProcessLogStream_PROCESS_LOG_STREAM_STDERR)
+	}
+	return options, nil
 }
 
 func parseProcessStartOptions(arguments []string) (processStartOptions, error) {

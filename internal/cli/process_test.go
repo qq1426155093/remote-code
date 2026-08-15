@@ -2,6 +2,7 @@ package cli
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
@@ -72,5 +73,34 @@ func TestParseProcessSignalOptions(t *testing.T) {
 	}
 	if _, err := parseProcessSignal("BOGUS"); err == nil {
 		t.Error("parseProcessSignal(BOGUS) succeeded")
+	}
+}
+
+func TestParseProcessLogOptions(t *testing.T) {
+	id := "7aa5daab-e886-4889-9ec3-92d461883091"
+	options, err := parseProcessLogOptions([]string{"-f", "-n", "100", "--stdout", id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if options.processID != id || !options.follow || options.tail == nil || *options.tail != 100 || options.offset != nil || !reflect.DeepEqual(options.streams, []codev1.ProcessLogStream{codev1.ProcessLogStream_PROCESS_LOG_STREAM_STDOUT}) {
+		t.Fatalf("parseProcessLogOptions() = %+v", options)
+	}
+	options, err = parseProcessLogOptions([]string{"--offset", "42", "--stderr", strings.ToUpper(id)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if options.processID != id || options.offset == nil || *options.offset != 42 || !reflect.DeepEqual(options.streams, []codev1.ProcessLogStream{codev1.ProcessLogStream_PROCESS_LOG_STREAM_STDERR}) {
+		t.Fatalf("parseProcessLogOptions(offset) = %+v", options)
+	}
+	for _, arguments := range [][]string{
+		{},
+		{"not-a-uuid"},
+		{"-n", "1", "--offset", "2", id},
+		{"-n", "-1", id},
+		{"--stdout", "--stdout", id},
+	} {
+		if _, err := parseProcessLogOptions(arguments); err == nil {
+			t.Errorf("parseProcessLogOptions(%q) succeeded", arguments)
+		}
 	}
 }

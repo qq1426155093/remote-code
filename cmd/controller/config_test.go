@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseControllerOptionsLoadsTOMLAndAppliesFlagOverrides(t *testing.T) {
@@ -24,6 +25,13 @@ runtime_directory = "/run/from-config"
 max_upload_bytes = 2048
 max_processes = 4
 allow_insecure_remote = true
+
+[process_logs]
+max_bytes_per_process = 1048576
+max_total_bytes = 8388608
+segment_bytes = 262144
+retention_after_exit = "36h"
+max_observers_per_process = 3
 
 [tls]
 certificate_file = "/tls/server.crt"
@@ -46,7 +54,9 @@ token_file = "`+tokenFile+`"
 	if options.configFile != configFile || config.Workspace != workspace || config.ListenAddress != "127.0.0.1:9555" ||
 		config.RuntimeDirectory != "/run/from-config" || config.MaxUploadBytes != 2048 || config.MaxProcesses != 9 ||
 		config.AllowInsecureRemote || config.TLSCertificateFile != "/tls/server.crt" || config.TLSKeyFile != "/tls/server.key" ||
-		options.tokenFile != tokenFile {
+		config.ProcessLogs.MaxBytesPerProcess != 1048576 || config.ProcessLogs.MaxTotalBytes != 8388608 ||
+		config.ProcessLogs.SegmentBytes != 262144 || config.ProcessLogs.RetentionAfterExit != 36*time.Hour ||
+		config.ProcessLogs.MaxObservers != 3 || options.tokenFile != tokenFile {
 		t.Fatalf("parsed options = %+v", options)
 	}
 	validated, err := options.validatedServerConfig()
@@ -65,7 +75,9 @@ func TestParseControllerOptionsUsesDefaultsWithoutConfig(t *testing.T) {
 	}
 	config := options.serverConfig
 	if config.Workspace != "/srv/project" || config.ListenAddress != "127.0.0.1:9443" ||
-		config.RuntimeDirectory != "/var/run/remote-code-controller" || config.MaxUploadBytes != 1<<30 || config.MaxProcesses != 16 {
+		config.RuntimeDirectory != "/var/run/remote-code-controller" || config.MaxUploadBytes != 1<<30 || config.MaxProcesses != 16 ||
+		config.ProcessLogs.MaxBytesPerProcess != 64<<20 || config.ProcessLogs.MaxTotalBytes != 4<<30 ||
+		config.ProcessLogs.SegmentBytes != 4<<20 || config.ProcessLogs.RetentionAfterExit != 7*24*time.Hour || config.ProcessLogs.MaxObservers != 8 {
 		t.Fatalf("defaults = %+v", config)
 	}
 }
@@ -139,6 +151,8 @@ func TestValidatedServerConfigRejectsInvalidValues(t *testing.T) {
 		{name: "runtime", mutate: func(o *controllerOptions) { o.serverConfig.RuntimeDirectory = "" }, want: "runtime directory is required"},
 		{name: "upload", mutate: func(o *controllerOptions) { o.serverConfig.MaxUploadBytes = 0 }, want: "max upload bytes must be positive"},
 		{name: "processes", mutate: func(o *controllerOptions) { o.serverConfig.MaxProcesses = 4097 }, want: "max processes must be between"},
+		{name: "process log total", mutate: func(o *controllerOptions) { o.serverConfig.ProcessLogs.MaxTotalBytes = 1 }, want: "total max bytes"},
+		{name: "process log observers", mutate: func(o *controllerOptions) { o.serverConfig.ProcessLogs.MaxObservers = -1 }, want: "max observers"},
 		{name: "tls pair", mutate: func(o *controllerOptions) { o.serverConfig.TLSCertificateFile = "cert" }, want: "must be provided together"},
 		{name: "insecure remote", mutate: func(o *controllerOptions) { o.serverConfig.ListenAddress = "0.0.0.0:9443" }, want: "refusing insecure non-loopback"},
 		{name: "token", mutate: func(o *controllerOptions) { o.tokenFile = filepath.Join(t.TempDir(), "missing") }, want: "read token file"},

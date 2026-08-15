@@ -33,6 +33,13 @@ max_upload_bytes = 1073741824
 max_processes = 16
 allow_insecure_remote = false
 
+[process_logs]
+max_bytes_per_process = 67108864
+max_total_bytes = 4294967296
+segment_bytes = 4194304
+retention_after_exit = "168h"
+max_observers_per_process = 8
+
 [tls]
 certificate_file = "/etc/remote-code/tls/server.crt"
 key_file = "/etc/remote-code/tls/server.key"
@@ -58,6 +65,11 @@ controller 拒绝启动。配置文件最大 1 MiB。
 | `max_upload_bytes` | `--max-upload-bytes` | `1073741824` |
 | `max_processes` | `--max-processes` | `16` |
 | `allow_insecure_remote` | `--allow-insecure-remote` | `false` |
+| `process_logs.max_bytes_per_process` | `--process-log-max-bytes` | `67108864` |
+| `process_logs.max_total_bytes` | `--process-log-max-total-bytes` | `4294967296` |
+| `process_logs.segment_bytes` | `--process-log-segment-bytes` | `4194304` |
+| `process_logs.retention_after_exit` | `--process-log-retention` | `168h` |
+| `process_logs.max_observers_per_process` | `--process-log-max-observers` | `8` |
 | `tls.certificate_file` | `--tls-cert` | 空 |
 | `tls.key_file` | `--tls-key` | 空 |
 | `auth.token_file` | `--token-file` | 空 |
@@ -70,6 +82,8 @@ controller 拒绝启动。配置文件最大 1 MiB。
 remote-code-controller --config /etc/remote-code/controller.toml --check-config
 ```
 
-成功时输出 `configuration OK`。校验包含 schema、字段类型、范围、TLS 配对、明文远端
+成功时输出 `configuration OK`。日志尺寸包含 segment 与索引；segment 和单进程上限不得小于
+256 KiB，总日志上限不得小于单进程上限，保留周期不能为负数，单进程观察者上限为 1–1024。
+校验还包含 schema、字段类型、范围、TLS 配对、明文远端
 监听策略、workspace 目录和 token 文件；listener 是否可绑定、TLS 证书内容以及 runtime
 目录创建仍在实际启动时验证。

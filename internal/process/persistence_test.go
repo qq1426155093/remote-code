@@ -35,8 +35,17 @@ func TestServicePersistsPipeOutputMetadataAndStatus(t *testing.T) {
 	}
 	directory := filepath.Join(runtimeDirectory, exited.GetId())
 	assertMode(t, directory, 0o700)
-	for _, name := range []string{metadataFileName, statusFileName, stdoutFileName, stderrFileName} {
+	for _, name := range []string{metadataFileName, statusFileName} {
 		assertMode(t, filepath.Join(directory, name), 0o600)
+	}
+	logDirectory := filepath.Join(directory, processLogDirectoryName)
+	assertMode(t, logDirectory, 0o700)
+	logFiles, err := os.ReadDir(logDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range logFiles {
+		assertMode(t, filepath.Join(logDirectory, entry.Name()), 0o600)
 	}
 	metadata := readTestFile(t, filepath.Join(directory, metadataFileName))
 	if bytes.Contains(metadata, []byte(secret)) || !bytes.Contains(metadata, []byte("REMOTE_CODE_TEST_SECRET")) {
@@ -49,10 +58,10 @@ func TestServicePersistsPipeOutputMetadataAndStatus(t *testing.T) {
 	if persistedStatus.State != "EXITED" || persistedStatus.ExitCode == nil || *persistedStatus.ExitCode != 0 || persistedStatus.ExitedAt == nil {
 		t.Fatalf("status = %+v, want exited code 0", persistedStatus)
 	}
-	stdout := readTestFrames(t, filepath.Join(directory, stdoutFileName))
-	stderr := readTestFrames(t, filepath.Join(directory, stderrFileName))
-	if string(joinPayloads(stdout)) != "stdout:\x00"+secret || string(joinPayloads(stderr)) != "stderr:\xff"+secret {
-		t.Fatalf("stdout=%q stderr=%q", joinPayloads(stdout), joinPayloads(stderr))
+	stdout := readTestProcessLog(t, service, exited.GetId(), codev1.ProcessLogStream_PROCESS_LOG_STREAM_STDOUT)
+	stderr := readTestProcessLog(t, service, exited.GetId(), codev1.ProcessLogStream_PROCESS_LOG_STREAM_STDERR)
+	if string(stdout) != "stdout:\x00"+secret || string(stderr) != "stderr:\xff"+secret {
+		t.Fatalf("stdout=%q stderr=%q", stdout, stderr)
 	}
 
 	active, err := service.ListProcesses(context.Background(), &codev1.ListProcessesRequest{})
@@ -76,14 +85,13 @@ func TestServicePersistsPTYMergedOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	info := waitForProcessExit(t, service, started.GetProcess().GetId())
-	directory := filepath.Join(runtimeDirectory, info.GetId())
-	combined := string(joinPayloads(readTestFrames(t, filepath.Join(directory, stdoutFileName))))
+	combined := string(readTestProcessLog(t, service, info.GetId(), codev1.ProcessLogStream_PROCESS_LOG_STREAM_STDOUT))
 	if !strings.Contains(combined, "pty-stdout") || !strings.Contains(combined, "pty-stderr") {
 		t.Fatalf("PTY stdout log = %q, want both streams", combined)
 	}
-	stderr, err := os.ReadFile(filepath.Join(directory, stderrFileName))
-	if err != nil || len(stderr) != 0 {
-		t.Fatalf("PTY stderr log = %x, %v; want empty", stderr, err)
+	stderr := readTestProcessLog(t, service, info.GetId(), codev1.ProcessLogStream_PROCESS_LOG_STREAM_STDERR)
+	if len(stderr) != 0 {
+		t.Fatalf("PTY stderr log = %x; want empty", stderr)
 	}
 }
 
@@ -254,6 +262,29 @@ func joinPayloads(frames []LogFrame) []byte {
 	var output []byte
 	for _, frame := range frames {
 		output = append(output, frame.Payload...)
+	}
+	return output
+}
+
+func readTestProcessLog(t *testing.T, service *Service, id string, selected codev1.ProcessLogStream) []byte {
+	t.Helper()
+	service.mu.Lock()
+	record := service.processes[id]
+	service.mu.Unlock()
+	if record == nil || record.logs == nil {
+		t.Fatalf("process %s has no log", id)
+	}
+	prepared, err := record.logs.prepareOffset(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output []byte
+	err = record.logs.readRange(prepared.start, prepared.end, prepared.earliest, map[codev1.ProcessLogStream]bool{selected: true}, nil, func(record storedProcessLogRecord, _ bool) error {
+		output = append(output, record.payload...)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 	return output
 }

@@ -12,13 +12,14 @@ controller 提供与 Claude Code 无关的通用进程管理能力。任何通�
 - 为进程指定逻辑名称、工作目录、命令、参数和环境变量；
 - 返回稳定 UUID 和操作系统 PID；
 - 持久化元数据、状态以及带时间戳的 stdout/stderr 输出块；
+- 按逻辑 offset 或最后 N 行回放日志，并可无缝跟随到进程退出；
 - 列出当前活动进程，或列出活动及历史进程；
 - 按 UUID、名称或 PID 向整个进程组发送受支持的 POSIX 信号；
 - controller 始终 `Wait` 直接子进程，避免僵尸进程；
 - `remote-code` REPL 提供 `exec`、`ps`、`ps -a` 和 `kill` 命令，并让
   `cd` 改变的远端当前目录成为后续 `exec` 的默认工作目录。
 
-本版本不包含实时 attach、交互输入、终端尺寸变更、日志 gRPC 下载/回放、资源限额和
+本版本不包含实时 attach、交互输入、终端尺寸变更、CPU/内存限额和
 跨 controller 重启重新接管仍存活的操作系统进程。落盘日志格式为后续日志回放接口提供
 稳定基础。
 
@@ -91,8 +92,12 @@ runtime 根目录由 `--runtime-dir` 配置，默认
 <runtime-dir>/<uuid>/
 ├── metadata.json
 ├── status.json
-├── stdout.log
-└── stderr.log
+└── logs/
+    ├── state.json
+    ├── <first-offset>.log
+    ├── <first-offset>.oidx
+    ├── <first-offset>.stdout.lidx
+    └── <first-offset>.stderr.lidx
 ```
 
 根目录和 UUID 目录权限为 `0700`；文件权限为 `0600`。拒绝将符号链接作为 runtime 根
@@ -101,18 +106,11 @@ runtime 根目录由 `--runtime-dir` 配置，默认
 结束时间、exit code/signal 及非敏感错误。状态文件采用同目录临时文件、`fsync`、rename
 的原子替换方式更新。
 
-`stdout.log` 和 `stderr.log` 是连续二进制帧。每帧定义为：
-
-```text
-offset  size  encoding                 meaning
-0       8     big-endian int64         Unix 纳秒时间戳
-8       4     big-endian uint32        payload 字节长度 N
-12      N     raw bytes                本次读取的原始输出块
-```
-
-最大单帧 payload 为 64 KiB。写入器必须处理 short write，并保证同一文件的帧不交叉。
-读取器遇到不完整尾帧时应停止在最后一个完整帧，以允许进程运行中读取。PIPE 模式分别
-记录 stdout 和 stderr；PTY 模式将终端合并输出写入 `stdout.log`，`stderr.log` 保持为空。
+`logs/` 使用 v2 tagged segment：每条记录具有跨双流递增的逻辑 offset、stdout/stderr tag、
+时间戳、逻辑行 offset、行边界、CRC 和最大 64 KiB 的原始 payload。稀疏 offset 索引用于
+定位回放，分 stream 行索引用于 tail。PIPE 保留双流标记；PTY 合并输出标记为 stdout。
+完整格式、轮转、迁移和崩溃恢复规则见
+[进程日志观测详细设计](process-log-observation-design-v1.md)。
 
 环境变量 value、认证 token、上传文件内容和 prompt 不得写入 metadata/status 或普通
 controller 日志。
@@ -125,6 +123,7 @@ controller 日志。
 - `ps` 只显示活动进程。
 - `ps -a` 显示活动和历史进程。
 - `kill [-s SIGNAL] [-w] PROCESS` 保持 UUID、名称和 PID 引用能力。
+- `logs [-f] [-n LINES|--offset OFFSET] [--stdout|--stderr] PROCESS_ID` 回放或持续跟随输出。
 
 命令解析不调用本地 shell。需要 shell 语法时必须显式执行，例如
 `exec sh -lc 'printf "%s\\n" "$HOME"'`。
@@ -136,13 +135,14 @@ controller 日志。
 - 最多 256 个环境变量覆盖，单 key/value 最多 4096 字节，总计最多 64 KiB；
 - 工作目录和命令字段最长 4096 字节；
 - 进程历史内存索引最多 4096 条；磁盘记录不会自动删除；
+- 日志默认每进程保留 64 MiB、全局 4 GiB、退出后 7 天，可通过 controller 配置覆盖；
 - 当前进程执行实现仅支持 Linux；其它平台返回 unimplemented。
 
 ## 7. 验收标准
 
 - gRPC 能用 `name/cwd/io_mode/command/arguments/environment` 启动普通命令并返回 UUID/PID；
 - PIPE 和 PTY 都能完成执行、回收和状态落盘；
-- PIPE stdout/stderr、PTY 合并输出可按规定帧格式逐帧解析，二进制内容无损；
+- PIPE stdout/stderr、PTY 合并输出可按逻辑 offset 或最后 N 行无损回放，并能跟随到退出；
 - kill 对进程组生效，`wait=true` 返回时 leader 已被回收；
 - `ps` 与 `ps -a` 过滤正确，controller 重启后历史可见，遗留活动状态转换为 `LOST`；
 - 工作目录逃逸、symlink 逃逸、无效环境变量和超限请求被拒绝；

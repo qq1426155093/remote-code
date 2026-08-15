@@ -5,8 +5,8 @@ Remote Code 是一个面向远程开发任务的 Code Agent 控制平面。它�
 受管进程。Claude Code 接入将建立在这套通用进程能力之上，目前不需要 Claude 凭据。
 
 > 项目状态：文件与基础进程控制已可运行，包含带 Tab 补全的交互式 CLI、结构化目录树、
-> gRPC controller、流式上传/下载、PTY/pipe 启动、持久化输出日志、进程列表、信号、
-> 自动回收和重启历史恢复。远程 attach、日志回放 RPC 与 Agent 语义仍是后续版本计划。
+> gRPC controller、流式上传/下载、PTY/pipe 启动、可回放/跟随的持久化输出日志、进程列表、
+> 信号、自动回收和重启历史恢复。远程 attach 与 Agent 语义仍是后续版本计划。
 
 ## 快速开始
 
@@ -37,14 +37,16 @@ remote-code:/> cd docs/input
 remote-code:/docs/input> exec --name listing -e LANG=C ls -la
 remote-code:/> ps
 remote-code:/> ps -a
+remote-code:/> logs -n 100 --follow 7aa5daab-e886-4889-9ec3-92d461883091
 remote-code:/> kill -s TERM -w listing
 ```
 
 默认仅允许 loopback 明文监听。远程部署应配置 `--tls-cert`、`--tls-key` 和
 `--token-file`；完整参数、行为与安全限制见
 [首版需求](docs/requirements-v1.md)、[通用进程需求](docs/process-management-requirements-v1.md)、
-[技术方案](docs/technical-design-v1.md)、[通用进程详细设计](docs/process-management-design-v1.md)
-和[Controller 配置文件](docs/controller-configuration.md)。
+[技术方案](docs/technical-design-v1.md)、[通用进程详细设计](docs/process-management-design-v1.md)、
+[进程日志观测详细设计](docs/process-log-observation-design-v1.md)和
+[Controller 配置文件](docs/controller-configuration.md)。
 
 controller 同时保留全部命令行参数。使用配置文件时，显式命令行参数覆盖 TOML，例如：
 
@@ -177,6 +179,7 @@ service ProcessService {
   rpc StartProcess(StartProcessRequest) returns (StartProcessResponse);
   rpc ListProcesses(ListProcessesRequest) returns (ListProcessesResponse);
   rpc SignalProcess(SignalProcessRequest) returns (SignalProcessResponse);
+  rpc ObserveProcessLogs(ObserveProcessLogsRequest) returns (stream ObserveProcessLogsResponse);
 }
 ```
 
@@ -190,9 +193,10 @@ stdin、stdout/stderr、终端 resize、心跳和 detach。
 `SignalProcess` 可按 UUID、名称或 PID 向整个组发送 HUP、INT、QUIT、TERM、KILL、
 USR1、USR2、STOP 或 CONT。直接子进程始终由 controller `Wait` 回收。
 
-进程记录位于 `--runtime-dir/<uuid>/`。`metadata.json` 与 `status.json` 保存元数据和状态，
-`stdout.log`/`stderr.log` 使用 `[8-byte Unix 纳秒时间戳][4-byte 大端长度][原始输出]`
-帧格式。PIPE 分开记录双流，PTY 合并记录到 stdout。环境变量仅持久化 key，不持久化 value。
+进程记录位于 `--runtime-dir/<uuid>/`。`metadata.json` 与 `status.json` 保存元数据和状态；
+`logs/` 使用带 stdout/stderr tag、逻辑 offset、CRC 和 tail 索引的 v2 分段格式。PIPE 保留双流
+标记，PTY 合并记录为 stdout。环境变量仅持久化 key，不持久化 value。旧双文件 v1 日志会在
+加载时自动迁移。
 
 ## 多 Agent 协作
 
@@ -262,7 +266,8 @@ SQLite 或 bbolt 持久化 agent 元数据和事件游标；仍在运行的子�
 - 已扩展 v1 Process protobuf 并生成 Go 代码；
 - 已实现受控命令的 pipe/PTY 启动、列表、进程组信号、退出码和回收；
 - 已实现 CLI context、超时、结构化错误和 TLS/token 认证；
-- PTY 双向 attach、窗口 resize 和输出回放待后续实现。
+- 已实现按 offset/tail 回放、stdout/stderr 过滤、退出前持续 follow、分段保留与 CLI `logs`；
+- PTY 双向 attach 和窗口 resize 待后续实现。
 
 ### Milestone 3：Agent 可靠性
 

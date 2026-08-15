@@ -13,7 +13,7 @@ ProcessService
     ├── workspace root  使用 os.Root 固定工作区并阻止 symlink 逃逸
     ├── registry        UUID/name/PID 索引、状态机、并发限额
     ├── runner          Linux pipe/PTY、独立进程组、signal、Wait
-    └── record store    JSON 状态、framed stdout/stderr、启动恢复
+    └── record store    JSON 状态、v2 tagged segment/index、启动恢复
 ```
 
 registry 的所有索引和 `ProcessInfo` 状态由同一 mutex 保护。磁盘 I/O 不长时间持锁；
@@ -52,7 +52,7 @@ metadata；value 只存在于启动请求和 child env 内存中。
 1. 校验请求并打开工作目录；
 2. 分配 UUID，派生缺省名称和创建时间；
 3. 在锁内检查关闭状态、活动上限和活动名称冲突，预留 registry 条目与活动名额；
-4. 创建 `<uuid>` 目录、metadata/status 和两个空日志文件；
+4. 创建 `<uuid>` 目录、metadata/status 和 v2 日志目录；
 5. 启动 runner；
 6. 启动成功后在锁内登记 PID、转换为 RUNNING，并写 RUNNING status；
 7. 启动 reaper，返回 ProcessInfo。
@@ -79,18 +79,17 @@ runner 提供 `wait()`：先调用 `cmd.Wait()`。PIPE 等两个 copier 完成�
 signal 使用 `kill(-pid, signal)` 作用于 process group。controller 不允许通过 API 发送
 任意数字信号，以维持跨客户端的稳定枚举契约。
 
-## 6. 帧日志实现
+## 6. 日志实现
 
-`frameWriter.Write(payload)` 在 mutex 内获取一次时钟，编码 12-byte header，然后用
-`writeFull` 依次写 header 和 payload。payload 大于 64 KiB 时切成多个帧，每帧独立取
-时间戳。空 write 不产生帧。
+stdout/stderr 共用进程级 v2 append log 和 mutex，每个成功记录获得跨双流递增的逻辑 offset。
+写入按换行和 64 KiB 上限切分，同时记录逻辑行首 offset；PTY 合并数据全部标记为 stdout。
+segment 轮转后使用稀疏 offset 索引定位回放，使用 stdout/stderr 行索引反向选择 tail。
 
-时间戳为 `time.Now().UnixNano()` 的 int64 bit pattern，长度为 uint32，均用 network
-byte order（big endian）。测试使用可注入 clock 和内存 writer 验证精确字节布局、
-short write、并发帧完整性以及二进制 payload。
-
-日志复制器固定使用 64 KiB buffer，因此 runner 不会生成超长帧。日志文件只追加且不会
-被 status rename 替换。
+`ObserveProcessLogs` 在锁内捕获快照末尾和通知 channel，从磁盘回放后以同一游标进入 follow，
+避免交接丢失。观察期间 segment 不会被保留任务删除。CRC、footer、索引重建、v1 双文件迁移、
+尺寸/周期配置和错误语义见
+[进程日志观测详细设计](process-log-observation-design-v1.md)。原 12-byte framed writer 仅保留用于
+读取并迁移历史 v1 记录。
 
 ## 7. JSON 存储与崩溃恢复
 
@@ -115,6 +114,9 @@ public client 的 `StartProcess` 接收一个选项结构，避免继续增长�
 `ListProcesses(ctx, all)` 显式传递过滤条件。REPL parser 支持重复 `-e`/`--env`，遇到
 `--` 后停止解析选项。命令启动成功后打印 name、UUID、PID、mode 和 cwd。
 
+`ObserveProcessLogs` 的 client 选项以互斥指针表达 offset/tail，返回原始 gRPC server stream。
+REPL `logs` 支持 `-f`、`-n`、`--offset`、`--stdout` 和 `--stderr`，并保持二进制 chunk 原样输出。
+
 `exec` 未设置 cwd 时使用 REPL 保存的工作区相对 cwd；显式 `--cwd` 也通过与文件命令
 相同的远端路径解析器相对于当前 cwd 解析。`ps` 仅接受可选 `-a`/`--all`。
 
@@ -136,7 +138,8 @@ Tab completion 增加 `exec` 的选项提示、`--cwd` 目录补全和 kill/ps �
 ## 10. 测试策略
 
 单元测试覆盖 validator、frame codec、原子 JSON store、恢复、状态转换、过滤、名称复用、
-普通退出、启动失败、PIPE 双流、PTY 合并流、进程组信号以及工作区逃逸。gRPC 集成测试从
-client 启动携带 cwd/env 的命令，检查 PID/UUID、ps 过滤、kill 和落盘文件。CLI 测试覆盖
+普通退出、启动失败、PIPE 双流、PTY 合并流、进程组信号以及工作区逃逸。日志测试覆盖 offset、
+tail 行、回放/follow 交接、轮转保留、残缺尾恢复、索引重建、符号链接和 v1 迁移。gRPC 集成测试从
+client 启动携带 cwd/env 的命令，检查 PID/UUID、ps 过滤、kill 和日志流。CLI 测试覆盖
 `cd` 后 `exec`、`ps -a`、env/`--` 解析和输出。registry、copier/frame writer 使用 race
 test 验证。

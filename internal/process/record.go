@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -48,16 +49,16 @@ type recordStatus struct {
 
 type recordStore struct {
 	directory string
+	logConfig LogConfig
 }
 
 type recordOutput struct {
-	stdoutFile *os.File
-	stderrFile *os.File
-	stdout     *frameWriter
-	stderr     *frameWriter
+	log    *processLog
+	stdout io.Writer
+	stderr io.Writer
 }
 
-func openRecordStore(directory string) (*recordStore, error) {
+func openRecordStore(directory string, configurations ...LogConfig) (*recordStore, error) {
 	if directory == "" {
 		return nil, errors.New("runtime directory is required")
 	}
@@ -78,7 +79,15 @@ func openRecordStore(directory string) (*recordStore, error) {
 	if err := os.Chmod(abs, 0o700); err != nil {
 		return nil, fmt.Errorf("secure runtime directory: %w", err)
 	}
-	return &recordStore{directory: abs}, nil
+	var logConfig LogConfig
+	if len(configurations) > 0 {
+		logConfig = configurations[0]
+	}
+	logConfig, err = normalizeLogConfig(logConfig)
+	if err != nil {
+		return nil, err
+	}
+	return &recordStore{directory: abs, logConfig: logConfig}, nil
 }
 
 func (s *recordStore) create(info *codev1.ProcessInfo) (*recordOutput, error) {
@@ -99,26 +108,19 @@ func (s *recordStore) create(info *codev1.ProcessInfo) (*recordOutput, error) {
 	if err := atomicWriteJSON(directory, statusFileName, statusFromInfo(info, "")); err != nil {
 		return nil, err
 	}
-	stdoutFile, err := openOutputFile(filepath.Join(directory, stdoutFileName))
+	processLog, err := newProcessLog(filepath.Join(directory, processLogDirectoryName), s.logConfig)
 	if err != nil {
-		return nil, err
-	}
-	stderrFile, err := openOutputFile(filepath.Join(directory, stderrFileName))
-	if err != nil {
-		_ = stdoutFile.Close()
 		return nil, err
 	}
 	if err := syncDirectory(directory); err != nil {
-		_ = stdoutFile.Close()
-		_ = stderrFile.Close()
+		_ = processLog.finalize()
 		return nil, err
 	}
 	cleanup = false
 	return &recordOutput{
-		stdoutFile: stdoutFile,
-		stderrFile: stderrFile,
-		stdout:     newFrameWriter(stdoutFile),
-		stderr:     newFrameWriter(stderrFile),
+		log:    processLog,
+		stdout: processLog.stdoutWriter(),
+		stderr: processLog.stderrWriter(),
 	}, nil
 }
 
@@ -126,10 +128,115 @@ func (o *recordOutput) close() {
 	if o == nil {
 		return
 	}
-	_ = o.stdoutFile.Sync()
-	_ = o.stderrFile.Sync()
-	_ = o.stdoutFile.Close()
-	_ = o.stderrFile.Close()
+	_ = o.log.finalize()
+}
+
+func (s *recordStore) openLog(info *codev1.ProcessInfo) (*processLog, error) {
+	directory := s.processDirectory(info.GetId())
+	logDirectory := filepath.Join(directory, processLogDirectoryName)
+	if _, err := os.Lstat(logDirectory); err == nil {
+		logs, openErr := openProcessLog(logDirectory, s.logConfig, !isActiveState(info.GetState()))
+		if openErr == nil {
+			removeLegacyLogFiles(directory)
+		}
+		return logs, openErr
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	return s.migrateLegacyLog(directory)
+}
+
+func (s *recordStore) migrateLegacyLog(directory string) (*processLog, error) {
+	type legacyFrame struct {
+		stream codev1.ProcessLogStream
+		frame  LogFrame
+		order  int
+	}
+	frames := make([]legacyFrame, 0)
+	legacyComplete := true
+	for _, source := range []struct {
+		name   string
+		stream codev1.ProcessLogStream
+		order  int
+	}{
+		{name: stdoutFileName, stream: codev1.ProcessLogStream_PROCESS_LOG_STREAM_STDOUT, order: 0},
+		{name: stderrFileName, stream: codev1.ProcessLogStream_PROCESS_LOG_STREAM_STDERR, order: 1},
+	} {
+		file, err := openExistingProcessLogFile(filepath.Join(directory, source.name), os.O_RDONLY)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return nil, fmt.Errorf("open legacy process log: %w", err)
+		}
+		decoded, readErr := ReadLogFrames(file)
+		info, statErr := file.Stat()
+		_ = file.Close()
+		if readErr != nil {
+			return nil, readErr
+		}
+		if statErr != nil {
+			return nil, statErr
+		}
+		var decodedBytes int64
+		for _, frame := range decoded {
+			decodedBytes += logFrameHeaderBytes + int64(len(frame.Payload))
+		}
+		if decodedBytes != info.Size() {
+			legacyComplete = false
+		}
+		for _, frame := range decoded {
+			frames = append(frames, legacyFrame{stream: source.stream, frame: frame, order: source.order})
+		}
+	}
+	sort.SliceStable(frames, func(i, j int) bool {
+		if frames[i].frame.Timestamp.Equal(frames[j].frame.Timestamp) {
+			return frames[i].order < frames[j].order
+		}
+		return frames[i].frame.Timestamp.Before(frames[j].frame.Timestamp)
+	})
+	temporaryRoot, err := os.MkdirTemp(directory, ".logs-migrate-")
+	if err != nil {
+		return nil, fmt.Errorf("create legacy log migration directory: %w", err)
+	}
+	defer os.RemoveAll(temporaryRoot)
+	temporaryLogDirectory := filepath.Join(temporaryRoot, processLogDirectoryName)
+	log, err := newProcessLog(temporaryLogDirectory, s.logConfig)
+	if err != nil {
+		return nil, err
+	}
+	current := time.Unix(0, 0)
+	log.now = func() time.Time { return current }
+	for _, value := range frames {
+		current = value.frame.Timestamp
+		if _, err := log.write(value.stream, value.frame.Payload); err != nil {
+			return nil, err
+		}
+	}
+	log.now = time.Now
+	log.complete = legacyComplete
+	if err := log.finalize(); err != nil {
+		return nil, err
+	}
+	logDirectory := filepath.Join(directory, processLogDirectoryName)
+	if err := os.Rename(temporaryLogDirectory, logDirectory); err != nil {
+		return nil, fmt.Errorf("install migrated process log: %w", err)
+	}
+	if err := syncDirectory(directory); err != nil {
+		return nil, err
+	}
+	migrated, err := openProcessLog(logDirectory, s.logConfig, true)
+	if err != nil {
+		return nil, fmt.Errorf("verify migrated process log: %w", err)
+	}
+	removeLegacyLogFiles(directory)
+	return migrated, nil
+}
+
+func removeLegacyLogFiles(directory string) {
+	for _, name := range []string{stdoutFileName, stderrFileName} {
+		_ = os.Remove(filepath.Join(directory, name))
+	}
 }
 
 func (s *recordStore) writeStatus(info *codev1.ProcessInfo, message string) error {

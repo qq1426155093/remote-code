@@ -225,4 +225,6 @@ configuration。
 - 通用 `mv` 的“检查后 rename”无法提供跨所有对象类型的强原子 no-replace；Linux 后续可用 `renameat2(RENAME_NOREPLACE)` 增强。
 - 首版传输单文件且不续传；后续可加入 upload session、offset 与分块摘要。
 - 首版 CLI 同步执行一条命令；并发任务、进度条和机器可读模式留待后续版本。
-- PTY/pipe attach、日志回放 RPC、窗口 resize、Agent 语义和断线续传保持为后续 milestone；当前进程 API 负责启动、持久化元数据/输出、列表、信号和回收。
+- PTY/pipe attach、窗口 resize 和 Agent 语义保持为后续 milestone；当前进程 API 已负责启动、
+  持久化元数据/输出、按 offset 或 tail 回放并跟随日志、列表、信号和回收。日志 checkpoint
+  支持客户端断线后以逻辑 offset 续传。

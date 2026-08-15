@@ -32,6 +32,7 @@ type Config struct {
 	AllowInsecureRemote bool
 	RuntimeDirectory    string
 	MaxProcesses        int
+	ProcessLogs         processservice.LogConfig
 }
 
 // Server owns the listener, gRPC server and workspace handle.
@@ -58,6 +59,7 @@ func New(config Config) (*Server, error) {
 	}
 	processService, err := processservice.New(processservice.Config{
 		Workspace: config.Workspace, RuntimeDirectory: config.RuntimeDirectory, MaxProcesses: config.MaxProcesses,
+		Logs: config.ProcessLogs,
 	})
 	if err != nil {
 		_ = fileService.Close()

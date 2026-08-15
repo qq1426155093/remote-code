@@ -10,6 +10,15 @@ max_upload_bytes = 1073741824
 max_processes = 16
 allow_insecure_remote = false
 
+[process_logs]
+# Limits include encoded records and indexes. Oldest sealed segments are
+# removed first when either size limit is reached.
+max_bytes_per_process = 67108864
+max_total_bytes = 4294967296
+segment_bytes = 4194304
+retention_after_exit = "168h"
+max_observers_per_process = 8
+
 # Uncomment both fields to enable TLS.
 # [tls]
 # certificate_file = "/etc/remote-code/tls/server.crt"

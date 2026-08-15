@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -214,9 +215,71 @@ func TestClientProcessLifecycleOverGRPC(t *testing.T) {
 	}
 }
 
+func TestClientObservesProcessLogsOverGRPC(t *testing.T) {
+	t.Setenv("REMOTE_CODE_CLIENT_PROCESS_HELPER", "1")
+	address := startControllerWithProcesses(t, t.TempDir(), 1)
+	remote := connectClient(t, address, "")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	started, err := remote.StartProcess(ctx, "grpc-logs", os.Args[0], []string{"-test.run=^TestClientProcessHelper$", "--", "logs"}, ".", codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for {
+		values, err := remote.ListProcesses(ctx, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(values) == 1 && values[0].GetState() == codev1.ProcessState_PROCESS_STATE_EXITED {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	tail := uint64(10)
+	stream, err := remote.ObserveProcessLogs(ctx, started.GetId(), client.ProcessLogOptions{TailLines: &tail})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr []byte
+	var sawHeader, sawReplayCheckpoint, sawEnd bool
+	for {
+		response, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		sawHeader = sawHeader || response.GetHeader() != nil
+		sawReplayCheckpoint = sawReplayCheckpoint || response.GetCheckpoint().GetReplayComplete()
+		sawEnd = sawEnd || response.GetEnd() != nil
+		if chunk := response.GetChunk(); chunk != nil {
+			if chunk.GetStream() == codev1.ProcessLogStream_PROCESS_LOG_STREAM_STDERR {
+				stderr = append(stderr, chunk.GetData()...)
+			} else {
+				stdout = append(stdout, chunk.GetData()...)
+			}
+		}
+	}
+	if !strings.Contains(string(stdout), "grpc-stdout\n") || !strings.Contains(string(stderr), "grpc-stderr\n") || !sawHeader || !sawReplayCheckpoint || !sawEnd {
+		t.Fatalf("stdout=%q stderr=%q header=%v checkpoint=%v end=%v", stdout, stderr, sawHeader, sawReplayCheckpoint, sawEnd)
+	}
+}
+
 func TestClientProcessHelper(t *testing.T) {
 	if os.Getenv("REMOTE_CODE_CLIENT_PROCESS_HELPER") != "1" {
 		return
+	}
+	for index, argument := range os.Args {
+		if argument == "--" && index+1 < len(os.Args) && os.Args[index+1] == "logs" {
+			_, _ = os.Stdout.Write([]byte("grpc-stdout\n"))
+			_, _ = os.Stderr.Write([]byte("grpc-stderr\n"))
+			return
+		}
 	}
 	for {
 		time.Sleep(time.Second)

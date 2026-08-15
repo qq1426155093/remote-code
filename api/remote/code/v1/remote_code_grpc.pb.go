@@ -524,9 +524,10 @@ var FileService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	ProcessService_StartProcess_FullMethodName  = "/remote.code.v1.ProcessService/StartProcess"
-	ProcessService_ListProcesses_FullMethodName = "/remote.code.v1.ProcessService/ListProcesses"
-	ProcessService_SignalProcess_FullMethodName = "/remote.code.v1.ProcessService/SignalProcess"
+	ProcessService_StartProcess_FullMethodName       = "/remote.code.v1.ProcessService/StartProcess"
+	ProcessService_ListProcesses_FullMethodName      = "/remote.code.v1.ProcessService/ListProcesses"
+	ProcessService_SignalProcess_FullMethodName      = "/remote.code.v1.ProcessService/SignalProcess"
+	ProcessService_ObserveProcessLogs_FullMethodName = "/remote.code.v1.ProcessService/ObserveProcessLogs"
 )
 
 // ProcessServiceClient is the client API for ProcessService service.
@@ -536,6 +537,7 @@ type ProcessServiceClient interface {
 	StartProcess(ctx context.Context, in *StartProcessRequest, opts ...grpc.CallOption) (*StartProcessResponse, error)
 	ListProcesses(ctx context.Context, in *ListProcessesRequest, opts ...grpc.CallOption) (*ListProcessesResponse, error)
 	SignalProcess(ctx context.Context, in *SignalProcessRequest, opts ...grpc.CallOption) (*SignalProcessResponse, error)
+	ObserveProcessLogs(ctx context.Context, in *ObserveProcessLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ObserveProcessLogsResponse], error)
 }
 
 type processServiceClient struct {
@@ -576,6 +578,25 @@ func (c *processServiceClient) SignalProcess(ctx context.Context, in *SignalProc
 	return out, nil
 }
 
+func (c *processServiceClient) ObserveProcessLogs(ctx context.Context, in *ObserveProcessLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ObserveProcessLogsResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ProcessService_ServiceDesc.Streams[0], ProcessService_ObserveProcessLogs_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ObserveProcessLogsRequest, ObserveProcessLogsResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ProcessService_ObserveProcessLogsClient = grpc.ServerStreamingClient[ObserveProcessLogsResponse]
+
 // ProcessServiceServer is the server API for ProcessService service.
 // All implementations must embed UnimplementedProcessServiceServer
 // for forward compatibility.
@@ -583,6 +604,7 @@ type ProcessServiceServer interface {
 	StartProcess(context.Context, *StartProcessRequest) (*StartProcessResponse, error)
 	ListProcesses(context.Context, *ListProcessesRequest) (*ListProcessesResponse, error)
 	SignalProcess(context.Context, *SignalProcessRequest) (*SignalProcessResponse, error)
+	ObserveProcessLogs(*ObserveProcessLogsRequest, grpc.ServerStreamingServer[ObserveProcessLogsResponse]) error
 	mustEmbedUnimplementedProcessServiceServer()
 }
 
@@ -601,6 +623,9 @@ func (UnimplementedProcessServiceServer) ListProcesses(context.Context, *ListPro
 }
 func (UnimplementedProcessServiceServer) SignalProcess(context.Context, *SignalProcessRequest) (*SignalProcessResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SignalProcess not implemented")
+}
+func (UnimplementedProcessServiceServer) ObserveProcessLogs(*ObserveProcessLogsRequest, grpc.ServerStreamingServer[ObserveProcessLogsResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method ObserveProcessLogs not implemented")
 }
 func (UnimplementedProcessServiceServer) mustEmbedUnimplementedProcessServiceServer() {}
 func (UnimplementedProcessServiceServer) testEmbeddedByValue()                        {}
@@ -677,6 +702,17 @@ func _ProcessService_SignalProcess_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ProcessService_ObserveProcessLogs_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ObserveProcessLogsRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ProcessServiceServer).ObserveProcessLogs(m, &grpc.GenericServerStream[ObserveProcessLogsRequest, ObserveProcessLogsResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ProcessService_ObserveProcessLogsServer = grpc.ServerStreamingServer[ObserveProcessLogsResponse]
+
 // ProcessService_ServiceDesc is the grpc.ServiceDesc for ProcessService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -697,6 +733,12 @@ var ProcessService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ProcessService_SignalProcess_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "ObserveProcessLogs",
+			Handler:       _ProcessService_ObserveProcessLogs_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "remote/code/v1/remote_code.proto",
 }
