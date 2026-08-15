@@ -26,7 +26,7 @@ make build
 ./bin/remote-code --controller-addr 127.0.0.1:9443
 ```
 
-连接后可使用文件命令以及 `exec`、`ps`、`kill` 进程命令，输入 `help` 查看完整说明。例如：
+连接后可使用文件命令以及 `exec`、`ps`、`kill`、`stdin` 进程命令，输入 `help` 查看完整说明。例如：
 
 ```text
 remote-code:/> mkdir -p docs/input
@@ -35,6 +35,8 @@ remote-code:/> ls -l docs/input
 remote-code:/> download docs/input/requirements.md ./requirements.copy.md
 remote-code:/> cd docs/input
 remote-code:/docs/input> exec --name listing -e LANG=C ls -la
+remote-code:/> exec --name interactive --pipe --stdin cat
+remote-code:/> stdin interactive
 remote-code:/> ps
 remote-code:/> ps -a
 remote-code:/> logs -n 100 --follow 7aa5daab-e886-4889-9ec3-92d461883091
@@ -46,7 +48,8 @@ remote-code:/> forget listing
 `--token-file`；完整参数、行为与安全限制见
 [首版需求](docs/requirements-v1.md)、[通用进程需求](docs/process-management-requirements-v1.md)、
 [技术方案](docs/technical-design-v1.md)、[通用进程详细设计](docs/process-management-design-v1.md)、
-[进程日志观测详细设计](docs/process-log-observation-design-v1.md)和
+[进程日志观测详细设计](docs/process-log-observation-design-v1.md)、
+[进程标准输入详细设计](docs/process-input-design-v1.md)和
 [Controller 配置文件](docs/controller-configuration.md)。
 
 controller 同时保留全部命令行参数。使用配置文件时，显式命令行参数覆盖 TOML，例如：
@@ -125,7 +128,7 @@ remote-code --controller-addr devbox.example.com:9443 \
   --token-file ~/.config/remote-code/devbox.token
 ```
 
-当前 REPL 已提供通用的 `exec`、`ps`、`ps -a` 和 `kill`；下面的 context、agent attach 与日志命令是后续版本的产品形态草案：
+当前 REPL 已提供通用的 `exec`、`ps`、`ps -a`、`kill`、`stdin` 和 `logs`；下面的 context 与 agent attach 命令是后续版本的产品形态草案：
 
 以下命令用于约定产品形态，并不表示已经实现：
 
@@ -182,6 +185,7 @@ service ProcessService {
   rpc SignalProcess(SignalProcessRequest) returns (SignalProcessResponse);
   rpc DeleteProcess(DeleteProcessRequest) returns (DeleteProcessResponse);
   rpc ObserveProcessLogs(ObserveProcessLogsRequest) returns (stream ObserveProcessLogsResponse);
+  rpc StreamProcessInput(stream StreamProcessInputRequest) returns (stream StreamProcessInputResponse);
 }
 ```
 
@@ -190,7 +194,7 @@ Linux `tree` 的文本。文件上传和下载采用分块流并用 SHA-256 校�
 [`remote_code.proto`](api/remote/code/v1/remote_code.proto)。后续的 `Attach` 将使用双向流承载
 stdin、stdout/stderr、终端 resize、心跳和 detach。
 
-`StartProcess` 接受具体命令、参数、工作区内 cwd、PIPE/PTY 模式和环境覆盖；它不经 shell
+`StartProcess` 接受具体命令、参数、工作区内 cwd、PIPE/PTY 模式、输入模式和环境覆盖；它不经 shell
 解释。每个进程具有 UUID、逻辑名称和 OS PID；pipe 与 PTY 模式都使用独立进程组，
 `SignalProcess` 可按 UUID、名称或 PID 向整个组发送 HUP、INT、QUIT、TERM、KILL、
 USR1、USR2、STOP 或 CONT。`DeleteProcess` 只删除终态进程的完整历史目录；直接子进程始终
@@ -200,6 +204,12 @@ USR1、USR2、STOP 或 CONT。`DeleteProcess` 只删除终态进程的完整历�
 `logs/` 使用带 stdout/stderr tag、逻辑 offset、CRC 和 tail 索引的 v2 分段格式。PIPE 保留双流
 标记，PTY 合并记录为 stdout。环境变量仅持久化 key，不持久化 value。旧双文件 v1 日志会在
 加载时自动迁移。
+
+输入模式默认 `DISABLED`，保持 PIPE 启动后立即收到 EOF 的兼容行为。显式选择 `MANAGED`
+后，controller 会在进程进入 RUNNING 后继续保留输入端点，客户端可随时通过
+`StreamProcessInput` attach、写入、detach 和再次连接。同一进程同时只允许一个输入 writer；
+detach 或网络断开不会关闭 stdin。PIPE 支持显式关闭输入，PTY 没有独立的 write-side close，
+应发送终端控制字节或使用进程信号。
 
 ## 多 Agent 协作
 
@@ -270,7 +280,7 @@ SQLite 或 bbolt 持久化 agent 元数据和事件游标；仍在运行的子�
 - 已实现受控命令的 pipe/PTY 启动、列表、进程组信号、退出码和回收；
 - 已实现 CLI context、超时、结构化错误和 TLS/token 认证；
 - 已实现按 offset/tail 回放、stdout/stderr 过滤、退出前持续 follow、分段保留与 CLI `logs`；
-- PTY 双向 attach 和窗口 resize 待后续实现。
+- 已实现可在进程运行后反复 attach/detach 的 PIPE/PTY 标准输入流；完整 PTY 双向 attach 和窗口 resize 待后续实现。
 
 ### Milestone 3：Agent 可靠性
 

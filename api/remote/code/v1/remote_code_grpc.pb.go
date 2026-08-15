@@ -529,6 +529,7 @@ const (
 	ProcessService_SignalProcess_FullMethodName      = "/remote.code.v1.ProcessService/SignalProcess"
 	ProcessService_DeleteProcess_FullMethodName      = "/remote.code.v1.ProcessService/DeleteProcess"
 	ProcessService_ObserveProcessLogs_FullMethodName = "/remote.code.v1.ProcessService/ObserveProcessLogs"
+	ProcessService_StreamProcessInput_FullMethodName = "/remote.code.v1.ProcessService/StreamProcessInput"
 )
 
 // ProcessServiceClient is the client API for ProcessService service.
@@ -540,6 +541,7 @@ type ProcessServiceClient interface {
 	SignalProcess(ctx context.Context, in *SignalProcessRequest, opts ...grpc.CallOption) (*SignalProcessResponse, error)
 	DeleteProcess(ctx context.Context, in *DeleteProcessRequest, opts ...grpc.CallOption) (*DeleteProcessResponse, error)
 	ObserveProcessLogs(ctx context.Context, in *ObserveProcessLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ObserveProcessLogsResponse], error)
+	StreamProcessInput(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[StreamProcessInputRequest, StreamProcessInputResponse], error)
 }
 
 type processServiceClient struct {
@@ -609,6 +611,19 @@ func (c *processServiceClient) ObserveProcessLogs(ctx context.Context, in *Obser
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ProcessService_ObserveProcessLogsClient = grpc.ServerStreamingClient[ObserveProcessLogsResponse]
 
+func (c *processServiceClient) StreamProcessInput(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[StreamProcessInputRequest, StreamProcessInputResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ProcessService_ServiceDesc.Streams[1], ProcessService_StreamProcessInput_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[StreamProcessInputRequest, StreamProcessInputResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ProcessService_StreamProcessInputClient = grpc.BidiStreamingClient[StreamProcessInputRequest, StreamProcessInputResponse]
+
 // ProcessServiceServer is the server API for ProcessService service.
 // All implementations must embed UnimplementedProcessServiceServer
 // for forward compatibility.
@@ -618,6 +633,7 @@ type ProcessServiceServer interface {
 	SignalProcess(context.Context, *SignalProcessRequest) (*SignalProcessResponse, error)
 	DeleteProcess(context.Context, *DeleteProcessRequest) (*DeleteProcessResponse, error)
 	ObserveProcessLogs(*ObserveProcessLogsRequest, grpc.ServerStreamingServer[ObserveProcessLogsResponse]) error
+	StreamProcessInput(grpc.BidiStreamingServer[StreamProcessInputRequest, StreamProcessInputResponse]) error
 	mustEmbedUnimplementedProcessServiceServer()
 }
 
@@ -642,6 +658,9 @@ func (UnimplementedProcessServiceServer) DeleteProcess(context.Context, *DeleteP
 }
 func (UnimplementedProcessServiceServer) ObserveProcessLogs(*ObserveProcessLogsRequest, grpc.ServerStreamingServer[ObserveProcessLogsResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method ObserveProcessLogs not implemented")
+}
+func (UnimplementedProcessServiceServer) StreamProcessInput(grpc.BidiStreamingServer[StreamProcessInputRequest, StreamProcessInputResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method StreamProcessInput not implemented")
 }
 func (UnimplementedProcessServiceServer) mustEmbedUnimplementedProcessServiceServer() {}
 func (UnimplementedProcessServiceServer) testEmbeddedByValue()                        {}
@@ -747,6 +766,13 @@ func _ProcessService_ObserveProcessLogs_Handler(srv interface{}, stream grpc.Ser
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ProcessService_ObserveProcessLogsServer = grpc.ServerStreamingServer[ObserveProcessLogsResponse]
 
+func _ProcessService_StreamProcessInput_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(ProcessServiceServer).StreamProcessInput(&grpc.GenericServerStream[StreamProcessInputRequest, StreamProcessInputResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ProcessService_StreamProcessInputServer = grpc.BidiStreamingServer[StreamProcessInputRequest, StreamProcessInputResponse]
+
 // ProcessService_ServiceDesc is the grpc.ServiceDesc for ProcessService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -776,6 +802,12 @@ var ProcessService_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "ObserveProcessLogs",
 			Handler:       _ProcessService_ObserveProcessLogs_Handler,
 			ServerStreams: true,
+		},
+		{
+			StreamName:    "StreamProcessInput",
+			Handler:       _ProcessService_StreamProcessInput_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
 		},
 	},
 	Metadata: "remote/code/v1/remote_code.proto",

@@ -1,6 +1,7 @@
 package client_test
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -279,16 +280,210 @@ func TestClientObservesProcessLogsOverGRPC(t *testing.T) {
 	}
 }
 
+func TestClientStreamsInputToRunningProcessOverGRPC(t *testing.T) {
+	t.Setenv("REMOTE_CODE_CLIENT_PROCESS_HELPER", "1")
+	address := startControllerWithProcesses(t, t.TempDir(), 2)
+	remote := connectClient(t, address, "")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	started, err := remote.StartProcessWithOptions(ctx, client.ProcessStartOptions{
+		Name: "grpc-input", Command: os.Args[0], WorkingDirectory: ".",
+		Arguments: []string{"-test.run=^TestClientProcessHelper$", "--", "stdin-copy"},
+		IOMode:    codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE,
+		InputMode: codev1.ProcessInputMode_PROCESS_INPUT_MODE_MANAGED,
+	})
+	if err != nil {
+		t.Fatalf("StartProcessWithOptions() error = %v", err)
+	}
+	if started.GetInputMode() != codev1.ProcessInputMode_PROCESS_INPUT_MODE_MANAGED || started.GetInputState() != codev1.ProcessInputState_PROCESS_INPUT_STATE_OPEN {
+		t.Fatalf("started input state = %s/%s, want managed/open", started.GetInputMode(), started.GetInputState())
+	}
+
+	first, err := remote.OpenProcessInput(ctx, &codev1.ProcessReference{Value: &codev1.ProcessReference_Name{Name: started.GetName()}})
+	if err != nil {
+		t.Fatalf("OpenProcessInput(first) error = %v", err)
+	}
+	if first.Process().GetId() != started.GetId() || first.Process().GetInputState() != codev1.ProcessInputState_PROCESS_INPUT_STATE_ATTACHED {
+		t.Fatalf("opened process = %+v", first.Process())
+	}
+	if _, err := remote.OpenProcessInput(ctx, &codev1.ProcessReference{Value: &codev1.ProcessReference_Id{Id: started.GetId()}}); status.Code(err) != codes.AlreadyExists {
+		t.Fatalf("OpenProcessInput(concurrent) code = %s, want AlreadyExists; error = %v", status.Code(err), err)
+	}
+	firstPart := bytes.Repeat([]byte("a"), 70<<10)
+	if count, err := first.Write(firstPart); err != nil || count != len(firstPart) {
+		t.Fatalf("Write(first) = %d, %v", count, err)
+	}
+	if detached, err := first.Detach(); err != nil || detached.GetInputState() != codev1.ProcessInputState_PROCESS_INPUT_STATE_OPEN {
+		t.Fatalf("Detach() = %+v, %v", detached, err)
+	}
+
+	second, err := remote.OpenProcessInput(ctx, &codev1.ProcessReference{Value: &codev1.ProcessReference_Id{Id: started.GetId()}})
+	if err != nil {
+		t.Fatalf("OpenProcessInput(second) error = %v", err)
+	}
+	secondPart := []byte("second\x00part\n")
+	if count, err := second.Write(secondPart); err != nil || count != len(secondPart) {
+		t.Fatalf("Write(second) = %d, %v", count, err)
+	}
+	if closed, err := second.CloseInput(); err != nil || closed.GetInputState() != codev1.ProcessInputState_PROCESS_INPUT_STATE_CLOSED {
+		t.Fatalf("CloseInput() = %+v, %v", closed, err)
+	}
+
+	for {
+		values, err := remote.ListProcesses(ctx, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(values) == 1 && values[0].GetState() == codev1.ProcessState_PROCESS_STATE_EXITED {
+			if values[0].GetInputState() != codev1.ProcessInputState_PROCESS_INPUT_STATE_CLOSED {
+				t.Fatalf("exited input state = %s, want closed", values[0].GetInputState())
+			}
+			break
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+
+	stream, err := remote.ObserveProcessLogs(ctx, started.GetId(), client.ProcessLogOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output []byte
+	for {
+		response, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if chunk := response.GetChunk(); chunk != nil && chunk.GetStream() == codev1.ProcessLogStream_PROCESS_LOG_STREAM_STDOUT {
+			output = append(output, chunk.GetData()...)
+		}
+	}
+	want := append(append([]byte(nil), firstPart...), secondPart...)
+	if !bytes.Equal(output, want) {
+		t.Fatalf("process output length/content = %d/%v, want %d bytes", len(output), bytes.Equal(output, want), len(want))
+	}
+}
+
+func TestClientRejectsInputWhenNotEnabledOverGRPC(t *testing.T) {
+	t.Setenv("REMOTE_CODE_CLIENT_PROCESS_HELPER", "1")
+	address := startControllerWithProcesses(t, t.TempDir(), 1)
+	remote := connectClient(t, address, "")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	started, err := remote.StartProcess(ctx, "grpc-no-input", os.Args[0], []string{"-test.run=^TestClientProcessHelper$", "--", "sleep"}, ".", codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if started.GetInputMode() != codev1.ProcessInputMode_PROCESS_INPUT_MODE_DISABLED || started.GetInputState() != codev1.ProcessInputState_PROCESS_INPUT_STATE_UNAVAILABLE {
+		t.Fatalf("default input state = %s/%s", started.GetInputMode(), started.GetInputState())
+	}
+	if _, err := remote.OpenProcessInput(ctx, &codev1.ProcessReference{Value: &codev1.ProcessReference_Id{Id: started.GetId()}}); status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("OpenProcessInput(disabled) code = %s, want FailedPrecondition; error = %v", status.Code(err), err)
+	}
+	if _, err := remote.SignalProcess(ctx, &codev1.ProcessReference{Value: &codev1.ProcessReference_Id{Id: started.GetId()}}, codev1.ProcessSignal_PROCESS_SIGNAL_KILL, true); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestClientWritesPTYInputAndRejectsIndependentCloseOverGRPC(t *testing.T) {
+	t.Setenv("REMOTE_CODE_CLIENT_PROCESS_HELPER", "1")
+	address := startControllerWithProcesses(t, t.TempDir(), 1)
+	remote := connectClient(t, address, "")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	started, err := remote.StartProcessWithOptions(ctx, client.ProcessStartOptions{
+		Name: "grpc-pty-input", Command: os.Args[0], WorkingDirectory: ".",
+		Arguments: []string{"-test.run=^TestClientProcessHelper$", "--", "stdin-line"},
+		IOMode:    codev1.ProcessIOMode_PROCESS_IO_MODE_PTY,
+		InputMode: codev1.ProcessInputMode_PROCESS_INPUT_MODE_MANAGED,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	closeAttempt, err := remote.OpenProcessInput(ctx, &codev1.ProcessReference{Value: &codev1.ProcessReference_Id{Id: started.GetId()}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := closeAttempt.CloseInput(); status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("PTY CloseInput() code = %s, want FailedPrecondition; error = %v", status.Code(err), err)
+	}
+
+	session, err := remote.OpenProcessInput(ctx, &codev1.ProcessReference{Value: &codev1.ProcessReference_Id{Id: started.GetId()}})
+	if err != nil {
+		t.Fatalf("OpenProcessInput(after rejected close) error = %v", err)
+	}
+	if count, err := session.Write([]byte("hello-pty\n")); err != nil || count != len("hello-pty\n") {
+		t.Fatalf("PTY Write() = %d, %v", count, err)
+	}
+	_, _ = session.Detach()
+
+	for {
+		values, err := remote.ListProcesses(ctx, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(values) == 1 && values[0].GetState() == codev1.ProcessState_PROCESS_STATE_EXITED {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	stream, err := remote.ObserveProcessLogs(ctx, started.GetId(), client.ProcessLogOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output []byte
+	for {
+		response, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if chunk := response.GetChunk(); chunk != nil {
+			output = append(output, chunk.GetData()...)
+		}
+	}
+	if !bytes.Contains(output, []byte("received:hello-pty")) {
+		t.Fatalf("PTY output = %q", output)
+	}
+}
+
 func TestClientProcessHelper(t *testing.T) {
 	if os.Getenv("REMOTE_CODE_CLIENT_PROCESS_HELPER") != "1" {
 		return
 	}
+	var action string
 	for index, argument := range os.Args {
-		if argument == "--" && index+1 < len(os.Args) && os.Args[index+1] == "logs" {
-			_, _ = os.Stdout.Write([]byte("grpc-stdout\n"))
-			_, _ = os.Stderr.Write([]byte("grpc-stderr\n"))
-			return
+		if argument == "--" && index+1 < len(os.Args) {
+			action = os.Args[index+1]
+			break
 		}
+	}
+	switch action {
+	case "logs":
+		_, _ = os.Stdout.Write([]byte("grpc-stdout\n"))
+		_, _ = os.Stderr.Write([]byte("grpc-stderr\n"))
+		return
+	case "stdin-copy":
+		_, _ = io.Copy(os.Stdout, os.Stdin)
+		os.Exit(0)
+	case "stdin-line":
+		line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+		_, _ = os.Stdout.WriteString("received:" + line)
+		os.Exit(0)
 	}
 	for {
 		time.Sleep(time.Second)

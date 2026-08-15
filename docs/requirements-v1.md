@@ -143,7 +143,7 @@ CLI 只有在 `GetInfo` 调用成功后才进入提示符，因此“连接成�
 
 ## 8. 首版不包含
 
-- PTY/pipe 的远程输入输出 attach、窗口 resize、日志回放和断线续传。
+- 合并 PTY/pipe 输入输出的完整 attach、窗口 resize，以及跨 controller 重启接管。
 - 多租户、细粒度权限、配额持久化和审计数据库。
 - 断点续传、增量同步、目录整体上传下载和文件监控。
 - Windows controller 支持承诺；首版验证目标为 Linux。

@@ -25,13 +25,15 @@ func TestServicePersistsPipeOutputMetadataAndStatus(t *testing.T) {
 	service := newProcessServiceAt(t, workspace, runtimeDirectory, 2)
 	secret := "value-that-must-not-be-persisted"
 	request := helperStartRequest("logged-pipe", ".", codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE, "output")
+	request.InputMode = codev1.ProcessInputMode_PROCESS_INPUT_MODE_MANAGED
 	request.Environment = map[string]string{"REMOTE_CODE_TEST_SECRET": secret}
 	started, err := service.StartProcess(context.Background(), request)
 	if err != nil {
 		t.Fatalf("StartProcess() error = %v", err)
 	}
 	exited := waitForProcessExit(t, service, started.GetProcess().GetId())
-	if exited.GetExitCode() != 0 || !reflect.DeepEqual(exited.GetEnvironmentKeys(), []string{"REMOTE_CODE_TEST_SECRET"}) || exited.GetCreatedAt() == nil {
+	if exited.GetExitCode() != 0 || !reflect.DeepEqual(exited.GetEnvironmentKeys(), []string{"REMOTE_CODE_TEST_SECRET"}) || exited.GetCreatedAt() == nil ||
+		exited.GetInputMode() != codev1.ProcessInputMode_PROCESS_INPUT_MODE_MANAGED || exited.GetInputState() != codev1.ProcessInputState_PROCESS_INPUT_STATE_CLOSED {
 		t.Fatalf("exited process = %+v", exited)
 	}
 	directory := filepath.Join(runtimeDirectory, exited.GetId())
@@ -49,14 +51,14 @@ func TestServicePersistsPipeOutputMetadataAndStatus(t *testing.T) {
 		assertMode(t, filepath.Join(logDirectory, entry.Name()), 0o600)
 	}
 	metadata := readTestFile(t, filepath.Join(directory, metadataFileName))
-	if bytes.Contains(metadata, []byte(secret)) || !bytes.Contains(metadata, []byte("REMOTE_CODE_TEST_SECRET")) {
+	if bytes.Contains(metadata, []byte(secret)) || !bytes.Contains(metadata, []byte("REMOTE_CODE_TEST_SECRET")) || !bytes.Contains(metadata, []byte(`"input_mode": "MANAGED"`)) {
 		t.Fatalf("metadata secret handling is incorrect: %s", metadata)
 	}
 	var persistedStatus recordStatus
 	if err := json.Unmarshal(readTestFile(t, filepath.Join(directory, statusFileName)), &persistedStatus); err != nil {
 		t.Fatal(err)
 	}
-	if persistedStatus.State != "EXITED" || persistedStatus.ExitCode == nil || *persistedStatus.ExitCode != 0 || persistedStatus.ExitedAt == nil {
+	if persistedStatus.State != "EXITED" || persistedStatus.InputState != "CLOSED" || persistedStatus.ExitCode == nil || *persistedStatus.ExitCode != 0 || persistedStatus.ExitedAt == nil {
 		t.Fatalf("status = %+v, want exited code 0", persistedStatus)
 	}
 	stdout := readTestProcessLog(t, service, exited.GetId(), codev1.ProcessLogStream_PROCESS_LOG_STREAM_STDOUT)

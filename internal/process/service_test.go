@@ -81,6 +81,12 @@ func TestProcessHelper(t *testing.T) {
 		_, _ = os.Stdout.Write([]byte("pty-stdout\n"))
 		_, _ = os.Stderr.Write([]byte("pty-stderr\n"))
 		os.Exit(0)
+	case "stdin-eof":
+		data, err := io.ReadAll(os.Stdin)
+		if err != nil || len(data) != 0 {
+			os.Exit(110)
+		}
+		os.Exit(0)
 	case "sleep":
 		for {
 			time.Sleep(time.Second)
@@ -180,6 +186,24 @@ func TestServiceStartsPipeAndPTYProcesses(t *testing.T) {
 		t.Errorf("StartProcess(reused exited name) error = %v", err)
 	} else {
 		_ = waitForProcessExit(t, service, reused.GetProcess().GetId())
+	}
+}
+
+func TestDisabledPipeInputStillReceivesImmediateEOF(t *testing.T) {
+	t.Setenv(helperEnvironment, "1")
+	service := newTestProcessService(t, t.TempDir(), 1)
+	started, err := service.StartProcess(context.Background(), helperStartRequest(
+		"stdin-disabled", ".", codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE, "stdin-eof",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if started.GetProcess().GetInputMode() != codev1.ProcessInputMode_PROCESS_INPUT_MODE_DISABLED || started.GetProcess().GetInputState() != codev1.ProcessInputState_PROCESS_INPUT_STATE_UNAVAILABLE {
+		t.Fatalf("default input = %s/%s", started.GetProcess().GetInputMode(), started.GetProcess().GetInputState())
+	}
+	exited := waitForProcessExit(t, service, started.GetProcess().GetId())
+	if exited.GetExitCode() != 0 {
+		t.Fatalf("EOF helper exit = %+v", exited)
 	}
 }
 
@@ -300,6 +324,7 @@ func TestServiceValidatesStartsAndActiveLimit(t *testing.T) {
 		helperStartRequest("absolute-cwd", "/tmp", codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE, "exit", "0"),
 		helperStartRequest("parent-cwd", "../outside", codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE, "exit", "0"),
 		{Name: "bad-env", Command: os.Args[0], Environment: map[string]string{"BAD=KEY": "value"}},
+		{Name: "bad-input-mode", Command: os.Args[0], InputMode: codev1.ProcessInputMode(99)},
 	}
 	for _, request := range invalid {
 		if _, err := service.StartProcess(ctx, request); status.Code(err) != codes.InvalidArgument && status.Code(err) != codes.FailedPrecondition {

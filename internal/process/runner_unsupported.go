@@ -10,10 +10,11 @@ import (
 )
 
 type runningCommand struct {
-	cmd *exec.Cmd
+	cmd   *exec.Cmd
+	input *processInput
 }
 
-func startCommand(*os.File, string, []string, []string, codev1.ProcessIOMode, *recordOutput) (*runningCommand, error) {
+func startCommand(*os.File, string, []string, []string, codev1.ProcessIOMode, codev1.ProcessInputMode, *recordOutput) (*runningCommand, error) {
 	return nil, errUnsupportedPlatform
 }
 

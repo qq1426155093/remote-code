@@ -68,10 +68,12 @@ FAILED、释放活动名额和名称，关闭日志，并持久化失败状态�
 ## 5. runner 与进程组
 
 PIPE：创建 stdin/stdout/stderr pipe，设置 `Setpgid`，启动后分别用 goroutine 将 stdout
-和 stderr 复制到对应 frame writer。stdin 当前立即关闭，明确表示 v1 不支持交互输入。
+和 stderr 复制到对应 frame writer。`DISABLED` 输入保持启动后立即关闭 stdin；`MANAGED`
+输入由串行 writer pump 保留，供进程运行后的 gRPC attachment 写入。
 
 PTY：使用 `creack/pty` 创建 session/controlling terminal；PTY master 的合并输出复制到
-stdout frame writer，stderr 文件保持空。缺失时补充 `TERM=xterm-256color`。
+stdout frame writer，stderr 文件保持空。缺失时补充 `TERM=xterm-256color`。`MANAGED` 输入
+复用 PTY master 的写方向，但不提供独立 close。
 
 runner 提供 `wait()`：先调用 `cmd.Wait()`。PIPE 等两个 copier 完成；PTY 在 leader 退出
 后关闭 master 使 copier 结束，再等待 copier。然后关闭日志文件。这样 status 的 EXITED
@@ -91,6 +93,8 @@ segment 轮转后使用稀疏 offset 索引定位回放，使用 stdout/stderr �
 尺寸/周期配置和错误语义见
 [进程日志观测详细设计](process-log-observation-design-v1.md)。原 12-byte framed writer 仅保留用于
 读取并迁移历史 v1 记录。
+
+输入 attachment、帧确认、detach 和关闭语义见[进程标准输入详细设计](process-input-design-v1.md)。
 
 ## 7. JSON 存储与崩溃恢复
 

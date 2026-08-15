@@ -95,10 +95,12 @@ service ProcessService {
   rpc ListProcesses(ListProcessesRequest) returns (ListProcessesResponse);
   rpc SignalProcess(SignalProcessRequest) returns (SignalProcessResponse);
   rpc DeleteProcess(DeleteProcessRequest) returns (DeleteProcessResponse);
+  rpc ObserveProcessLogs(ObserveProcessLogsRequest) returns (stream ObserveProcessLogsResponse);
+  rpc StreamProcessInput(stream StreamProcessInputRequest) returns (stream StreamProcessInputResponse);
 }
 ```
 
-`ProcessInfo` 返回 UUID、逻辑名称、OS PID、PTY/pipe 模式、具体命令、参数、虚拟工作目录、环境覆盖 key、状态、时间戳以及可选退出码/退出信号。`StartProcessRequest.environment` 是覆盖 map，value 不会出现在响应或磁盘元数据。`ListProcessesRequest.all` 区分活动进程与完整历史。`ProcessReference` 用 oneof 明确区分 UUID、名称与 PID。`SignalProcess.wait=true` 使用 RPC context 作为等待上限；`DeleteProcess` 永久删除终态进程的 runtime 目录与内存索引。完整设计见[通用进程管理详细设计 v1](process-management-design-v1.md)。
+`ProcessInfo` 返回 UUID、逻辑名称、OS PID、PTY/pipe 模式、输入模式/状态、具体命令、参数、虚拟工作目录、环境覆盖 key、状态、时间戳以及可选退出码/退出信号。`StartProcessRequest.environment` 是覆盖 map，value 不会出现在响应或磁盘元数据。`ListProcessesRequest.all` 区分活动进程与完整历史。`ProcessReference` 用 oneof 明确区分 UUID、名称与 PID。`SignalProcess.wait=true` 使用 RPC context 作为等待上限；`DeleteProcess` 永久删除终态进程的 runtime 目录与内存索引。输入流见[进程标准输入详细设计 v1](process-input-design-v1.md)，完整进程设计见[通用进程管理详细设计 v1](process-management-design-v1.md)。
 
 ### 4.4 上传流
 
@@ -204,7 +206,7 @@ configuration。
 
 `os.Root` 可供并发 goroutine 使用，service 本身不保存每个请求的可变共享状态。每次上传有独立临时文件和 hash。controller 设置 gRPC 最大消息大小，应用层再限制 chunk 与总上传大小。
 
-进程服务以 mutex 保护 UUID/name/PID 索引、活动计数和有界历史。启动时先预留名称与活动名额，再创建持久化记录并调用 `exec.Start`；每个成功启动的命令立即建立唯一 reaper goroutine 调用 `Wait` 并原子记录退出结果。pipe 的 stdout/stderr 写入独立 frame log，PTY master 的合并输出写入 stdout frame log，防止子进程因输出缓冲写满而停住。
+进程服务以 mutex 保护 UUID/name/PID 索引、活动计数、输入 attachment 和有界历史。启动时先预留名称与活动名额，再创建持久化记录并调用 `exec.Start`；每个成功启动的命令立即建立唯一 reaper goroutine 调用 `Wait` 并原子记录退出结果。pipe 的 stdout/stderr 写入独立 frame log，PTY master 的合并输出写入 stdout frame log，防止子进程因输出缓冲写满而停住。MANAGED 输入使用每进程串行 writer pump，操作系统写入期间不持有 registry mutex。
 
 工作目录先通过 `os.Root` 安全打开并验证为目录；Linux 启动器使用 `/proc/self/fd/<fd>` 对已打开目录执行 child chdir，避免校验后符号链接替换。pipe 模式使用 `Setpgid`，PTY 模式使用 `setsid + controlling tty`，两者均以 PID 为进程组 ID。`SignalProcess` 只解析已注册且仍运行的记录，并对负 PGID 调用 `kill`。controller 关闭时注册表先拒绝新启动并发送 `TERM`，context 到期后发送 `KILL`；gRPC 随后停止，最后释放工作区句柄。
 
@@ -226,6 +228,6 @@ configuration。
 - 通用 `mv` 的“检查后 rename”无法提供跨所有对象类型的强原子 no-replace；Linux 后续可用 `renameat2(RENAME_NOREPLACE)` 增强。
 - 首版传输单文件且不续传；后续可加入 upload session、offset 与分块摘要。
 - 首版 CLI 同步执行一条命令；并发任务、进度条和机器可读模式留待后续版本。
-- PTY/pipe attach、窗口 resize 和 Agent 语义保持为后续 milestone；当前进程 API 已负责启动、
+- 已实现独立的 PTY/pipe managed stdin 流；合并输出的完整 attach、窗口 resize 和 Agent 语义保持为后续 milestone；当前进程 API 已负责启动、
   持久化元数据/输出、按 offset 或 tail 回放并跟随日志、列表、信号和回收。日志 checkpoint
   支持客户端断线后以逻辑 offset 续传。

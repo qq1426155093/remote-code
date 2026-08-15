@@ -9,6 +9,7 @@ controller 提供与 Claude Code 无关的通用进程管理能力。任何通�
 本版本包含：
 
 - 以普通 pipe 或 PTY 两种 I/O 模式启动进程；
+- 可选地保留进程输入端点，并在进程运行后通过双向 gRPC 流写入；
 - 为进程指定逻辑名称、工作目录、命令、参数和环境变量；
 - 返回稳定 UUID 和操作系统 PID；
 - 持久化元数据、状态以及带时间戳的 stdout/stderr 输出块；
@@ -17,10 +18,10 @@ controller 提供与 Claude Code 无关的通用进程管理能力。任何通�
 - 永久删除已退出、启动失败或 controller-lost 的进程历史；
 - 按 UUID、名称或 PID 向整个进程组发送受支持的 POSIX 信号；
 - controller 始终 `Wait` 直接子进程，避免僵尸进程；
-- `remote-code` REPL 提供 `exec`、`ps`、`ps -a`、`kill` 和 `forget` 命令，并让
+- `remote-code` REPL 提供 `exec`、`ps`、`ps -a`、`kill`、`stdin` 和 `forget` 命令，并让
   `cd` 改变的远端当前目录成为后续 `exec` 的默认工作目录。
 
-本版本不包含实时 attach、交互输入、终端尺寸变更、CPU/内存限额和
+本版本不包含合并 stdin/stdout/stderr 的完整终端 attach、终端尺寸变更、CPU/内存限额和
 跨 controller 重启重新接管仍存活的操作系统进程。落盘日志格式为后续日志回放接口提供
 稳定基础。
 
@@ -43,6 +44,8 @@ controller 提供与 Claude Code 无关的通用进程管理能力。任何通�
 - `environment`：环境变量覆盖表。子进程继承 controller 环境后应用覆盖。key/value
   均不得含 NUL，key 必须是合法环境变量名。API 和持久化元数据只暴露 key，绝不记录
   value，避免将 token 等秘密写入磁盘。
+- `input_mode`：`DISABLED` 或 `MANAGED`；未指定时默认 `DISABLED`。`MANAGED` 在进程进入
+  RUNNING 后继续保留输入端点，允许客户端稍后连接；`DISABLED` 保持 PIPE 立即 EOF 的兼容行为。
 
 成功响应至少包含 UUID、逻辑名称、PID、I/O 模式、状态、命令、参数、工作目录、
 环境变量 key 和创建/启动时间。RPC 返回成功时状态必须为 `RUNNING`。
@@ -72,6 +75,17 @@ RPC context 约束。
 记录。成功后原子地从内存索引移除记录，并永久删除 `<runtime-dir>/<uuid>` 中的元数据和
 全部日志，因此后续 `ListProcesses(all=true)` 不再返回该记录。活动进程返回
 failed-precondition；日志仍被观察时也拒绝删除，调用方可在观察结束后重试。
+
+### 2.5 写入标准输入
+
+`StreamProcessInput` 是独立于输出日志的双向流。第一帧必须是携带 `ProcessReference` 的
+open；后续 data 帧携带从 1 开始严格递增的 sequence 和最多 64 KiB 原始字节。服务端只有在
+完整写入一帧后才返回对应 ack。一个进程同时只允许一个输入 attachment。
+
+客户端 detach、正常结束发送方向或网络断开只释放 attachment，不关闭远程输入；之后可以重新
+连接。PIPE 的显式 close_input 在全部先前数据之后关闭 writer 并产生真实 EOF，且不可重新打开。
+PTY 没有独立的 write-side close，close_input 返回 failed-precondition；客户端可以根据目标终端
+模式发送 Ctrl-D 字节，或通过 `SignalProcess` 结束进程。输入内容不持久化、不写 controller 日志。
 
 ## 3. 生命周期
 
@@ -125,7 +139,7 @@ controller 日志。
 
 ## 5. CLI 行为
 
-- `exec [--name NAME] [--pipe|--pty] [--cwd REMOTE_DIR] [-e KEY=VALUE ...] [--] CMD [ARG ...]`
+- `exec [--name NAME] [--pipe|--pty] [--stdin] [--cwd REMOTE_DIR] [-e KEY=VALUE ...] [--] CMD [ARG ...]`
   启动命令；未给 `--cwd` 时使用 REPL 当前远端目录，未给 `--name` 时由 server 生成。
 - `cd test` 后执行 `exec ls -a`，请求中的工作目录必须是 `test`。
 - `ps` 只显示活动进程。
@@ -133,6 +147,8 @@ controller 日志。
 - `kill [-s SIGNAL] [-w] PROCESS` 保持 UUID、名称和 PID 引用能力。
 - `forget PROCESS` 删除终态进程的完整持久化历史。
 - `logs [-f] [-n LINES|--offset OFFSET] [--stdout|--stderr] PROCESS_ID` 回放或持续跟随输出。
+- `stdin PROCESS` 进入行输入子模式；`.detach` 保留远端输入，`.eof` 关闭 PIPE 输入，`.eot`
+  发送 Ctrl-D 字节。
 
 命令解析不调用本地 shell。需要 shell 语法时必须显式执行，例如
 `exec sh -lc 'printf "%s\\n" "$HOME"'`。
@@ -146,10 +162,13 @@ controller 日志。
 - 进程历史内存索引最多 4096 条；磁盘记录不会自动删除；
 - 日志默认每进程保留 64 MiB、全局 4 GiB、退出后 7 天，可通过 controller 配置覆盖；
 - 当前进程执行实现仅支持 Linux；其它平台返回 unimplemented。
+- 单个输入 data 帧最多 64 KiB，同一进程同时只有一个输入 writer；未确认数据在传输失败时
+  结果未知，客户端不得自动重试。
 
 ## 7. 验收标准
 
 - gRPC 能用 `name/cwd/io_mode/command/arguments/environment` 启动普通命令并返回 UUID/PID；
+- `MANAGED` 进程进入 RUNNING 后可写入、detach、重新 attach；PIPE 显式 EOF 和 PTY 限制正确；
 - PIPE 和 PTY 都能完成执行、回收和状态落盘；
 - PIPE stdout/stderr、PTY 合并输出可按逻辑 offset 或最后 N 行无损回放，并能跟随到退出；
 - kill 对进程组生效，`wait=true` 返回时 leader 已被回收；

@@ -57,6 +57,7 @@ type ProcessStartOptions struct {
 	Arguments        []string
 	WorkingDirectory string
 	IOMode           codev1.ProcessIOMode
+	InputMode        codev1.ProcessInputMode
 	Environment      map[string]string
 }
 
@@ -149,7 +150,8 @@ func (c *Client) StartProcess(ctx context.Context, name, command string, argumen
 func (c *Client) StartProcessWithOptions(ctx context.Context, options ProcessStartOptions) (*codev1.ProcessInfo, error) {
 	response, err := c.processes.StartProcess(ctx, &codev1.StartProcessRequest{
 		Name: options.Name, Command: options.Command, Arguments: options.Arguments,
-		WorkingDirectory: options.WorkingDirectory, IoMode: options.IOMode, Environment: options.Environment,
+		WorkingDirectory: options.WorkingDirectory, IoMode: options.IOMode,
+		InputMode: options.InputMode, Environment: options.Environment,
 	})
 	if err != nil {
 		return nil, err

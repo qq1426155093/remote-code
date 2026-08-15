@@ -9,11 +9,11 @@ import (
 )
 
 func TestParseProcessStartOptions(t *testing.T) {
-	options, err := parseProcessStartOptions([]string{"--name", "worker", "--pty", "--cwd", "docs", "-e", "MODE=test", "helper", "--flag", "value"})
+	options, err := parseProcessStartOptions([]string{"--name", "worker", "--pty", "--stdin", "--cwd", "docs", "-e", "MODE=test", "helper", "--flag", "value"})
 	if err != nil {
 		t.Fatalf("parseProcessStartOptions() error = %v", err)
 	}
-	if options.name != "worker" || options.command != "helper" || options.workingDirectory != "docs" || options.ioMode != codev1.ProcessIOMode_PROCESS_IO_MODE_PTY || !reflect.DeepEqual(options.arguments, []string{"--flag", "value"}) || !reflect.DeepEqual(options.environment, map[string]string{"MODE": "test"}) {
+	if options.name != "worker" || options.command != "helper" || options.workingDirectory != "docs" || options.ioMode != codev1.ProcessIOMode_PROCESS_IO_MODE_PTY || options.inputMode != codev1.ProcessInputMode_PROCESS_INPUT_MODE_MANAGED || !reflect.DeepEqual(options.arguments, []string{"--flag", "value"}) || !reflect.DeepEqual(options.environment, map[string]string{"MODE": "test"}) {
 		t.Fatalf("parseProcessStartOptions() = %+v", options)
 	}
 
@@ -21,7 +21,7 @@ func TestParseProcessStartOptions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseProcessStartOptions(-- separator) error = %v", err)
 	}
-	if options.ioMode != codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE || !reflect.DeepEqual(options.arguments, []string{"-leading-option"}) {
+	if options.ioMode != codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE || options.inputMode != codev1.ProcessInputMode_PROCESS_INPUT_MODE_DISABLED || !reflect.DeepEqual(options.arguments, []string{"-leading-option"}) {
 		t.Errorf("parseProcessStartOptions(-- separator) = %+v", options)
 	}
 
@@ -33,6 +33,7 @@ func TestParseProcessStartOptions(t *testing.T) {
 		{"--pipe", "--pty", "helper"},
 		{"--name", "", "helper"},
 		{"--name", "one", "--name", "two", "helper"},
+		{"--stdin", "--stdin", "helper"},
 	} {
 		if _, err := parseProcessStartOptions(arguments); err == nil {
 			t.Errorf("parseProcessStartOptions(%q) succeeded", arguments)

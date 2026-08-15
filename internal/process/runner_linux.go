@@ -21,10 +21,11 @@ const ptyDrainWait = 250 * time.Millisecond
 type runningCommand struct {
 	cmd      *exec.Cmd
 	terminal *os.File
+	input    *processInput
 	copyDone chan struct{}
 }
 
-func startCommand(directory *os.File, executable string, arguments, environment []string, ioMode codev1.ProcessIOMode, output *recordOutput) (*runningCommand, error) {
+func startCommand(directory *os.File, executable string, arguments, environment []string, ioMode codev1.ProcessIOMode, inputMode codev1.ProcessInputMode, output *recordOutput) (*runningCommand, error) {
 	command := exec.Command(executable, arguments...)
 	command.Dir = "/proc/self/fd/" + strconv.FormatUint(uint64(directory.Fd()), 10)
 	command.Env = append([]string(nil), environment...)
@@ -39,7 +40,11 @@ func startCommand(directory *os.File, executable string, arguments, environment 
 			_, _ = io.CopyBuffer(output.stdout, terminal, make([]byte, maxLogFrameBytes))
 			close(copyDone)
 		}()
-		return &runningCommand{cmd: command, terminal: terminal, copyDone: copyDone}, nil
+		running := &runningCommand{cmd: command, terminal: terminal, copyDone: copyDone}
+		if inputMode == codev1.ProcessInputMode_PROCESS_INPUT_MODE_MANAGED {
+			running.input = newProcessInput(terminal)
+		}
+		return running, nil
 	case codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE:
 		command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 		command.Stdout = output.stdout
@@ -52,10 +57,15 @@ func startCommand(directory *os.File, executable string, arguments, environment 
 			_ = stdin.Close()
 			return nil, err
 		}
-		// v1 has no attach/input RPC. Closing the pipe gives the child immediate
-		// EOF while preserving the requested pipe I/O semantics.
-		_ = stdin.Close()
-		return &runningCommand{cmd: command}, nil
+		running := &runningCommand{cmd: command}
+		if inputMode == codev1.ProcessInputMode_PROCESS_INPUT_MODE_MANAGED {
+			running.input = newProcessInput(stdin)
+		} else {
+			// Preserve the original behavior unless managed input was explicitly
+			// requested: the child observes EOF immediately.
+			_ = stdin.Close()
+		}
+		return running, nil
 	default:
 		return nil, fmt.Errorf("%w: I/O mode %s", errUnsupportedPlatform, ioMode)
 	}
@@ -74,7 +84,7 @@ func (c *runningCommand) wait() error {
 				}
 			}
 		case <-timer.C:
-			_ = c.terminal.Close()
+			c.closeIO()
 			<-c.copyDone
 		}
 	}
@@ -82,7 +92,17 @@ func (c *runningCommand) wait() error {
 }
 
 func (c *runningCommand) close() {
-	if c != nil && c.terminal != nil {
+	if c != nil {
+		c.closeIO()
+	}
+}
+
+func (c *runningCommand) closeIO() {
+	if c.input != nil {
+		c.input.abort()
+		return
+	}
+	if c.terminal != nil {
 		_ = c.terminal.Close()
 	}
 }

@@ -28,6 +28,7 @@ service ProcessService {
   rpc SignalProcess(SignalProcessRequest) returns (SignalProcessResponse);
   rpc DeleteProcess(DeleteProcessRequest) returns (DeleteProcessResponse);
   rpc ObserveProcessLogs(ObserveProcessLogsRequest) returns (stream ObserveProcessLogsResponse);
+  rpc StreamProcessInput(stream StreamProcessInputRequest) returns (stream StreamProcessInputResponse);
 }
 
 message GetInfoRequest {}
@@ -212,6 +213,30 @@ enum ProcessLogEndReason {
   PROCESS_LOG_END_REASON_PROCESS_EXITED = 2;
 }
 
+enum ProcessInputMode {
+  PROCESS_INPUT_MODE_UNSPECIFIED = 0;
+  // Preserve the historical behavior: PIPE receives EOF immediately and PTY
+  // input cannot be written through the process API.
+  PROCESS_INPUT_MODE_DISABLED = 1;
+  // Keep the process input endpoint so clients can attach after it is running.
+  PROCESS_INPUT_MODE_MANAGED = 2;
+}
+
+enum ProcessInputState {
+  PROCESS_INPUT_STATE_UNSPECIFIED = 0;
+  PROCESS_INPUT_STATE_UNAVAILABLE = 1;
+  PROCESS_INPUT_STATE_OPEN = 2;
+  PROCESS_INPUT_STATE_ATTACHED = 3;
+  PROCESS_INPUT_STATE_CLOSED = 4;
+}
+
+enum ProcessInputEndReason {
+  PROCESS_INPUT_END_REASON_UNSPECIFIED = 0;
+  PROCESS_INPUT_END_REASON_DETACHED = 1;
+  PROCESS_INPUT_END_REASON_INPUT_CLOSED = 2;
+  PROCESS_INPUT_END_REASON_PROCESS_EXITED = 3;
+}
+
 message ProcessInfo {
   string id = 1;
   string name = 2;
@@ -229,6 +254,8 @@ message ProcessInfo {
   google.protobuf.Timestamp created_at = 13;
   // Only names are exposed; environment values may contain secrets.
   repeated string environment_keys = 14;
+  ProcessInputMode input_mode = 15;
+  ProcessInputState input_state = 16;
 }
 
 message ProcessReference {
@@ -248,6 +275,9 @@ message StartProcessRequest {
   ProcessIOMode io_mode = 5;
   // Overrides applied after inheriting the controller environment.
   map<string, string> environment = 6;
+  // MANAGED keeps stdin available for StreamProcessInput after startup.
+  // Unspecified defaults to DISABLED for backward compatibility.
+  ProcessInputMode input_mode = 7;
 }
 
 message StartProcessResponse {
@@ -335,6 +365,54 @@ message ObserveProcessLogsResponse {
     ProcessLogChunk chunk = 2;
     ProcessLogCheckpoint checkpoint = 3;
     ProcessLogEnd end = 4;
+  }
+}
+
+message ProcessInputOpen {
+  ProcessReference process = 1;
+}
+
+message ProcessInputData {
+  // Starts at one and increases by one for every data frame in this stream.
+  uint64 sequence = 1;
+  bytes data = 2;
+}
+
+message ProcessInputClose {}
+
+message ProcessInputDetach {}
+
+message StreamProcessInputRequest {
+  oneof payload {
+    // Must be the first and only open frame.
+    ProcessInputOpen open = 1;
+    ProcessInputData data = 2;
+    // PIPE only. PTY has no independent write-side close operation.
+    ProcessInputClose close_input = 3;
+    // Releases this stream without closing the remote input endpoint.
+    ProcessInputDetach detach = 4;
+  }
+}
+
+message ProcessInputOpened {
+  ProcessInfo process = 1;
+}
+
+message ProcessInputAck {
+  uint64 sequence = 1;
+  uint32 bytes_written = 2;
+}
+
+message ProcessInputEnd {
+  ProcessInputEndReason reason = 1;
+  ProcessInfo process = 2;
+}
+
+message StreamProcessInputResponse {
+  oneof payload {
+    ProcessInputOpened opened = 1;
+    ProcessInputAck ack = 2;
+    ProcessInputEnd end = 3;
   }
 }
 

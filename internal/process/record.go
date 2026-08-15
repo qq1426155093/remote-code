@@ -30,6 +30,7 @@ type recordMetadata struct {
 	ID               string    `json:"id"`
 	Name             string    `json:"name"`
 	IOMode           string    `json:"io_mode"`
+	InputMode        string    `json:"input_mode,omitempty"`
 	Command          string    `json:"command"`
 	Arguments        []string  `json:"arguments,omitempty"`
 	WorkingDirectory string    `json:"working_directory"`
@@ -39,6 +40,7 @@ type recordMetadata struct {
 
 type recordStatus struct {
 	State      string     `json:"state"`
+	InputState string     `json:"input_state,omitempty"`
 	PID        int64      `json:"pid,omitempty"`
 	StartedAt  *time.Time `json:"started_at,omitempty"`
 	ExitedAt   *time.Time `json:"exited_at,omitempty"`
@@ -293,6 +295,11 @@ func (s *recordStore) load() ([]*codev1.ProcessInfo, error) {
 		}
 		if info.GetState() == codev1.ProcessState_PROCESS_STATE_STARTING || info.GetState() == codev1.ProcessState_PROCESS_STATE_RUNNING {
 			info.State = codev1.ProcessState_PROCESS_STATE_LOST
+			if info.GetInputMode() == codev1.ProcessInputMode_PROCESS_INPUT_MODE_MANAGED {
+				info.InputState = codev1.ProcessInputState_PROCESS_INPUT_STATE_CLOSED
+			} else {
+				info.InputState = codev1.ProcessInputState_PROCESS_INPUT_STATE_UNAVAILABLE
+			}
 			info.ExitedAt = timestamppb.Now()
 			info.ExitCode = nil
 			info.ExitSignal = nil
@@ -339,11 +346,32 @@ func loadRecord(directory string) (*codev1.ProcessInfo, error) {
 	if !ok {
 		return nil, errors.New("invalid process record state")
 	}
+	inputMode := codev1.ProcessInputMode_PROCESS_INPUT_MODE_DISABLED
+	if metadata.InputMode != "" {
+		inputMode, ok = parseStoredInputMode(metadata.InputMode)
+		if !ok || inputMode == codev1.ProcessInputMode_PROCESS_INPUT_MODE_UNSPECIFIED {
+			return nil, errors.New("invalid process record input mode")
+		}
+	}
+	inputState := codev1.ProcessInputState_PROCESS_INPUT_STATE_UNAVAILABLE
+	if state.InputState != "" {
+		inputState, ok = parseStoredInputState(state.InputState)
+		if !ok || inputState == codev1.ProcessInputState_PROCESS_INPUT_STATE_UNSPECIFIED {
+			return nil, errors.New("invalid process record input state")
+		}
+	} else if inputMode == codev1.ProcessInputMode_PROCESS_INPUT_MODE_MANAGED {
+		if isActiveState(processState) {
+			inputState = codev1.ProcessInputState_PROCESS_INPUT_STATE_OPEN
+		} else {
+			inputState = codev1.ProcessInputState_PROCESS_INPUT_STATE_CLOSED
+		}
+	}
 	result := &codev1.ProcessInfo{
 		Id: metadata.ID, Name: metadata.Name, Pid: state.PID, IoMode: ioMode,
 		State: processState, Command: metadata.Command, Arguments: append([]string(nil), metadata.Arguments...),
 		WorkingDirectory: metadata.WorkingDirectory, EnvironmentKeys: append([]string(nil), metadata.EnvironmentKeys...),
 		CreatedAt: timestamppb.New(metadata.CreatedAt), ExitCode: state.ExitCode, ExitSignal: state.ExitSignal,
+		InputMode: inputMode, InputState: inputState,
 	}
 	if state.StartedAt != nil {
 		result.StartedAt = timestamppb.New(*state.StartedAt)
@@ -370,7 +398,8 @@ func validStoredState(state codev1.ProcessState) bool {
 func metadataFromInfo(info *codev1.ProcessInfo) recordMetadata {
 	return recordMetadata{
 		SchemaVersion: recordSchemaVersion, ID: info.GetId(), Name: info.GetName(), IOMode: storedIOMode(info.GetIoMode()),
-		Command: info.GetCommand(), Arguments: append([]string(nil), info.GetArguments()...),
+		InputMode: storedInputMode(info.GetInputMode()),
+		Command:   info.GetCommand(), Arguments: append([]string(nil), info.GetArguments()...),
 		WorkingDirectory: info.GetWorkingDirectory(), EnvironmentKeys: append([]string(nil), info.GetEnvironmentKeys()...),
 		CreatedAt: info.GetCreatedAt().AsTime(),
 	}
@@ -378,7 +407,8 @@ func metadataFromInfo(info *codev1.ProcessInfo) recordMetadata {
 
 func statusFromInfo(info *codev1.ProcessInfo, message string) recordStatus {
 	result := recordStatus{
-		State: storedState(info.GetState()), PID: info.GetPid(), ExitCode: info.ExitCode, ExitSignal: info.ExitSignal, Error: message,
+		State: storedState(info.GetState()), InputState: storedInputState(info.GetInputState()),
+		PID: info.GetPid(), ExitCode: info.ExitCode, ExitSignal: info.ExitSignal, Error: message,
 	}
 	if value := info.GetStartedAt(); value != nil && value.IsValid() {
 		timestamp := value.AsTime()
@@ -398,6 +428,30 @@ func storedIOMode(mode codev1.ProcessIOMode) string {
 func parseStoredIOMode(value string) (codev1.ProcessIOMode, bool) {
 	mode, ok := codev1.ProcessIOMode_value["PROCESS_IO_MODE_"+value]
 	return codev1.ProcessIOMode(mode), ok
+}
+
+func storedInputMode(mode codev1.ProcessInputMode) string {
+	if mode == codev1.ProcessInputMode_PROCESS_INPUT_MODE_UNSPECIFIED {
+		mode = codev1.ProcessInputMode_PROCESS_INPUT_MODE_DISABLED
+	}
+	return strings.TrimPrefix(mode.String(), "PROCESS_INPUT_MODE_")
+}
+
+func parseStoredInputMode(value string) (codev1.ProcessInputMode, bool) {
+	mode, ok := codev1.ProcessInputMode_value["PROCESS_INPUT_MODE_"+value]
+	return codev1.ProcessInputMode(mode), ok
+}
+
+func storedInputState(state codev1.ProcessInputState) string {
+	if state == codev1.ProcessInputState_PROCESS_INPUT_STATE_UNSPECIFIED {
+		state = codev1.ProcessInputState_PROCESS_INPUT_STATE_UNAVAILABLE
+	}
+	return strings.TrimPrefix(state.String(), "PROCESS_INPUT_STATE_")
+}
+
+func parseStoredInputState(value string) (codev1.ProcessInputState, bool) {
+	state, ok := codev1.ProcessInputState_value["PROCESS_INPUT_STATE_"+value]
+	return codev1.ProcessInputState(state), ok
 }
 
 func storedState(state codev1.ProcessState) string {

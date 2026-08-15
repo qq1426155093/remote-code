@@ -138,6 +138,8 @@ func (c *commandCompleter) Do(line []rune, pos int) ([][]rune, int) {
 		candidates = c.completeForget(previous, current)
 	case "logs":
 		candidates = c.completeLogs(previous, current)
+	case "stdin":
+		candidates = c.completeProcessInput(previous, current)
 	}
 	return formatCompletions(input, candidates)
 }
@@ -242,7 +244,7 @@ func (c *commandCompleter) completeExec(previous []string, current string) []com
 				used[argument] = true
 			}
 			expectValue = true
-		case argument == "--pipe" || argument == "--pty":
+		case argument == "--pipe" || argument == "--pty" || argument == "--stdin":
 			used[argument] = true
 		case argument == "--":
 			optionsEnded = true
@@ -258,10 +260,35 @@ func (c *commandCompleter) completeExec(previous []string, current string) []com
 	}
 	candidates := make([]completionCandidate, 0)
 	if !optionsEnded && (current == "" || strings.HasPrefix(current, "-")) {
-		for _, option := range []string{"--cwd", "--name", "--pipe", "--pty", "-e"} {
+		for _, option := range []string{"--cwd", "--name", "--pipe", "--pty", "--stdin", "-e"} {
 			if option == "-e" || !used[option] {
 				candidates = append(candidates, completionCandidate{value: option, finish: true})
 			}
+		}
+	}
+	return candidates
+}
+
+func (c *commandCompleter) completeProcessInput(previous []string, current string) []completionCandidate {
+	if len(previous) > 0 || strings.HasPrefix(current, "-") {
+		return nil
+	}
+	processClient, ok := c.client.(completionProcessClient)
+	if !ok {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+	processes, err := processClient.ListProcesses(ctx)
+	if err != nil {
+		return nil
+	}
+	var candidates []completionCandidate
+	for _, process := range processes {
+		if process != nil && process.GetState() == codev1.ProcessState_PROCESS_STATE_RUNNING &&
+			process.GetInputMode() == codev1.ProcessInputMode_PROCESS_INPUT_MODE_MANAGED &&
+			process.GetInputState() != codev1.ProcessInputState_PROCESS_INPUT_STATE_CLOSED {
+			candidates = append(candidates, completionCandidate{value: process.GetName(), finish: true})
 		}
 	}
 	return candidates

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/chzyer/readline"
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
 	remoteclient "github.com/qq1426155093/remote-code/pkg/client"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -23,6 +25,7 @@ type processStartOptions struct {
 	arguments        []string
 	workingDirectory string
 	ioMode           codev1.ProcessIOMode
+	inputMode        codev1.ProcessInputMode
 	environment      map[string]string
 }
 
@@ -53,12 +56,14 @@ func (r *REPL) startProcess(arguments []string) error {
 	defer cancel()
 	info, err := r.client.StartProcessWithOptions(ctx, remoteclient.ProcessStartOptions{
 		Name: options.name, Command: options.command, Arguments: options.arguments,
-		WorkingDirectory: workingDirectory, IOMode: options.ioMode, Environment: options.environment,
+		WorkingDirectory: workingDirectory, IOMode: options.ioMode,
+		InputMode: options.inputMode, Environment: options.environment,
 	})
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(r.stdout, "started %s (%s), pid %d, %s mode, cwd %s\n", info.GetName(), info.GetId(), info.GetPid(), processIOModeName(info.GetIoMode()), info.GetWorkingDirectory())
+	fmt.Fprintf(r.stdout, "started %s (%s), pid %d, %s mode, input %s, cwd %s\n",
+		info.GetName(), info.GetId(), info.GetPid(), processIOModeName(info.GetIoMode()), processInputStateName(info.GetInputState()), info.GetWorkingDirectory())
 	return nil
 }
 
@@ -78,11 +83,11 @@ func (r *REPL) listProcesses(arguments []string) error {
 		return err
 	}
 	writer := tabwriter.NewWriter(r.stdout, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(writer, "ID\tNAME\tPID\tMODE\tSTATE\tEXIT\tSTARTED\tCWD\tCOMMAND")
+	fmt.Fprintln(writer, "ID\tNAME\tPID\tMODE\tINPUT\tSTATE\tEXIT\tSTARTED\tCWD\tCOMMAND")
 	for _, process := range processes {
-		fmt.Fprintf(writer, "%s\t%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\n",
+		fmt.Fprintf(writer, "%s\t%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			process.GetId(), process.GetName(), process.GetPid(), processIOModeName(process.GetIoMode()),
-			processStateName(process.GetState()), processExitName(process), formatProcessTime(process.GetStartedAt()),
+			processInputStateName(process.GetInputState()), processStateName(process.GetState()), processExitName(process), formatProcessTime(process.GetStartedAt()),
 			process.GetWorkingDirectory(), displayProcessCommand(process))
 	}
 	return writer.Flush()
@@ -164,6 +169,62 @@ func (r *REPL) observeProcessLogs(arguments []string) error {
 	}
 }
 
+func (r *REPL) writeProcessInput(arguments []string) error {
+	if len(arguments) != 1 {
+		return errors.New(commandUsage["stdin"])
+	}
+	if r.line == nil {
+		return errors.New("stdin submode requires an interactive terminal")
+	}
+	reference, err := parseProcessReference(arguments[0])
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session, err := r.client.OpenProcessInput(ctx, reference)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = session.Close() }()
+	process := session.Process()
+	fmt.Fprintf(r.stdout, "attached to stdin of %s (%s); .detach leaves input open, .eof closes PIPE input, .eot sends Ctrl-D\n", process.GetName(), process.GetId())
+
+	var previousCompleter readline.AutoCompleter
+	if r.line.Config != nil {
+		previousCompleter = r.line.Config.AutoComplete
+		r.line.Config.AutoComplete = nil
+		defer func() { r.line.Config.AutoComplete = previousCompleter }()
+	}
+	for {
+		r.line.SetPrompt("stdin:" + process.GetName() + "> ")
+		line, readErr := r.line.Readline()
+		switch {
+		case errors.Is(readErr, readline.ErrInterrupt), errors.Is(readErr, io.EOF):
+			_, err := session.Detach()
+			return err
+		case readErr != nil:
+			return fmt.Errorf("read process input: %w", readErr)
+		}
+		switch line {
+		case ".detach":
+			_, err := session.Detach()
+			return err
+		case ".eof":
+			_, err := session.CloseInput()
+			return err
+		case ".eot":
+			if _, err := session.Write([]byte{4}); err != nil {
+				return err
+			}
+		default:
+			if _, err := session.Write([]byte(line + "\n")); err != nil {
+				return err
+			}
+		}
+	}
+}
+
 func parseProcessLogOptions(arguments []string) (processLogOptions, error) {
 	var options processLogOptions
 	values := make([]string, 0, 1)
@@ -227,8 +288,13 @@ func parseProcessLogOptions(arguments []string) (processLogOptions, error) {
 }
 
 func parseProcessStartOptions(arguments []string) (processStartOptions, error) {
-	options := processStartOptions{ioMode: codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE, environment: make(map[string]string)}
+	options := processStartOptions{
+		ioMode:      codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE,
+		inputMode:   codev1.ProcessInputMode_PROCESS_INPUT_MODE_DISABLED,
+		environment: make(map[string]string),
+	}
 	modeSet := false
+	inputSet := false
 	nameSet := false
 	cwdSet := false
 	for index := 0; index < len(arguments); {
@@ -274,6 +340,13 @@ func parseProcessStartOptions(arguments []string) (processStartOptions, error) {
 			}
 			options.ioMode = codev1.ProcessIOMode_PROCESS_IO_MODE_PTY
 			modeSet = true
+			index++
+		case "--stdin":
+			if inputSet {
+				return processStartOptions{}, errors.New("--stdin is specified more than once")
+			}
+			options.inputMode = codev1.ProcessInputMode_PROCESS_INPUT_MODE_MANAGED
+			inputSet = true
 			index++
 		case "--":
 			index++
@@ -390,6 +463,10 @@ func processSignalName(signal codev1.ProcessSignal) string {
 
 func processIOModeName(mode codev1.ProcessIOMode) string {
 	return strings.ToLower(strings.TrimPrefix(mode.String(), "PROCESS_IO_MODE_"))
+}
+
+func processInputStateName(state codev1.ProcessInputState) string {
+	return strings.ToLower(strings.TrimPrefix(state.String(), "PROCESS_INPUT_STATE_"))
 }
 
 func processStateName(state codev1.ProcessState) string {

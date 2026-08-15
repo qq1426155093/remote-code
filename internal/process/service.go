@@ -76,11 +76,12 @@ type Service struct {
 }
 
 type managedProcess struct {
-	info    *codev1.ProcessInfo
-	command *runningCommand
-	output  *recordOutput
-	logs    *processLog
-	done    chan struct{}
+	info          *codev1.ProcessInfo
+	command       *runningCommand
+	output        *recordOutput
+	logs          *processLog
+	done          chan struct{}
+	inputAttached bool
 }
 
 type validatedStart struct {
@@ -89,6 +90,7 @@ type validatedStart struct {
 	arguments        []string
 	workingDirectory string
 	ioMode           codev1.ProcessIOMode
+	inputMode        codev1.ProcessInputMode
 	environment      []string
 	environmentKeys  []string
 }
@@ -195,6 +197,7 @@ func (s *Service) StartProcess(ctx context.Context, request *codev1.StartProcess
 			Command: start.command, Arguments: append([]string(nil), start.arguments...),
 			WorkingDirectory: displayWorkingDirectory(start.workingDirectory),
 			CreatedAt:        timestamppb.Now(), EnvironmentKeys: append([]string(nil), start.environmentKeys...),
+			InputMode: start.inputMode, InputState: codev1.ProcessInputState_PROCESS_INPUT_STATE_UNAVAILABLE,
 		},
 		done: make(chan struct{}),
 	}
@@ -235,7 +238,7 @@ func (s *Service) StartProcess(ctx context.Context, request *codev1.StartProcess
 	}
 	record.output = output
 	record.logs = output.log
-	running, startErr := startCommand(directory, start.command, start.arguments, start.environment, start.ioMode, output)
+	running, startErr := startCommand(directory, start.command, start.arguments, start.environment, start.ioMode, start.inputMode, output)
 	if startErr != nil {
 		output.close()
 		s.mu.Lock()
@@ -268,6 +271,9 @@ func (s *Service) StartProcess(ctx context.Context, request *codev1.StartProcess
 	runningInfo.Pid = int64(running.cmd.Process.Pid)
 	runningInfo.State = codev1.ProcessState_PROCESS_STATE_RUNNING
 	runningInfo.StartedAt = timestamppb.Now()
+	if start.inputMode == codev1.ProcessInputMode_PROCESS_INPUT_MODE_MANAGED {
+		runningInfo.InputState = codev1.ProcessInputState_PROCESS_INPUT_STATE_OPEN
+	}
 	if err := s.store.writeStatus(runningInfo, ""); err != nil {
 		s.mu.Lock()
 		record.info = runningInfo
@@ -471,13 +477,20 @@ func (s *Service) validateStartRequest(request *codev1.StartProcessRequest) (val
 	if ioMode != codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE && ioMode != codev1.ProcessIOMode_PROCESS_IO_MODE_PTY {
 		return validatedStart{}, status.Errorf(codes.InvalidArgument, "unsupported process I/O mode %q", ioMode)
 	}
+	inputMode := request.GetInputMode()
+	if inputMode == codev1.ProcessInputMode_PROCESS_INPUT_MODE_UNSPECIFIED {
+		inputMode = codev1.ProcessInputMode_PROCESS_INPUT_MODE_DISABLED
+	}
+	if inputMode != codev1.ProcessInputMode_PROCESS_INPUT_MODE_DISABLED && inputMode != codev1.ProcessInputMode_PROCESS_INPUT_MODE_MANAGED {
+		return validatedStart{}, status.Errorf(codes.InvalidArgument, "unsupported process input mode %q", inputMode)
+	}
 	environment, environmentKeys, err := buildEnvironment(request.GetEnvironment(), ioMode)
 	if err != nil {
 		return validatedStart{}, err
 	}
 	return validatedStart{
 		name: name, command: command, arguments: append([]string(nil), arguments...), workingDirectory: workingDirectory,
-		ioMode: ioMode, environment: environment, environmentKeys: environmentKeys,
+		ioMode: ioMode, inputMode: inputMode, environment: environment, environmentKeys: environmentKeys,
 	}, nil
 }
 
@@ -573,10 +586,16 @@ func (s *Service) reap(record *managedProcess) {
 	exited.ExitedAt = timestamppb.Now()
 	exited.ExitCode = exitCode
 	exited.ExitSignal = exitSignal
+	if exited.GetInputMode() == codev1.ProcessInputMode_PROCESS_INPUT_MODE_MANAGED {
+		exited.InputState = codev1.ProcessInputState_PROCESS_INPUT_STATE_CLOSED
+	} else {
+		exited.InputState = codev1.ProcessInputState_PROCESS_INPUT_STATE_UNAVAILABLE
+	}
 	_ = s.store.writeStatus(exited, "")
 
 	s.mu.Lock()
 	record.info = exited
+	record.inputAttached = false
 	if s.active > 0 {
 		s.active--
 	}
