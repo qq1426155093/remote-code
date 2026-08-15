@@ -91,6 +91,7 @@ type validatedStart struct {
 	workingDirectory string
 	ioMode           codev1.ProcessIOMode
 	inputMode        codev1.ProcessInputMode
+	terminalSize     *codev1.TerminalSize
 	environment      []string
 	environmentKeys  []string
 }
@@ -238,7 +239,7 @@ func (s *Service) StartProcess(ctx context.Context, request *codev1.StartProcess
 	}
 	record.output = output
 	record.logs = output.log
-	running, startErr := startCommand(directory, start.command, start.arguments, start.environment, start.ioMode, start.inputMode, output)
+	running, startErr := startCommand(directory, start.command, start.arguments, start.environment, start.ioMode, start.inputMode, start.terminalSize, output)
 	if startErr != nil {
 		output.close()
 		s.mu.Lock()
@@ -484,14 +485,31 @@ func (s *Service) validateStartRequest(request *codev1.StartProcessRequest) (val
 	if inputMode != codev1.ProcessInputMode_PROCESS_INPUT_MODE_DISABLED && inputMode != codev1.ProcessInputMode_PROCESS_INPUT_MODE_MANAGED {
 		return validatedStart{}, status.Errorf(codes.InvalidArgument, "unsupported process input mode %q", inputMode)
 	}
+	terminalSize := request.GetTerminalSize()
+	if terminalSize != nil {
+		if ioMode != codev1.ProcessIOMode_PROCESS_IO_MODE_PTY {
+			return validatedStart{}, status.Error(codes.InvalidArgument, "terminal_size is only valid for PTY processes")
+		}
+		if err := validateTerminalSize(terminalSize); err != nil {
+			return validatedStart{}, err
+		}
+		terminalSize = &codev1.TerminalSize{Rows: terminalSize.GetRows(), Columns: terminalSize.GetColumns()}
+	}
 	environment, environmentKeys, err := buildEnvironment(request.GetEnvironment(), ioMode)
 	if err != nil {
 		return validatedStart{}, err
 	}
 	return validatedStart{
 		name: name, command: command, arguments: append([]string(nil), arguments...), workingDirectory: workingDirectory,
-		ioMode: ioMode, inputMode: inputMode, environment: environment, environmentKeys: environmentKeys,
+		ioMode: ioMode, inputMode: inputMode, terminalSize: terminalSize, environment: environment, environmentKeys: environmentKeys,
 	}, nil
+}
+
+func validateTerminalSize(size *codev1.TerminalSize) error {
+	if size == nil || size.GetRows() == 0 || size.GetColumns() == 0 || size.GetRows() > 65535 || size.GetColumns() > 65535 {
+		return status.Error(codes.InvalidArgument, "terminal size rows and columns must be between 1 and 65535")
+	}
+	return nil
 }
 
 func buildEnvironment(overrides map[string]string, ioMode codev1.ProcessIOMode) ([]string, []string, error) {

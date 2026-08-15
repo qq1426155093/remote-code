@@ -4,7 +4,8 @@
 
 进程可在启动时选择 `MANAGED` 输入。controller 保留对应 PIPE writer 或 PTY master，使客户端
 能够在进程已经进入 RUNNING 后连接、写入、detach，并在稍后重新连接。输出继续由
-`ObserveProcessLogs` 提供，本接口不重复传输 stdout/stderr，也不包含窗口 resize。
+`ObserveProcessLogs` 提供，本接口不重复传输 stdout/stderr。PTY 窗口 resize 作为同一输入流中的
+控制操作发送，因此与按键输入具有确定顺序，并复用独占 writer 权限。
 
 `DISABLED` 是兼容默认值。PIPE writer 一旦关闭便无法为已经运行的进程重新创建，因此输入模式
 不能从 `DISABLED` 动态升级为 `MANAGED`。
@@ -26,8 +27,9 @@ detach、客户端半关闭发送方向和网络断开执行 `ATTACHED -> OPEN`�
 ## 3. 流协议
 
 `StreamProcessInput` 的第一帧必须是 open，服务端解析 `ProcessReference` 后固定具体进程记录，
-并返回包含稳定 UUID 的 opened。每个 data 帧最多 64 KiB，sequence 从 1 严格递增。服务端将
-整帧交给输入 pump，只有完整写入后才返回 ack，因此 ack 同时承担顺序确认和背压。
+并返回包含稳定 UUID 的 opened。每个 data 帧最多 64 KiB；data 和 resize 共用从 1 开始严格
+递增的 sequence。服务端将整帧交给输入 pump，只有完整写入后才返回 ack；resize 在调用 PTY
+ioctl 成功后返回 resize_ack，因此两种确认共同承担顺序确认和背压。终端行列数范围为 1..65535。
 
 detach 帧或客户端发送 EOF 不关闭子进程输入。close_input 只对 PIPE 有效；PTY master 同时承载
 输入与输出，关闭它会破坏输出并可能触发 SIGHUP，所以 PTY 请求返回 failed-precondition。
@@ -57,8 +59,19 @@ controller 重启时原活动记录转换为 LOST，输入状态转换为 CLOSED
 ## 6. 错误映射
 
 - 帧顺序、sequence、空或超限 data：`InvalidArgument`；
+- 缺失或超限终端尺寸：`InvalidArgument`；
 - 进程不存在：`NotFound`；
-- 非 RUNNING、输入未启用、输入已关闭、PTY close_input：`FailedPrecondition`；
+- 非 RUNNING、输入未启用、输入已关闭、PTY close_input、PIPE resize：`FailedPrecondition`；
 - 已有 writer：`AlreadyExists`；
 - controller 正在关闭：`Unavailable`；
 - 无法归类的底层写入失败：`Internal`。
+
+## 7. 交互式 attach
+
+public client 的 `ProcessAttachment` 在本地组合两条既有流：先获取输入 writer 和稳定 UUID，再以
+`tail_lines=0, follow=true` 从当前日志边界观察 PTY stdout。最多保留 32 个未确认输入/resize
+操作，使逐键交互无需逐次等待网络 RTT，同时保持有限背压。任一流失败会取消另一条流；进程退出时
+以日志 end 为准，确保退出前的尾部输出已经发送。
+
+CLI 进入 raw terminal mode，原样传送控制键和 ANSI 序列，监听 `SIGWINCH` 并发送 resize。
+`Ctrl-] d` 释放 writer 且停止日志观察，远端进程继续运行；所有完成和错误路径都先恢复本地终端。

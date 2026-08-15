@@ -58,6 +58,7 @@ type ProcessStartOptions struct {
 	WorkingDirectory string
 	IOMode           codev1.ProcessIOMode
 	InputMode        codev1.ProcessInputMode
+	TerminalSize     *codev1.TerminalSize
 	Environment      map[string]string
 }
 
@@ -151,7 +152,7 @@ func (c *Client) StartProcessWithOptions(ctx context.Context, options ProcessSta
 	response, err := c.processes.StartProcess(ctx, &codev1.StartProcessRequest{
 		Name: options.Name, Command: options.Command, Arguments: options.Arguments,
 		WorkingDirectory: options.WorkingDirectory, IoMode: options.IOMode,
-		InputMode: options.InputMode, Environment: options.Environment,
+		InputMode: options.InputMode, TerminalSize: options.TerminalSize, Environment: options.Environment,
 	})
 	if err != nil {
 		return nil, err

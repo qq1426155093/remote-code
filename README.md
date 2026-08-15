@@ -6,7 +6,7 @@ Remote Code 是一个面向远程开发任务的 Code Agent 控制平面。它�
 
 > 项目状态：文件与基础进程控制已可运行，包含带 Tab 补全的交互式 CLI、结构化目录树、
 > gRPC controller、流式上传/下载、PTY/pipe 启动、可回放/跟随的持久化输出日志、进程列表、
-> 信号、历史删除、自动回收和重启历史恢复。远程 attach 与 Agent 语义仍是后续版本计划。
+> 信号、历史删除、自动回收、重启历史恢复和可重连的远程 PTY attach。Agent 语义仍是后续版本计划。
 
 ## 快速开始
 
@@ -26,7 +26,7 @@ make build
 ./bin/remote-code --controller-addr 127.0.0.1:9443
 ```
 
-连接后可使用文件命令以及 `exec`、`ps`、`kill`、`stdin` 进程命令，输入 `help` 查看完整说明。例如：
+连接后可使用文件命令以及 `exec`、`ps`、`kill`、`stdin`、`attach` 进程命令，输入 `help` 查看完整说明。例如：
 
 ```text
 remote-code:/> mkdir -p docs/input
@@ -37,6 +37,8 @@ remote-code:/> cd docs/input
 remote-code:/docs/input> exec --name listing -e LANG=C ls -la
 remote-code:/> exec --name interactive --pipe --stdin cat
 remote-code:/> stdin interactive
+remote-code:/> exec --attach --name editor vim test.txt
+# detach 后可再次执行：attach editor
 remote-code:/> ps
 remote-code:/> ps -a
 remote-code:/> logs -n 100 --follow 7aa5daab-e886-4889-9ec3-92d461883091
@@ -99,14 +101,15 @@ flowchart LR
 ```
 
 controller 是唯一的远程入口，负责认证、路径校验、进程注册、进程回收和事件转发。
-每个受管进程运行在独立进程组中；PTY 模式还拥有独立 session 和控制终端。后续的 Attach API 会让 CLI 通过双向流接入对应 PTY。
+每个受管进程运行在独立进程组中；PTY 模式还拥有独立 session 和控制终端。CLI 组合输入流与
+日志 follow 流接入对应 PTY，不需要额外的 Attach API。
 
 ## 核心概念
 
 - **Workspace**：controller 启动时指定的根目录。所有文件操作和 agent 工作目录都必须位于该目录内。
 - **Process**：一个通用受管进程，拥有稳定 UUID、逻辑名称、PID、启动参数和持久化生命周期状态。
 - **Agent**：后续建立在 Process 之上的 Claude Code 语义层。
-- **Attachment**：CLI 与 agent PTY 的一次连接。网络断开不等同于终止 agent，之后可以重新接入。
+- **Attachment**：CLI 与受管进程 PTY 的一次连接。网络断开不等同于终止进程，之后可以重新接入。
 - **Event**：带递增序号和时间戳的输出、状态变化或错误，可用于断线续传和审计。
 
 建议的 agent 状态机：
@@ -128,7 +131,7 @@ remote-code --controller-addr devbox.example.com:9443 \
   --token-file ~/.config/remote-code/devbox.token
 ```
 
-当前 REPL 已提供通用的 `exec`、`ps`、`ps -a`、`kill`、`stdin` 和 `logs`；下面的 context 与 agent attach 命令是后续版本的产品形态草案：
+当前 REPL 已提供通用的 `exec`、`ps`、`ps -a`、`kill`、`stdin`、`attach` 和 `logs`；下面的 context 与 agent 命令是后续版本的产品形态草案：
 
 以下命令用于约定产品形态，并不表示已经实现：
 
@@ -191,8 +194,8 @@ service ProcessService {
 
 `TreeResponse` 使用递归的 `TreeNode` 返回文件元数据和子节点，CLI 只负责把它渲染成类似
 Linux `tree` 的文本。文件上传和下载采用分块流并用 SHA-256 校验完整性。实际 message 与流帧定义见
-[`remote_code.proto`](api/remote/code/v1/remote_code.proto)。后续的 `Attach` 将使用双向流承载
-stdin、stdout/stderr、终端 resize、心跳和 detach。
+[`remote_code.proto`](api/remote/code/v1/remote_code.proto)。交互式 attach 不增加专用 RPC：客户端组合
+`StreamProcessInput` 与 `ObserveProcessLogs(follow=true)`，输入流同时承载有序的终端 resize 和 detach。
 
 `StartProcess` 接受具体命令、参数、工作区内 cwd、PIPE/PTY 模式、输入模式和环境覆盖；它不经 shell
 解释。每个进程具有 UUID、逻辑名称和 OS PID；pipe 与 PTY 模式都使用独立进程组，
@@ -209,7 +212,9 @@ USR1、USR2、STOP 或 CONT。`DeleteProcess` 只删除终态进程的完整历�
 后，controller 会在进程进入 RUNNING 后继续保留输入端点，客户端可随时通过
 `StreamProcessInput` attach、写入、detach 和再次连接。同一进程同时只允许一个输入 writer；
 detach 或网络断开不会关闭 stdin。PIPE 支持显式关闭输入，PTY 没有独立的 write-side close，
-应发送终端控制字节或使用进程信号。
+应发送终端控制字节或使用进程信号。CLI 的 `attach PROCESS` 以 raw 模式交互并监听窗口变化；
+`Ctrl-] d` detach，`Ctrl-] Ctrl-]` 向远端发送字面量 Ctrl-]。`exec --attach CMD ...`
+会隐含 PTY 和 MANAGED 输入并在启动后立即连接。
 
 ## 多 Agent 协作
 
@@ -280,7 +285,7 @@ SQLite 或 bbolt 持久化 agent 元数据和事件游标；仍在运行的子�
 - 已实现受控命令的 pipe/PTY 启动、列表、进程组信号、退出码和回收；
 - 已实现 CLI context、超时、结构化错误和 TLS/token 认证；
 - 已实现按 offset/tail 回放、stdout/stderr 过滤、退出前持续 follow、分段保留与 CLI `logs`；
-- 已实现可在进程运行后反复 attach/detach 的 PIPE/PTY 标准输入流；完整 PTY 双向 attach 和窗口 resize 待后续实现。
+- 已实现可在进程运行后反复 attach/detach 的 PIPE/PTY 输入流、PTY 双向交互、初始窗口尺寸和运行时 resize。
 
 ### Milestone 3：Agent 可靠性
 

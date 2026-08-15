@@ -167,6 +167,10 @@ START -> METADATA -> CHUNK* -> CLIENT_EOF -> VERIFY -> PUBLISH -> RESPONSE
 
 每条命令创建独立 context。RPC 错误按 gRPC status 展示为 `error: <message> (<Code>)`，随后回到提示符。`ls` 使用 `tabwriter`；时间以本地时区 RFC3339 显示；权限采用 `os.FileMode` 风格。
 
+`attach` 是客户端对 `StreamProcessInput` 和 `ObserveProcessLogs` 的组合，不增加新的 gRPC 方法。
+交互期间 CLI 退出 readline 行模式并进入 raw mode，监听 `SIGWINCH`，通过有限 ACK 窗口流水线化
+输入；detach 或任何错误后恢复终端，再回到 REPL。
+
 虚拟 cwd 使用 `/` 开头仅供展示，wire path 始终是相对路径。`cd ..` 可以回到父目录但不能高于 `/`。远端路径不做本地 glob 展开。
 
 `cat` 将下载流写到终端限制 writer；超过 `--cat-max-bytes` 取消命令并提示使用 `download`。`download` 在本地目标同目录创建临时文件，校验完成后 chmod、sync、rename。
@@ -228,6 +232,6 @@ configuration。
 - 通用 `mv` 的“检查后 rename”无法提供跨所有对象类型的强原子 no-replace；Linux 后续可用 `renameat2(RENAME_NOREPLACE)` 增强。
 - 首版传输单文件且不续传；后续可加入 upload session、offset 与分块摘要。
 - 首版 CLI 同步执行一条命令；并发任务、进度条和机器可读模式留待后续版本。
-- 已实现独立的 PTY/pipe managed stdin 流；合并输出的完整 attach、窗口 resize 和 Agent 语义保持为后续 milestone；当前进程 API 已负责启动、
+- 已实现独立的 PTY/pipe managed stdin 流、基于日志 follow 的 PTY attach 和窗口 resize；Agent 语义保持为后续 milestone；当前进程 API 已负责启动、
   持久化元数据/输出、按 offset 或 tail 回放并跟随日志、列表、信号和回收。日志 checkpoint
   支持客户端断线后以逻辑 offset 续传。

@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +17,7 @@ import (
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
 	"github.com/qq1426155093/remote-code/internal/server"
 	client "github.com/qq1426155093/remote-code/pkg/client"
+	"golang.org/x/term"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -461,6 +463,157 @@ func TestClientWritesPTYInputAndRejectsIndependentCloseOverGRPC(t *testing.T) {
 	}
 }
 
+func TestClientAttachesToPTYResizesAndReattachesOverGRPC(t *testing.T) {
+	t.Setenv("REMOTE_CODE_CLIENT_PROCESS_HELPER", "1")
+	address := startControllerWithProcesses(t, t.TempDir(), 1)
+	remote := connectClient(t, address, "")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	started, err := remote.StartProcessWithOptions(ctx, client.ProcessStartOptions{
+		Name: "grpc-attach", Command: os.Args[0], WorkingDirectory: ".",
+		Arguments:    []string{"-test.run=^TestClientProcessHelper$", "--", "terminal-size"},
+		IOMode:       codev1.ProcessIOMode_PROCESS_IO_MODE_PTY,
+		InputMode:    codev1.ProcessInputMode_PROCESS_INPUT_MODE_MANAGED,
+		TerminalSize: &codev1.TerminalSize{Rows: 31, Columns: 101},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reference := &codev1.ProcessReference{Value: &codev1.ProcessReference_Name{Name: started.GetName()}}
+	session, err := remote.OpenProcessInput(ctx, reference)
+	if err != nil {
+		t.Fatalf("OpenProcessInput(resize) error = %v", err)
+	}
+	if err := session.Resize(35, 110); err != nil {
+		t.Fatalf("ProcessInputSession.Resize() error = %v", err)
+	}
+	if _, err := session.Detach(); err != nil {
+		t.Fatalf("ProcessInputSession.Detach() error = %v", err)
+	}
+	first, err := remote.OpenProcessAttachment(ctx, reference, client.ProcessAttachOptions{Rows: 42, Columns: 120})
+	if err != nil {
+		t.Fatalf("OpenProcessAttachment(first) error = %v", err)
+	}
+	if _, err := first.Write([]byte("size\n")); err != nil {
+		t.Fatalf("attachment Write(size) error = %v", err)
+	}
+	if output := readAttachmentUntil(t, ctx, first, "size:42x120"); !strings.Contains(output, "size:42x120") {
+		t.Fatalf("first attachment output = %q", output)
+	}
+	if err := first.Detach(); err != nil {
+		t.Fatalf("first Detach() error = %v", err)
+	}
+	active, err := remote.ListProcesses(ctx)
+	if err != nil || len(active) != 1 || active[0].GetInputState() != codev1.ProcessInputState_PROCESS_INPUT_STATE_OPEN {
+		t.Fatalf("process after detach = %+v, %v", active, err)
+	}
+
+	second, err := remote.OpenProcessAttachment(ctx, &codev1.ProcessReference{Value: &codev1.ProcessReference_Pid{Pid: started.GetPid()}}, client.ProcessAttachOptions{Rows: 50, Columns: 130})
+	if err != nil {
+		t.Fatalf("OpenProcessAttachment(second) error = %v", err)
+	}
+	if _, err := second.Write([]byte("size\nexit\n")); err != nil {
+		t.Fatalf("second attachment Write() error = %v", err)
+	}
+	if output := readAttachmentUntil(t, ctx, second, "size:50x130"); !strings.Contains(output, "size:50x130") {
+		t.Fatalf("second attachment output = %q", output)
+	}
+	if err := second.Wait(); err != nil {
+		t.Fatalf("second Wait() error = %v", err)
+	}
+
+	stream, err := remote.ObserveProcessLogs(ctx, started.GetId(), client.ProcessLogOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var allOutput []byte
+	for {
+		response, recvErr := stream.Recv()
+		if errors.Is(recvErr, io.EOF) {
+			break
+		}
+		if recvErr != nil {
+			t.Fatal(recvErr)
+		}
+		if chunk := response.GetChunk(); chunk != nil {
+			allOutput = append(allOutput, chunk.GetData()...)
+		}
+	}
+	if !bytes.Contains(allOutput, []byte("size:42x120")) || !bytes.Contains(allOutput, []byte("size:50x130")) {
+		t.Fatalf("complete PTY output = %q, want both applied resize values", allOutput)
+	}
+}
+
+func TestClientStartsPTYWithInitialSizeOverGRPC(t *testing.T) {
+	t.Setenv("REMOTE_CODE_CLIENT_PROCESS_HELPER", "1")
+	address := startControllerWithProcesses(t, t.TempDir(), 1)
+	remote := connectClient(t, address, "")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	started, err := remote.StartProcessWithOptions(ctx, client.ProcessStartOptions{
+		Name: "grpc-initial-size", Command: os.Args[0], WorkingDirectory: ".",
+		Arguments:    []string{"-test.run=^TestClientProcessHelper$", "--", "terminal-size-once"},
+		IOMode:       codev1.ProcessIOMode_PROCESS_IO_MODE_PTY,
+		TerminalSize: &codev1.TerminalSize{Rows: 31, Columns: 101},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for {
+		processes, listErr := remote.ListProcesses(ctx, true)
+		if listErr != nil {
+			t.Fatal(listErr)
+		}
+		if len(processes) == 1 && processes[0].GetState() == codev1.ProcessState_PROCESS_STATE_EXITED {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	stream, err := remote.ObserveProcessLogs(ctx, started.GetId(), client.ProcessLogOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output []byte
+	for {
+		response, recvErr := stream.Recv()
+		if errors.Is(recvErr, io.EOF) {
+			break
+		}
+		if recvErr != nil {
+			t.Fatal(recvErr)
+		}
+		if chunk := response.GetChunk(); chunk != nil {
+			output = append(output, chunk.GetData()...)
+		}
+	}
+	if !bytes.Contains(output, []byte("start:31x101")) {
+		t.Fatalf("PTY output = %q, want initial terminal size", output)
+	}
+}
+
+func readAttachmentUntil(t *testing.T, ctx context.Context, attachment *client.ProcessAttachment, marker string) string {
+	t.Helper()
+	var output []byte
+	for {
+		select {
+		case data, ok := <-attachment.Output():
+			if !ok {
+				return string(output)
+			}
+			output = append(output, data...)
+			if bytes.Contains(output, []byte(marker)) {
+				return string(output)
+			}
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
+	}
+}
+
 func TestClientProcessHelper(t *testing.T) {
 	if os.Getenv("REMOTE_CODE_CLIENT_PROCESS_HELPER") != "1" {
 		return
@@ -483,6 +636,34 @@ func TestClientProcessHelper(t *testing.T) {
 	case "stdin-line":
 		line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 		_, _ = os.Stdout.WriteString("received:" + line)
+		os.Exit(0)
+	case "terminal-size":
+		reportSize := func(label string) {
+			columns, rows, err := term.GetSize(int(os.Stdin.Fd()))
+			if err != nil {
+				_, _ = os.Stdout.WriteString("size-error\n")
+				return
+			}
+			_, _ = os.Stdout.WriteString(label + ":" + strconv.Itoa(rows) + "x" + strconv.Itoa(columns) + "\n")
+		}
+		reportSize("start")
+		scanner := bufio.NewScanner(os.Stdin)
+		for scanner.Scan() {
+			switch scanner.Text() {
+			case "size":
+				reportSize("size")
+			case "exit":
+				os.Exit(0)
+			}
+		}
+		os.Exit(0)
+	case "terminal-size-once":
+		columns, rows, err := term.GetSize(int(os.Stdin.Fd()))
+		if err != nil {
+			_, _ = os.Stdout.WriteString("size-error\n")
+			os.Exit(1)
+		}
+		_, _ = os.Stdout.WriteString("start:" + strconv.Itoa(rows) + "x" + strconv.Itoa(columns) + "\n")
 		os.Exit(0)
 	}
 	for {

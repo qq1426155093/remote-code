@@ -278,6 +278,8 @@ message StartProcessRequest {
   // MANAGED keeps stdin available for StreamProcessInput after startup.
   // Unspecified defaults to DISABLED for backward compatibility.
   ProcessInputMode input_mode = 7;
+  // Optional initial PTY size. It is invalid for PIPE processes.
+  TerminalSize terminal_size = 8;
 }
 
 message StartProcessResponse {
@@ -373,9 +375,20 @@ message ProcessInputOpen {
 }
 
 message ProcessInputData {
-  // Starts at one and increases by one for every data frame in this stream.
+  // Starts at one and increases by one for every data or resize operation.
   uint64 sequence = 1;
   bytes data = 2;
+}
+
+message TerminalSize {
+  uint32 rows = 1;
+  uint32 columns = 2;
+}
+
+message ProcessTerminalResize {
+  // Shares the ordered sequence space with ProcessInputData.
+  uint64 sequence = 1;
+  TerminalSize size = 2;
 }
 
 message ProcessInputClose {}
@@ -391,6 +404,8 @@ message StreamProcessInputRequest {
     ProcessInputClose close_input = 3;
     // Releases this stream without closing the remote input endpoint.
     ProcessInputDetach detach = 4;
+    // Changes the size of an attached PTY.
+    ProcessTerminalResize resize = 5;
   }
 }
 
@@ -403,6 +418,11 @@ message ProcessInputAck {
   uint32 bytes_written = 2;
 }
 
+message ProcessTerminalResizeAck {
+  uint64 sequence = 1;
+  TerminalSize size = 2;
+}
+
 message ProcessInputEnd {
   ProcessInputEndReason reason = 1;
   ProcessInfo process = 2;
@@ -413,6 +433,7 @@ message StreamProcessInputResponse {
     ProcessInputOpened opened = 1;
     ProcessInputAck ack = 2;
     ProcessInputEnd end = 3;
+    ProcessTerminalResizeAck resize_ack = 4;
   }
 }
 

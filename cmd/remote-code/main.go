@@ -74,7 +74,7 @@ func run() error {
 	}
 	defer line.Close()
 	repl := cli.New(client, line, cli.Config{
-		Timeout: commandTimeout, CatMaxBytes: catMaxBytes, Stdout: os.Stdout, Stderr: os.Stderr,
+		Timeout: commandTimeout, CatMaxBytes: catMaxBytes, Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr,
 	})
 	return repl.Run()
 }

@@ -27,6 +27,7 @@ type processStartOptions struct {
 	ioMode           codev1.ProcessIOMode
 	inputMode        codev1.ProcessInputMode
 	environment      map[string]string
+	attach           bool
 }
 
 type processSignalOptions struct {
@@ -52,18 +53,32 @@ func (r *REPL) startProcess(arguments []string) error {
 	if err != nil {
 		return err
 	}
+	var terminalSize *codev1.TerminalSize
+	if options.attach {
+		if r.terminal == nil || !r.terminal.available() {
+			return errors.New("exec --attach requires a supported interactive local terminal")
+		}
+		rows, columns, sizeErr := r.terminal.size()
+		if sizeErr != nil {
+			return fmt.Errorf("get local terminal size: %w", sizeErr)
+		}
+		terminalSize = &codev1.TerminalSize{Rows: rows, Columns: columns}
+	}
 	ctx, cancel := r.commandContext()
-	defer cancel()
 	info, err := r.client.StartProcessWithOptions(ctx, remoteclient.ProcessStartOptions{
 		Name: options.name, Command: options.command, Arguments: options.arguments,
 		WorkingDirectory: workingDirectory, IOMode: options.ioMode,
-		InputMode: options.inputMode, Environment: options.environment,
+		InputMode: options.inputMode, TerminalSize: terminalSize, Environment: options.environment,
 	})
+	cancel()
 	if err != nil {
 		return err
 	}
 	fmt.Fprintf(r.stdout, "started %s (%s), pid %d, %s mode, input %s, cwd %s\n",
 		info.GetName(), info.GetId(), info.GetPid(), processIOModeName(info.GetIoMode()), processInputStateName(info.GetInputState()), info.GetWorkingDirectory())
+	if options.attach {
+		return r.attach(&codev1.ProcessReference{Value: &codev1.ProcessReference_Id{Id: info.GetId()}})
+	}
 	return nil
 }
 
@@ -295,6 +310,7 @@ func parseProcessStartOptions(arguments []string) (processStartOptions, error) {
 	}
 	modeSet := false
 	inputSet := false
+	attachSet := false
 	nameSet := false
 	cwdSet := false
 	for index := 0; index < len(arguments); {
@@ -348,6 +364,13 @@ func parseProcessStartOptions(arguments []string) (processStartOptions, error) {
 			options.inputMode = codev1.ProcessInputMode_PROCESS_INPUT_MODE_MANAGED
 			inputSet = true
 			index++
+		case "--attach":
+			if attachSet {
+				return processStartOptions{}, errors.New("--attach is specified more than once")
+			}
+			options.attach = true
+			attachSet = true
+			index++
 		case "--":
 			index++
 			if index >= len(arguments) {
@@ -367,6 +390,13 @@ func parseProcessStartOptions(arguments []string) (processStartOptions, error) {
 	}
 	if options.command == "" {
 		return processStartOptions{}, errors.New(commandUsage["exec"])
+	}
+	if options.attach {
+		if modeSet && options.ioMode == codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE {
+			return processStartOptions{}, errors.New("--attach cannot be combined with --pipe")
+		}
+		options.ioMode = codev1.ProcessIOMode_PROCESS_IO_MODE_PTY
+		options.inputMode = codev1.ProcessInputMode_PROCESS_INPUT_MODE_MANAGED
 	}
 	return options, nil
 }

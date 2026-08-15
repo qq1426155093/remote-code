@@ -25,6 +25,14 @@ func TestParseProcessStartOptions(t *testing.T) {
 		t.Errorf("parseProcessStartOptions(-- separator) = %+v", options)
 	}
 
+	options, err = parseProcessStartOptions([]string{"--attach", "--name", "editor", "vim", "test.txt"})
+	if err != nil {
+		t.Fatalf("parseProcessStartOptions(--attach) error = %v", err)
+	}
+	if !options.attach || options.ioMode != codev1.ProcessIOMode_PROCESS_IO_MODE_PTY || options.inputMode != codev1.ProcessInputMode_PROCESS_INPUT_MODE_MANAGED {
+		t.Fatalf("parseProcessStartOptions(--attach) = %+v", options)
+	}
+
 	for _, arguments := range [][]string{
 		{},
 		{"--name", "worker"},
@@ -34,10 +42,29 @@ func TestParseProcessStartOptions(t *testing.T) {
 		{"--name", "", "helper"},
 		{"--name", "one", "--name", "two", "helper"},
 		{"--stdin", "--stdin", "helper"},
+		{"--attach", "--attach", "helper"},
+		{"--pipe", "--attach", "helper"},
 	} {
 		if _, err := parseProcessStartOptions(arguments); err == nil {
 			t.Errorf("parseProcessStartOptions(%q) succeeded", arguments)
 		}
+	}
+}
+
+func TestFilterAttachInputRecognizesDetachAndLiteralEscape(t *testing.T) {
+	prefix := false
+	first, detach := filterAttachInput([]byte{'a', attachEscapeByte}, &prefix)
+	if string(first) != "a" || detach || !prefix {
+		t.Fatalf("first filter = %q, %v, %v", first, detach, prefix)
+	}
+	second, detach := filterAttachInput([]byte{attachEscapeByte, 'b', attachEscapeByte, 'x'}, &prefix)
+	want := []byte{attachEscapeByte, 'b', attachEscapeByte, 'x'}
+	if !reflect.DeepEqual(second, want) || detach || prefix {
+		t.Fatalf("literal filter = %q, %v, %v; want %q", second, detach, prefix, want)
+	}
+	third, detach := filterAttachInput([]byte{'c', attachEscapeByte, 'd', 'z'}, &prefix)
+	if string(third) != "c" || !detach || prefix {
+		t.Fatalf("detach filter = %q, %v, %v", third, detach, prefix)
 	}
 }
 

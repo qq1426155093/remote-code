@@ -25,13 +25,18 @@ type runningCommand struct {
 	copyDone chan struct{}
 }
 
-func startCommand(directory *os.File, executable string, arguments, environment []string, ioMode codev1.ProcessIOMode, inputMode codev1.ProcessInputMode, output *recordOutput) (*runningCommand, error) {
+func startCommand(directory *os.File, executable string, arguments, environment []string, ioMode codev1.ProcessIOMode, inputMode codev1.ProcessInputMode, terminalSize *codev1.TerminalSize, output *recordOutput) (*runningCommand, error) {
 	command := exec.Command(executable, arguments...)
 	command.Dir = "/proc/self/fd/" + strconv.FormatUint(uint64(directory.Fd()), 10)
 	command.Env = append([]string(nil), environment...)
 	switch ioMode {
 	case codev1.ProcessIOMode_PROCESS_IO_MODE_PTY:
-		terminal, err := pty.StartWithSize(command, &pty.Winsize{Rows: 24, Cols: 80})
+		window := &pty.Winsize{Rows: 24, Cols: 80}
+		if terminalSize != nil {
+			window.Rows = uint16(terminalSize.GetRows())
+			window.Cols = uint16(terminalSize.GetColumns())
+		}
+		terminal, err := pty.StartWithSize(command, window)
 		if err != nil {
 			return nil, err
 		}
@@ -69,6 +74,13 @@ func startCommand(directory *os.File, executable string, arguments, environment 
 	default:
 		return nil, fmt.Errorf("%w: I/O mode %s", errUnsupportedPlatform, ioMode)
 	}
+}
+
+func (c *runningCommand) resize(rows, columns uint32) error {
+	if c == nil || c.terminal == nil {
+		return errProcessNotPTY
+	}
+	return pty.Setsize(c.terminal, &pty.Winsize{Rows: uint16(rows), Cols: uint16(columns)})
 }
 
 func (c *runningCommand) wait() error {

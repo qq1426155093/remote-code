@@ -96,6 +96,42 @@ func (s *ProcessInputSession) Write(p []byte) (int, error) {
 	return written, nil
 }
 
+// Resize changes the dimensions of an attached PTY and waits for the server to
+// confirm that the resize was applied. It shares ordering with Write calls.
+func (s *ProcessInputSession) Resize(rows, columns uint32) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.finished {
+		return io.ErrClosedPipe
+	}
+	sequence := s.next
+	if err := s.stream.Send(&codev1.StreamProcessInputRequest{Payload: &codev1.StreamProcessInputRequest_Resize{
+		Resize: &codev1.ProcessTerminalResize{
+			Sequence: sequence,
+			Size:     &codev1.TerminalSize{Rows: rows, Columns: columns},
+		},
+	}}); err != nil {
+		s.finished = true
+		return err
+	}
+	response, err := s.stream.Recv()
+	if err != nil {
+		s.finished = true
+		return err
+	}
+	if endFrame := response.GetEnd(); endFrame != nil {
+		s.finishLocked(endFrame.GetProcess())
+		return processInputEndedError(endFrame.GetReason())
+	}
+	ack := response.GetResizeAck()
+	if ack == nil || ack.GetSequence() != sequence || ack.GetSize().GetRows() != rows || ack.GetSize().GetColumns() != columns {
+		s.finished = true
+		return status.Error(codes.DataLoss, "invalid process terminal resize acknowledgement")
+	}
+	s.next++
+	return nil
+}
+
 // CloseInput permanently closes PIPE stdin after all acknowledged writes. PTY
 // sessions reject this operation because a PTY has no independent write side.
 func (s *ProcessInputSession) CloseInput() (*codev1.ProcessInfo, error) {

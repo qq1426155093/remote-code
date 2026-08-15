@@ -143,7 +143,7 @@ CLI 只有在 `GetInfo` 调用成功后才进入提示符，因此“连接成�
 
 ## 8. 首版不包含
 
-- 合并 PTY/pipe 输入输出的完整 attach、窗口 resize，以及跨 controller 重启接管。
+- 跨 controller 重启接管仍存活的进程；当前 PTY attach 和窗口 resize 仅针对本次 controller 运行期间的受管进程。
 - 多租户、细粒度权限、配额持久化和审计数据库。
 - 断点续传、增量同步、目录整体上传下载和文件监控。
 - Windows controller 支持承诺；首版验证目标为 Linux。

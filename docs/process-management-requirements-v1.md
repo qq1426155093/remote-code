@@ -17,13 +17,13 @@ controller 提供与 Claude Code 无关的通用进程管理能力。任何通�
 - 列出当前活动进程，或列出活动及历史进程；
 - 永久删除已退出、启动失败或 controller-lost 的进程历史；
 - 按 UUID、名称或 PID 向整个进程组发送受支持的 POSIX 信号；
+- 组合输入和日志流，对运行中的 PTY 进行 raw terminal attach、resize、detach 和重新连接；
 - controller 始终 `Wait` 直接子进程，避免僵尸进程；
-- `remote-code` REPL 提供 `exec`、`ps`、`ps -a`、`kill`、`stdin` 和 `forget` 命令，并让
+- `remote-code` REPL 提供 `exec`、`ps`、`ps -a`、`kill`、`stdin`、`attach` 和 `forget` 命令，并让
   `cd` 改变的远端当前目录成为后续 `exec` 的默认工作目录。
 
-本版本不包含合并 stdin/stdout/stderr 的完整终端 attach、终端尺寸变更、CPU/内存限额和
-跨 controller 重启重新接管仍存活的操作系统进程。落盘日志格式为后续日志回放接口提供
-稳定基础。
+本版本不包含 CPU/内存限额和跨 controller 重启重新接管仍存活的操作系统进程。落盘日志格式
+同时为日志回放和 PTY attach 输出提供稳定基础。
 
 ## 2. gRPC 契约
 
@@ -46,6 +46,7 @@ controller 提供与 Claude Code 无关的通用进程管理能力。任何通�
   value，避免将 token 等秘密写入磁盘。
 - `input_mode`：`DISABLED` 或 `MANAGED`；未指定时默认 `DISABLED`。`MANAGED` 在进程进入
   RUNNING 后继续保留输入端点，允许客户端稍后连接；`DISABLED` 保持 PIPE 立即 EOF 的兼容行为。
+- `terminal_size`：可选的 PTY 初始行列数，范围为 1..65535；对 PIPE 请求提供该字段会被拒绝。
 
 成功响应至少包含 UUID、逻辑名称、PID、I/O 模式、状态、命令、参数、工作目录、
 环境变量 key 和创建/启动时间。RPC 返回成功时状态必须为 `RUNNING`。
@@ -79,13 +80,16 @@ failed-precondition；日志仍被观察时也拒绝删除，调用方可在观�
 ### 2.5 写入标准输入
 
 `StreamProcessInput` 是独立于输出日志的双向流。第一帧必须是携带 `ProcessReference` 的
-open；后续 data 帧携带从 1 开始严格递增的 sequence 和最多 64 KiB 原始字节。服务端只有在
-完整写入一帧后才返回对应 ack。一个进程同时只允许一个输入 attachment。
+open；后续 data 与 PTY resize 操作共用从 1 开始严格递增的 sequence，data 最多携带 64 KiB
+原始字节。服务端完整写入或应用窗口尺寸后才返回对应 ack。一个进程同时只允许一个输入 attachment。
 
 客户端 detach、正常结束发送方向或网络断开只释放 attachment，不关闭远程输入；之后可以重新
 连接。PIPE 的显式 close_input 在全部先前数据之后关闭 writer 并产生真实 EOF，且不可重新打开。
 PTY 没有独立的 write-side close，close_input 返回 failed-precondition；客户端可以根据目标终端
 模式发送 Ctrl-D 字节，或通过 `SignalProcess` 结束进程。输入内容不持久化、不写 controller 日志。
+
+交互式客户端不增加 `AttachProcess` RPC，而是将本输入流与
+`ObserveProcessLogs(tail_lines=0, follow=true)` 组合；detach 仅终止这两条客户端流，不终止进程。
 
 ## 3. 生命周期
 
@@ -139,7 +143,7 @@ controller 日志。
 
 ## 5. CLI 行为
 
-- `exec [--name NAME] [--pipe|--pty] [--stdin] [--cwd REMOTE_DIR] [-e KEY=VALUE ...] [--] CMD [ARG ...]`
+- `exec [--name NAME] [--pipe|--pty] [--stdin|--attach] [--cwd REMOTE_DIR] [-e KEY=VALUE ...] [--] CMD [ARG ...]`
   启动命令；未给 `--cwd` 时使用 REPL 当前远端目录，未给 `--name` 时由 server 生成。
 - `cd test` 后执行 `exec ls -a`，请求中的工作目录必须是 `test`。
 - `ps` 只显示活动进程。
@@ -149,6 +153,8 @@ controller 日志。
 - `logs [-f] [-n LINES|--offset OFFSET] [--stdout|--stderr] PROCESS_ID` 回放或持续跟随输出。
 - `stdin PROCESS` 进入行输入子模式；`.detach` 保留远端输入，`.eof` 关闭 PIPE 输入，`.eot`
   发送 Ctrl-D 字节。
+- `attach PROCESS` 以本地 raw terminal 连接运行中的 PTY；窗口变化自动发送 resize，`Ctrl-] d`
+  detach，`Ctrl-] Ctrl-]` 发送字面量 Ctrl-]。
 
 命令解析不调用本地 shell。需要 shell 语法时必须显式执行，例如
 `exec sh -lc 'printf "%s\\n" "$HOME"'`。

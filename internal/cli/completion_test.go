@@ -86,6 +86,18 @@ func TestCompleterResolvesRemotePathsFromCurrentDirectory(t *testing.T) {
 	}
 }
 
+func TestCompleterSuggestsAttachablePTYProcesses(t *testing.T) {
+	client := &fakeCompletionClient{files: map[string][]*codev1.FileInfo{}, processes: []*codev1.ProcessInfo{
+		{Name: "editor", State: codev1.ProcessState_PROCESS_STATE_RUNNING, IoMode: codev1.ProcessIOMode_PROCESS_IO_MODE_PTY, InputMode: codev1.ProcessInputMode_PROCESS_INPUT_MODE_MANAGED, InputState: codev1.ProcessInputState_PROCESS_INPUT_STATE_OPEN},
+		{Name: "pipe", State: codev1.ProcessState_PROCESS_STATE_RUNNING, IoMode: codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE, InputMode: codev1.ProcessInputMode_PROCESS_INPUT_MODE_MANAGED, InputState: codev1.ProcessInputState_PROCESS_INPUT_STATE_OPEN},
+	}}
+	completer := newCompleter(client, func() string { return "." }, time.Second)
+	got, offset := completer.Do([]rune("attach ed"), len([]rune("attach ed")))
+	if len(got) != 1 || string(got[0]) != "itor " || offset != 2 {
+		t.Fatalf("attach completion = %q, %d", got, offset)
+	}
+}
+
 func TestCompleteLocalPath(t *testing.T) {
 	directory := t.TempDir()
 	if err := os.WriteFile(filepath.Join(directory, "local file.txt"), []byte("data"), 0o600); err != nil {

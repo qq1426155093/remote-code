@@ -126,6 +126,10 @@ public client 的 `StartProcess` 接收一个选项结构，避免继续增长�
 `ObserveProcessLogs` 的 client 选项以互斥指针表达 offset/tail，返回原始 gRPC server stream。
 REPL `logs` 支持 `-f`、`-n`、`--offset`、`--stdout` 和 `--stderr`，并保持二进制 chunk 原样输出。
 
+`ProcessAttachment` 组合输入双向流和日志 follow 流，并使用有限 ACK 窗口流水线化按键输入。
+REPL `attach PROCESS` 将本地终端切换为 raw mode，原样转发 PTY 字节并通过 `SIGWINCH` 同步窗口；
+`exec --attach` 隐含 PTY、MANAGED 输入和本地初始窗口尺寸。detach 转义为 `Ctrl-] d`。
+
 `exec` 未设置 cwd 时使用 REPL 保存的工作区相对 cwd；显式 `--cwd` 也通过与文件命令
 相同的远端路径解析器相对于当前 cwd 解析。`ps` 仅接受可选 `-a`/`--all`，`forget`
 接受一个 UUID、名称或带前缀的 PID 引用。

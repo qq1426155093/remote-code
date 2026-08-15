@@ -325,6 +325,9 @@ func TestServiceValidatesStartsAndActiveLimit(t *testing.T) {
 		helperStartRequest("parent-cwd", "../outside", codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE, "exit", "0"),
 		{Name: "bad-env", Command: os.Args[0], Environment: map[string]string{"BAD=KEY": "value"}},
 		{Name: "bad-input-mode", Command: os.Args[0], InputMode: codev1.ProcessInputMode(99)},
+		{Name: "pipe-size", Command: os.Args[0], IoMode: codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE, TerminalSize: &codev1.TerminalSize{Rows: 24, Columns: 80}},
+		{Name: "zero-size", Command: os.Args[0], IoMode: codev1.ProcessIOMode_PROCESS_IO_MODE_PTY, TerminalSize: &codev1.TerminalSize{Rows: 0, Columns: 80}},
+		{Name: "large-size", Command: os.Args[0], IoMode: codev1.ProcessIOMode_PROCESS_IO_MODE_PTY, TerminalSize: &codev1.TerminalSize{Rows: 24, Columns: 70000}},
 	}
 	for _, request := range invalid {
 		if _, err := service.StartProcess(ctx, request); status.Code(err) != codes.InvalidArgument && status.Code(err) != codes.FailedPrecondition {

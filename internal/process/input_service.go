@@ -13,6 +13,8 @@ import (
 
 const maxProcessInputChunkBytes = 64 << 10
 
+var errProcessNotPTY = errors.New("process does not have a PTY")
+
 type processInputReceive struct {
 	request *codev1.StreamProcessInputRequest
 	err     error
@@ -99,6 +101,47 @@ func (s *Service) StreamProcessInput(stream codev1.ProcessService_StreamProcessI
 				}
 				if err := stream.Send(&codev1.StreamProcessInputResponse{Payload: &codev1.StreamProcessInputResponse_Ack{
 					Ack: &codev1.ProcessInputAck{Sequence: data.GetSequence(), BytesWritten: uint32(written)},
+				}}); err != nil {
+					return err
+				}
+				expectedSequence++
+			case *codev1.StreamProcessInputRequest_Resize:
+				resize := payload.Resize
+				if resize.GetSequence() != expectedSequence {
+					return status.Errorf(codes.InvalidArgument, "process input sequence must be %d", expectedSequence)
+				}
+				if err := validateTerminalSize(resize.GetSize()); err != nil {
+					return err
+				}
+				if s.snapshot(record).GetIoMode() != codev1.ProcessIOMode_PROCESS_IO_MODE_PTY {
+					return status.Error(codes.FailedPrecondition, "process does not use a PTY")
+				}
+				if err := record.command.resize(resize.GetSize().GetRows(), resize.GetSize().GetColumns()); err != nil {
+					if input.isClosed() {
+						select {
+						case <-record.done:
+							release()
+							return sendProcessInputEnd(stream, codev1.ProcessInputEndReason_PROCESS_INPUT_END_REASON_PROCESS_EXITED, s.snapshot(record))
+						case <-stream.Context().Done():
+							return status.FromContextError(stream.Context().Err()).Err()
+						}
+					}
+					select {
+					case <-record.done:
+						release()
+						return sendProcessInputEnd(stream, codev1.ProcessInputEndReason_PROCESS_INPUT_END_REASON_PROCESS_EXITED, s.snapshot(record))
+					default:
+					}
+					if errors.Is(err, errProcessNotPTY) {
+						return status.Error(codes.FailedPrecondition, err.Error())
+					}
+					return status.Error(codes.Internal, "resize process terminal failed")
+				}
+				if err := stream.Send(&codev1.StreamProcessInputResponse{Payload: &codev1.StreamProcessInputResponse_ResizeAck{
+					ResizeAck: &codev1.ProcessTerminalResizeAck{
+						Sequence: resize.GetSequence(),
+						Size:     &codev1.TerminalSize{Rows: resize.GetSize().GetRows(), Columns: resize.GetSize().GetColumns()},
+					},
 				}}); err != nil {
 					return err
 				}

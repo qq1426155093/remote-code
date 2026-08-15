@@ -2167,7 +2167,9 @@ type StartProcessRequest struct {
 	Environment map[string]string `protobuf:"bytes,6,rep,name=environment,proto3" json:"environment,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// MANAGED keeps stdin available for StreamProcessInput after startup.
 	// Unspecified defaults to DISABLED for backward compatibility.
-	InputMode     ProcessInputMode `protobuf:"varint,7,opt,name=input_mode,json=inputMode,proto3,enum=remote.code.v1.ProcessInputMode" json:"input_mode,omitempty"`
+	InputMode ProcessInputMode `protobuf:"varint,7,opt,name=input_mode,json=inputMode,proto3,enum=remote.code.v1.ProcessInputMode" json:"input_mode,omitempty"`
+	// Optional initial PTY size. It is invalid for PIPE processes.
+	TerminalSize  *TerminalSize `protobuf:"bytes,8,opt,name=terminal_size,json=terminalSize,proto3" json:"terminal_size,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2249,6 +2251,13 @@ func (x *StartProcessRequest) GetInputMode() ProcessInputMode {
 		return x.InputMode
 	}
 	return ProcessInputMode_PROCESS_INPUT_MODE_UNSPECIFIED
+}
+
+func (x *StartProcessRequest) GetTerminalSize() *TerminalSize {
+	if x != nil {
+		return x.TerminalSize
+	}
+	return nil
 }
 
 type StartProcessResponse struct {
@@ -3121,7 +3130,7 @@ func (x *ProcessInputOpen) GetProcess() *ProcessReference {
 
 type ProcessInputData struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Starts at one and increases by one for every data frame in this stream.
+	// Starts at one and increases by one for every data or resize operation.
 	Sequence      uint64 `protobuf:"varint,1,opt,name=sequence,proto3" json:"sequence,omitempty"`
 	Data          []byte `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -3172,6 +3181,111 @@ func (x *ProcessInputData) GetData() []byte {
 	return nil
 }
 
+type TerminalSize struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Rows          uint32                 `protobuf:"varint,1,opt,name=rows,proto3" json:"rows,omitempty"`
+	Columns       uint32                 `protobuf:"varint,2,opt,name=columns,proto3" json:"columns,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TerminalSize) Reset() {
+	*x = TerminalSize{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[41]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TerminalSize) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TerminalSize) ProtoMessage() {}
+
+func (x *TerminalSize) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[41]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TerminalSize.ProtoReflect.Descriptor instead.
+func (*TerminalSize) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{41}
+}
+
+func (x *TerminalSize) GetRows() uint32 {
+	if x != nil {
+		return x.Rows
+	}
+	return 0
+}
+
+func (x *TerminalSize) GetColumns() uint32 {
+	if x != nil {
+		return x.Columns
+	}
+	return 0
+}
+
+type ProcessTerminalResize struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Shares the ordered sequence space with ProcessInputData.
+	Sequence      uint64        `protobuf:"varint,1,opt,name=sequence,proto3" json:"sequence,omitempty"`
+	Size          *TerminalSize `protobuf:"bytes,2,opt,name=size,proto3" json:"size,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProcessTerminalResize) Reset() {
+	*x = ProcessTerminalResize{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[42]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProcessTerminalResize) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProcessTerminalResize) ProtoMessage() {}
+
+func (x *ProcessTerminalResize) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[42]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProcessTerminalResize.ProtoReflect.Descriptor instead.
+func (*ProcessTerminalResize) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{42}
+}
+
+func (x *ProcessTerminalResize) GetSequence() uint64 {
+	if x != nil {
+		return x.Sequence
+	}
+	return 0
+}
+
+func (x *ProcessTerminalResize) GetSize() *TerminalSize {
+	if x != nil {
+		return x.Size
+	}
+	return nil
+}
+
 type ProcessInputClose struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -3180,7 +3294,7 @@ type ProcessInputClose struct {
 
 func (x *ProcessInputClose) Reset() {
 	*x = ProcessInputClose{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[41]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3192,7 +3306,7 @@ func (x *ProcessInputClose) String() string {
 func (*ProcessInputClose) ProtoMessage() {}
 
 func (x *ProcessInputClose) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[41]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3205,7 +3319,7 @@ func (x *ProcessInputClose) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessInputClose.ProtoReflect.Descriptor instead.
 func (*ProcessInputClose) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{41}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{43}
 }
 
 type ProcessInputDetach struct {
@@ -3216,7 +3330,7 @@ type ProcessInputDetach struct {
 
 func (x *ProcessInputDetach) Reset() {
 	*x = ProcessInputDetach{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[42]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3228,7 +3342,7 @@ func (x *ProcessInputDetach) String() string {
 func (*ProcessInputDetach) ProtoMessage() {}
 
 func (x *ProcessInputDetach) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[42]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3241,7 +3355,7 @@ func (x *ProcessInputDetach) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessInputDetach.ProtoReflect.Descriptor instead.
 func (*ProcessInputDetach) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{42}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{44}
 }
 
 type StreamProcessInputRequest struct {
@@ -3252,6 +3366,7 @@ type StreamProcessInputRequest struct {
 	//	*StreamProcessInputRequest_Data
 	//	*StreamProcessInputRequest_CloseInput
 	//	*StreamProcessInputRequest_Detach
+	//	*StreamProcessInputRequest_Resize
 	Payload       isStreamProcessInputRequest_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -3259,7 +3374,7 @@ type StreamProcessInputRequest struct {
 
 func (x *StreamProcessInputRequest) Reset() {
 	*x = StreamProcessInputRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[43]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3271,7 +3386,7 @@ func (x *StreamProcessInputRequest) String() string {
 func (*StreamProcessInputRequest) ProtoMessage() {}
 
 func (x *StreamProcessInputRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[43]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3284,7 +3399,7 @@ func (x *StreamProcessInputRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamProcessInputRequest.ProtoReflect.Descriptor instead.
 func (*StreamProcessInputRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{43}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *StreamProcessInputRequest) GetPayload() isStreamProcessInputRequest_Payload {
@@ -3330,6 +3445,15 @@ func (x *StreamProcessInputRequest) GetDetach() *ProcessInputDetach {
 	return nil
 }
 
+func (x *StreamProcessInputRequest) GetResize() *ProcessTerminalResize {
+	if x != nil {
+		if x, ok := x.Payload.(*StreamProcessInputRequest_Resize); ok {
+			return x.Resize
+		}
+	}
+	return nil
+}
+
 type isStreamProcessInputRequest_Payload interface {
 	isStreamProcessInputRequest_Payload()
 }
@@ -3353,6 +3477,11 @@ type StreamProcessInputRequest_Detach struct {
 	Detach *ProcessInputDetach `protobuf:"bytes,4,opt,name=detach,proto3,oneof"`
 }
 
+type StreamProcessInputRequest_Resize struct {
+	// Changes the size of an attached PTY.
+	Resize *ProcessTerminalResize `protobuf:"bytes,5,opt,name=resize,proto3,oneof"`
+}
+
 func (*StreamProcessInputRequest_Open) isStreamProcessInputRequest_Payload() {}
 
 func (*StreamProcessInputRequest_Data) isStreamProcessInputRequest_Payload() {}
@@ -3360,6 +3489,8 @@ func (*StreamProcessInputRequest_Data) isStreamProcessInputRequest_Payload() {}
 func (*StreamProcessInputRequest_CloseInput) isStreamProcessInputRequest_Payload() {}
 
 func (*StreamProcessInputRequest_Detach) isStreamProcessInputRequest_Payload() {}
+
+func (*StreamProcessInputRequest_Resize) isStreamProcessInputRequest_Payload() {}
 
 type ProcessInputOpened struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -3370,7 +3501,7 @@ type ProcessInputOpened struct {
 
 func (x *ProcessInputOpened) Reset() {
 	*x = ProcessInputOpened{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[44]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3382,7 +3513,7 @@ func (x *ProcessInputOpened) String() string {
 func (*ProcessInputOpened) ProtoMessage() {}
 
 func (x *ProcessInputOpened) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[44]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3395,7 +3526,7 @@ func (x *ProcessInputOpened) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessInputOpened.ProtoReflect.Descriptor instead.
 func (*ProcessInputOpened) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{44}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *ProcessInputOpened) GetProcess() *ProcessInfo {
@@ -3415,7 +3546,7 @@ type ProcessInputAck struct {
 
 func (x *ProcessInputAck) Reset() {
 	*x = ProcessInputAck{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[45]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3427,7 +3558,7 @@ func (x *ProcessInputAck) String() string {
 func (*ProcessInputAck) ProtoMessage() {}
 
 func (x *ProcessInputAck) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[45]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3440,7 +3571,7 @@ func (x *ProcessInputAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessInputAck.ProtoReflect.Descriptor instead.
 func (*ProcessInputAck) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{45}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *ProcessInputAck) GetSequence() uint64 {
@@ -3457,6 +3588,58 @@ func (x *ProcessInputAck) GetBytesWritten() uint32 {
 	return 0
 }
 
+type ProcessTerminalResizeAck struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Sequence      uint64                 `protobuf:"varint,1,opt,name=sequence,proto3" json:"sequence,omitempty"`
+	Size          *TerminalSize          `protobuf:"bytes,2,opt,name=size,proto3" json:"size,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProcessTerminalResizeAck) Reset() {
+	*x = ProcessTerminalResizeAck{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[48]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProcessTerminalResizeAck) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProcessTerminalResizeAck) ProtoMessage() {}
+
+func (x *ProcessTerminalResizeAck) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[48]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProcessTerminalResizeAck.ProtoReflect.Descriptor instead.
+func (*ProcessTerminalResizeAck) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{48}
+}
+
+func (x *ProcessTerminalResizeAck) GetSequence() uint64 {
+	if x != nil {
+		return x.Sequence
+	}
+	return 0
+}
+
+func (x *ProcessTerminalResizeAck) GetSize() *TerminalSize {
+	if x != nil {
+		return x.Size
+	}
+	return nil
+}
+
 type ProcessInputEnd struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Reason        ProcessInputEndReason  `protobuf:"varint,1,opt,name=reason,proto3,enum=remote.code.v1.ProcessInputEndReason" json:"reason,omitempty"`
@@ -3467,7 +3650,7 @@ type ProcessInputEnd struct {
 
 func (x *ProcessInputEnd) Reset() {
 	*x = ProcessInputEnd{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[46]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3479,7 +3662,7 @@ func (x *ProcessInputEnd) String() string {
 func (*ProcessInputEnd) ProtoMessage() {}
 
 func (x *ProcessInputEnd) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[46]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3492,7 +3675,7 @@ func (x *ProcessInputEnd) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessInputEnd.ProtoReflect.Descriptor instead.
 func (*ProcessInputEnd) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{46}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *ProcessInputEnd) GetReason() ProcessInputEndReason {
@@ -3516,6 +3699,7 @@ type StreamProcessInputResponse struct {
 	//	*StreamProcessInputResponse_Opened
 	//	*StreamProcessInputResponse_Ack
 	//	*StreamProcessInputResponse_End
+	//	*StreamProcessInputResponse_ResizeAck
 	Payload       isStreamProcessInputResponse_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -3523,7 +3707,7 @@ type StreamProcessInputResponse struct {
 
 func (x *StreamProcessInputResponse) Reset() {
 	*x = StreamProcessInputResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[47]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3535,7 +3719,7 @@ func (x *StreamProcessInputResponse) String() string {
 func (*StreamProcessInputResponse) ProtoMessage() {}
 
 func (x *StreamProcessInputResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[47]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3548,7 +3732,7 @@ func (x *StreamProcessInputResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamProcessInputResponse.ProtoReflect.Descriptor instead.
 func (*StreamProcessInputResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{47}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *StreamProcessInputResponse) GetPayload() isStreamProcessInputResponse_Payload {
@@ -3585,6 +3769,15 @@ func (x *StreamProcessInputResponse) GetEnd() *ProcessInputEnd {
 	return nil
 }
 
+func (x *StreamProcessInputResponse) GetResizeAck() *ProcessTerminalResizeAck {
+	if x != nil {
+		if x, ok := x.Payload.(*StreamProcessInputResponse_ResizeAck); ok {
+			return x.ResizeAck
+		}
+	}
+	return nil
+}
+
 type isStreamProcessInputResponse_Payload interface {
 	isStreamProcessInputResponse_Payload()
 }
@@ -3601,11 +3794,17 @@ type StreamProcessInputResponse_End struct {
 	End *ProcessInputEnd `protobuf:"bytes,3,opt,name=end,proto3,oneof"`
 }
 
+type StreamProcessInputResponse_ResizeAck struct {
+	ResizeAck *ProcessTerminalResizeAck `protobuf:"bytes,4,opt,name=resize_ack,json=resizeAck,proto3,oneof"`
+}
+
 func (*StreamProcessInputResponse_Opened) isStreamProcessInputResponse_Payload() {}
 
 func (*StreamProcessInputResponse_Ack) isStreamProcessInputResponse_Payload() {}
 
 func (*StreamProcessInputResponse_End) isStreamProcessInputResponse_Payload() {}
+
+func (*StreamProcessInputResponse_ResizeAck) isStreamProcessInputResponse_Payload() {}
 
 type DeleteProcessRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -3616,7 +3815,7 @@ type DeleteProcessRequest struct {
 
 func (x *DeleteProcessRequest) Reset() {
 	*x = DeleteProcessRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[48]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3628,7 +3827,7 @@ func (x *DeleteProcessRequest) String() string {
 func (*DeleteProcessRequest) ProtoMessage() {}
 
 func (x *DeleteProcessRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[48]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3641,7 +3840,7 @@ func (x *DeleteProcessRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteProcessRequest.ProtoReflect.Descriptor instead.
 func (*DeleteProcessRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{48}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *DeleteProcessRequest) GetProcess() *ProcessReference {
@@ -3661,7 +3860,7 @@ type DeleteProcessResponse struct {
 
 func (x *DeleteProcessResponse) Reset() {
 	*x = DeleteProcessResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[49]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3673,7 +3872,7 @@ func (x *DeleteProcessResponse) String() string {
 func (*DeleteProcessResponse) ProtoMessage() {}
 
 func (x *DeleteProcessResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[49]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3686,7 +3885,7 @@ func (x *DeleteProcessResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteProcessResponse.ProtoReflect.Descriptor instead.
 func (*DeleteProcessResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{49}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *DeleteProcessResponse) GetProcess() *ProcessInfo {
@@ -3811,7 +4010,7 @@ const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x12\x14\n" +
 	"\x04name\x18\x02 \x01(\tH\x00R\x04name\x12\x12\n" +
 	"\x03pid\x18\x03 \x01(\x03H\x00R\x03pidB\a\n" +
-	"\x05value\"\x9f\x03\n" +
+	"\x05value\"\xe2\x03\n" +
 	"\x13StartProcessRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\acommand\x18\x02 \x01(\tR\acommand\x12\x1c\n" +
@@ -3820,7 +4019,8 @@ const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	"\aio_mode\x18\x05 \x01(\x0e2\x1d.remote.code.v1.ProcessIOModeR\x06ioMode\x12V\n" +
 	"\venvironment\x18\x06 \x03(\v24.remote.code.v1.StartProcessRequest.EnvironmentEntryR\venvironment\x12?\n" +
 	"\n" +
-	"input_mode\x18\a \x01(\x0e2 .remote.code.v1.ProcessInputModeR\tinputMode\x1a>\n" +
+	"input_mode\x18\a \x01(\x0e2 .remote.code.v1.ProcessInputModeR\tinputMode\x12A\n" +
+	"\rterminal_size\x18\b \x01(\v2\x1c.remote.code.v1.TerminalSizeR\fterminalSize\x1a>\n" +
 	"\x10EnvironmentEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"M\n" +
@@ -3899,28 +4099,40 @@ const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	"\aprocess\x18\x01 \x01(\v2 .remote.code.v1.ProcessReferenceR\aprocess\"B\n" +
 	"\x10ProcessInputData\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x04R\bsequence\x12\x12\n" +
-	"\x04data\x18\x02 \x01(\fR\x04data\"\x13\n" +
+	"\x04data\x18\x02 \x01(\fR\x04data\"<\n" +
+	"\fTerminalSize\x12\x12\n" +
+	"\x04rows\x18\x01 \x01(\rR\x04rows\x12\x18\n" +
+	"\acolumns\x18\x02 \x01(\rR\acolumns\"e\n" +
+	"\x15ProcessTerminalResize\x12\x1a\n" +
+	"\bsequence\x18\x01 \x01(\x04R\bsequence\x120\n" +
+	"\x04size\x18\x02 \x01(\v2\x1c.remote.code.v1.TerminalSizeR\x04size\"\x13\n" +
 	"\x11ProcessInputClose\"\x14\n" +
-	"\x12ProcessInputDetach\"\x9a\x02\n" +
+	"\x12ProcessInputDetach\"\xdb\x02\n" +
 	"\x19StreamProcessInputRequest\x126\n" +
 	"\x04open\x18\x01 \x01(\v2 .remote.code.v1.ProcessInputOpenH\x00R\x04open\x126\n" +
 	"\x04data\x18\x02 \x01(\v2 .remote.code.v1.ProcessInputDataH\x00R\x04data\x12D\n" +
 	"\vclose_input\x18\x03 \x01(\v2!.remote.code.v1.ProcessInputCloseH\x00R\n" +
 	"closeInput\x12<\n" +
-	"\x06detach\x18\x04 \x01(\v2\".remote.code.v1.ProcessInputDetachH\x00R\x06detachB\t\n" +
+	"\x06detach\x18\x04 \x01(\v2\".remote.code.v1.ProcessInputDetachH\x00R\x06detach\x12?\n" +
+	"\x06resize\x18\x05 \x01(\v2%.remote.code.v1.ProcessTerminalResizeH\x00R\x06resizeB\t\n" +
 	"\apayload\"K\n" +
 	"\x12ProcessInputOpened\x125\n" +
 	"\aprocess\x18\x01 \x01(\v2\x1b.remote.code.v1.ProcessInfoR\aprocess\"R\n" +
 	"\x0fProcessInputAck\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x04R\bsequence\x12#\n" +
-	"\rbytes_written\x18\x02 \x01(\rR\fbytesWritten\"\x87\x01\n" +
+	"\rbytes_written\x18\x02 \x01(\rR\fbytesWritten\"h\n" +
+	"\x18ProcessTerminalResizeAck\x12\x1a\n" +
+	"\bsequence\x18\x01 \x01(\x04R\bsequence\x120\n" +
+	"\x04size\x18\x02 \x01(\v2\x1c.remote.code.v1.TerminalSizeR\x04size\"\x87\x01\n" +
 	"\x0fProcessInputEnd\x12=\n" +
 	"\x06reason\x18\x01 \x01(\x0e2%.remote.code.v1.ProcessInputEndReasonR\x06reason\x125\n" +
-	"\aprocess\x18\x02 \x01(\v2\x1b.remote.code.v1.ProcessInfoR\aprocess\"\xcf\x01\n" +
+	"\aprocess\x18\x02 \x01(\v2\x1b.remote.code.v1.ProcessInfoR\aprocess\"\x9a\x02\n" +
 	"\x1aStreamProcessInputResponse\x12<\n" +
 	"\x06opened\x18\x01 \x01(\v2\".remote.code.v1.ProcessInputOpenedH\x00R\x06opened\x123\n" +
 	"\x03ack\x18\x02 \x01(\v2\x1f.remote.code.v1.ProcessInputAckH\x00R\x03ack\x123\n" +
-	"\x03end\x18\x03 \x01(\v2\x1f.remote.code.v1.ProcessInputEndH\x00R\x03endB\t\n" +
+	"\x03end\x18\x03 \x01(\v2\x1f.remote.code.v1.ProcessInputEndH\x00R\x03end\x12I\n" +
+	"\n" +
+	"resize_ack\x18\x04 \x01(\v2(.remote.code.v1.ProcessTerminalResizeAckH\x00R\tresizeAckB\t\n" +
 	"\apayload\"R\n" +
 	"\x14DeleteProcessRequest\x12:\n" +
 	"\aprocess\x18\x01 \x01(\v2 .remote.code.v1.ProcessReferenceR\aprocess\"N\n" +
@@ -4010,7 +4222,7 @@ func file_remote_code_v1_remote_code_proto_rawDescGZIP() []byte {
 }
 
 var file_remote_code_v1_remote_code_proto_enumTypes = make([]protoimpl.EnumInfo, 9)
-var file_remote_code_v1_remote_code_proto_msgTypes = make([]protoimpl.MessageInfo, 51)
+var file_remote_code_v1_remote_code_proto_msgTypes = make([]protoimpl.MessageInfo, 54)
 var file_remote_code_v1_remote_code_proto_goTypes = []any{
 	(FileType)(0),                      // 0: remote.code.v1.FileType
 	(ProcessIOMode)(0),                 // 1: remote.code.v1.ProcessIOMode
@@ -4062,21 +4274,24 @@ var file_remote_code_v1_remote_code_proto_goTypes = []any{
 	(*ObserveProcessLogsResponse)(nil), // 47: remote.code.v1.ObserveProcessLogsResponse
 	(*ProcessInputOpen)(nil),           // 48: remote.code.v1.ProcessInputOpen
 	(*ProcessInputData)(nil),           // 49: remote.code.v1.ProcessInputData
-	(*ProcessInputClose)(nil),          // 50: remote.code.v1.ProcessInputClose
-	(*ProcessInputDetach)(nil),         // 51: remote.code.v1.ProcessInputDetach
-	(*StreamProcessInputRequest)(nil),  // 52: remote.code.v1.StreamProcessInputRequest
-	(*ProcessInputOpened)(nil),         // 53: remote.code.v1.ProcessInputOpened
-	(*ProcessInputAck)(nil),            // 54: remote.code.v1.ProcessInputAck
-	(*ProcessInputEnd)(nil),            // 55: remote.code.v1.ProcessInputEnd
-	(*StreamProcessInputResponse)(nil), // 56: remote.code.v1.StreamProcessInputResponse
-	(*DeleteProcessRequest)(nil),       // 57: remote.code.v1.DeleteProcessRequest
-	(*DeleteProcessResponse)(nil),      // 58: remote.code.v1.DeleteProcessResponse
-	nil,                                // 59: remote.code.v1.StartProcessRequest.EnvironmentEntry
-	(*timestamppb.Timestamp)(nil),      // 60: google.protobuf.Timestamp
+	(*TerminalSize)(nil),               // 50: remote.code.v1.TerminalSize
+	(*ProcessTerminalResize)(nil),      // 51: remote.code.v1.ProcessTerminalResize
+	(*ProcessInputClose)(nil),          // 52: remote.code.v1.ProcessInputClose
+	(*ProcessInputDetach)(nil),         // 53: remote.code.v1.ProcessInputDetach
+	(*StreamProcessInputRequest)(nil),  // 54: remote.code.v1.StreamProcessInputRequest
+	(*ProcessInputOpened)(nil),         // 55: remote.code.v1.ProcessInputOpened
+	(*ProcessInputAck)(nil),            // 56: remote.code.v1.ProcessInputAck
+	(*ProcessTerminalResizeAck)(nil),   // 57: remote.code.v1.ProcessTerminalResizeAck
+	(*ProcessInputEnd)(nil),            // 58: remote.code.v1.ProcessInputEnd
+	(*StreamProcessInputResponse)(nil), // 59: remote.code.v1.StreamProcessInputResponse
+	(*DeleteProcessRequest)(nil),       // 60: remote.code.v1.DeleteProcessRequest
+	(*DeleteProcessResponse)(nil),      // 61: remote.code.v1.DeleteProcessResponse
+	nil,                                // 62: remote.code.v1.StartProcessRequest.EnvironmentEntry
+	(*timestamppb.Timestamp)(nil),      // 63: google.protobuf.Timestamp
 }
 var file_remote_code_v1_remote_code_proto_depIdxs = []int32{
 	0,  // 0: remote.code.v1.FileInfo.type:type_name -> remote.code.v1.FileType
-	60, // 1: remote.code.v1.FileInfo.modified_at:type_name -> google.protobuf.Timestamp
+	63, // 1: remote.code.v1.FileInfo.modified_at:type_name -> google.protobuf.Timestamp
 	11, // 2: remote.code.v1.StatResponse.file:type_name -> remote.code.v1.FileInfo
 	11, // 3: remote.code.v1.ListResponse.files:type_name -> remote.code.v1.FileInfo
 	11, // 4: remote.code.v1.TreeNode.file:type_name -> remote.code.v1.FileInfo
@@ -4092,80 +4307,85 @@ var file_remote_code_v1_remote_code_proto_depIdxs = []int32{
 	11, // 14: remote.code.v1.MkdirResponse.file:type_name -> remote.code.v1.FileInfo
 	1,  // 15: remote.code.v1.ProcessInfo.io_mode:type_name -> remote.code.v1.ProcessIOMode
 	2,  // 16: remote.code.v1.ProcessInfo.state:type_name -> remote.code.v1.ProcessState
-	60, // 17: remote.code.v1.ProcessInfo.started_at:type_name -> google.protobuf.Timestamp
-	60, // 18: remote.code.v1.ProcessInfo.exited_at:type_name -> google.protobuf.Timestamp
-	60, // 19: remote.code.v1.ProcessInfo.created_at:type_name -> google.protobuf.Timestamp
+	63, // 17: remote.code.v1.ProcessInfo.started_at:type_name -> google.protobuf.Timestamp
+	63, // 18: remote.code.v1.ProcessInfo.exited_at:type_name -> google.protobuf.Timestamp
+	63, // 19: remote.code.v1.ProcessInfo.created_at:type_name -> google.protobuf.Timestamp
 	6,  // 20: remote.code.v1.ProcessInfo.input_mode:type_name -> remote.code.v1.ProcessInputMode
 	7,  // 21: remote.code.v1.ProcessInfo.input_state:type_name -> remote.code.v1.ProcessInputState
 	1,  // 22: remote.code.v1.StartProcessRequest.io_mode:type_name -> remote.code.v1.ProcessIOMode
-	59, // 23: remote.code.v1.StartProcessRequest.environment:type_name -> remote.code.v1.StartProcessRequest.EnvironmentEntry
+	62, // 23: remote.code.v1.StartProcessRequest.environment:type_name -> remote.code.v1.StartProcessRequest.EnvironmentEntry
 	6,  // 24: remote.code.v1.StartProcessRequest.input_mode:type_name -> remote.code.v1.ProcessInputMode
-	34, // 25: remote.code.v1.StartProcessResponse.process:type_name -> remote.code.v1.ProcessInfo
-	34, // 26: remote.code.v1.ListProcessesResponse.processes:type_name -> remote.code.v1.ProcessInfo
-	35, // 27: remote.code.v1.SignalProcessRequest.process:type_name -> remote.code.v1.ProcessReference
-	3,  // 28: remote.code.v1.SignalProcessRequest.signal:type_name -> remote.code.v1.ProcessSignal
-	34, // 29: remote.code.v1.SignalProcessResponse.process:type_name -> remote.code.v1.ProcessInfo
-	4,  // 30: remote.code.v1.ObserveProcessLogsRequest.streams:type_name -> remote.code.v1.ProcessLogStream
-	1,  // 31: remote.code.v1.ProcessLogHeader.io_mode:type_name -> remote.code.v1.ProcessIOMode
-	4,  // 32: remote.code.v1.ProcessLogHeader.streams:type_name -> remote.code.v1.ProcessLogStream
-	60, // 33: remote.code.v1.ProcessLogChunk.timestamp:type_name -> google.protobuf.Timestamp
-	4,  // 34: remote.code.v1.ProcessLogChunk.stream:type_name -> remote.code.v1.ProcessLogStream
-	5,  // 35: remote.code.v1.ProcessLogEnd.reason:type_name -> remote.code.v1.ProcessLogEndReason
-	2,  // 36: remote.code.v1.ProcessLogEnd.state:type_name -> remote.code.v1.ProcessState
-	43, // 37: remote.code.v1.ObserveProcessLogsResponse.header:type_name -> remote.code.v1.ProcessLogHeader
-	44, // 38: remote.code.v1.ObserveProcessLogsResponse.chunk:type_name -> remote.code.v1.ProcessLogChunk
-	45, // 39: remote.code.v1.ObserveProcessLogsResponse.checkpoint:type_name -> remote.code.v1.ProcessLogCheckpoint
-	46, // 40: remote.code.v1.ObserveProcessLogsResponse.end:type_name -> remote.code.v1.ProcessLogEnd
-	35, // 41: remote.code.v1.ProcessInputOpen.process:type_name -> remote.code.v1.ProcessReference
-	48, // 42: remote.code.v1.StreamProcessInputRequest.open:type_name -> remote.code.v1.ProcessInputOpen
-	49, // 43: remote.code.v1.StreamProcessInputRequest.data:type_name -> remote.code.v1.ProcessInputData
-	50, // 44: remote.code.v1.StreamProcessInputRequest.close_input:type_name -> remote.code.v1.ProcessInputClose
-	51, // 45: remote.code.v1.StreamProcessInputRequest.detach:type_name -> remote.code.v1.ProcessInputDetach
-	34, // 46: remote.code.v1.ProcessInputOpened.process:type_name -> remote.code.v1.ProcessInfo
-	8,  // 47: remote.code.v1.ProcessInputEnd.reason:type_name -> remote.code.v1.ProcessInputEndReason
-	34, // 48: remote.code.v1.ProcessInputEnd.process:type_name -> remote.code.v1.ProcessInfo
-	53, // 49: remote.code.v1.StreamProcessInputResponse.opened:type_name -> remote.code.v1.ProcessInputOpened
-	54, // 50: remote.code.v1.StreamProcessInputResponse.ack:type_name -> remote.code.v1.ProcessInputAck
-	55, // 51: remote.code.v1.StreamProcessInputResponse.end:type_name -> remote.code.v1.ProcessInputEnd
-	35, // 52: remote.code.v1.DeleteProcessRequest.process:type_name -> remote.code.v1.ProcessReference
-	34, // 53: remote.code.v1.DeleteProcessResponse.process:type_name -> remote.code.v1.ProcessInfo
-	9,  // 54: remote.code.v1.ControllerService.GetInfo:input_type -> remote.code.v1.GetInfoRequest
-	12, // 55: remote.code.v1.FileService.Stat:input_type -> remote.code.v1.StatRequest
-	14, // 56: remote.code.v1.FileService.List:input_type -> remote.code.v1.ListRequest
-	17, // 57: remote.code.v1.FileService.Tree:input_type -> remote.code.v1.TreeRequest
-	20, // 58: remote.code.v1.FileService.Upload:input_type -> remote.code.v1.UploadRequest
-	22, // 59: remote.code.v1.FileService.Download:input_type -> remote.code.v1.DownloadRequest
-	26, // 60: remote.code.v1.FileService.Remove:input_type -> remote.code.v1.RemoveRequest
-	28, // 61: remote.code.v1.FileService.Move:input_type -> remote.code.v1.MoveRequest
-	30, // 62: remote.code.v1.FileService.Chmod:input_type -> remote.code.v1.ChmodRequest
-	32, // 63: remote.code.v1.FileService.Mkdir:input_type -> remote.code.v1.MkdirRequest
-	36, // 64: remote.code.v1.ProcessService.StartProcess:input_type -> remote.code.v1.StartProcessRequest
-	38, // 65: remote.code.v1.ProcessService.ListProcesses:input_type -> remote.code.v1.ListProcessesRequest
-	40, // 66: remote.code.v1.ProcessService.SignalProcess:input_type -> remote.code.v1.SignalProcessRequest
-	57, // 67: remote.code.v1.ProcessService.DeleteProcess:input_type -> remote.code.v1.DeleteProcessRequest
-	42, // 68: remote.code.v1.ProcessService.ObserveProcessLogs:input_type -> remote.code.v1.ObserveProcessLogsRequest
-	52, // 69: remote.code.v1.ProcessService.StreamProcessInput:input_type -> remote.code.v1.StreamProcessInputRequest
-	10, // 70: remote.code.v1.ControllerService.GetInfo:output_type -> remote.code.v1.GetInfoResponse
-	13, // 71: remote.code.v1.FileService.Stat:output_type -> remote.code.v1.StatResponse
-	15, // 72: remote.code.v1.FileService.List:output_type -> remote.code.v1.ListResponse
-	18, // 73: remote.code.v1.FileService.Tree:output_type -> remote.code.v1.TreeResponse
-	21, // 74: remote.code.v1.FileService.Upload:output_type -> remote.code.v1.UploadResponse
-	25, // 75: remote.code.v1.FileService.Download:output_type -> remote.code.v1.DownloadResponse
-	27, // 76: remote.code.v1.FileService.Remove:output_type -> remote.code.v1.RemoveResponse
-	29, // 77: remote.code.v1.FileService.Move:output_type -> remote.code.v1.MoveResponse
-	31, // 78: remote.code.v1.FileService.Chmod:output_type -> remote.code.v1.ChmodResponse
-	33, // 79: remote.code.v1.FileService.Mkdir:output_type -> remote.code.v1.MkdirResponse
-	37, // 80: remote.code.v1.ProcessService.StartProcess:output_type -> remote.code.v1.StartProcessResponse
-	39, // 81: remote.code.v1.ProcessService.ListProcesses:output_type -> remote.code.v1.ListProcessesResponse
-	41, // 82: remote.code.v1.ProcessService.SignalProcess:output_type -> remote.code.v1.SignalProcessResponse
-	58, // 83: remote.code.v1.ProcessService.DeleteProcess:output_type -> remote.code.v1.DeleteProcessResponse
-	47, // 84: remote.code.v1.ProcessService.ObserveProcessLogs:output_type -> remote.code.v1.ObserveProcessLogsResponse
-	56, // 85: remote.code.v1.ProcessService.StreamProcessInput:output_type -> remote.code.v1.StreamProcessInputResponse
-	70, // [70:86] is the sub-list for method output_type
-	54, // [54:70] is the sub-list for method input_type
-	54, // [54:54] is the sub-list for extension type_name
-	54, // [54:54] is the sub-list for extension extendee
-	0,  // [0:54] is the sub-list for field type_name
+	50, // 25: remote.code.v1.StartProcessRequest.terminal_size:type_name -> remote.code.v1.TerminalSize
+	34, // 26: remote.code.v1.StartProcessResponse.process:type_name -> remote.code.v1.ProcessInfo
+	34, // 27: remote.code.v1.ListProcessesResponse.processes:type_name -> remote.code.v1.ProcessInfo
+	35, // 28: remote.code.v1.SignalProcessRequest.process:type_name -> remote.code.v1.ProcessReference
+	3,  // 29: remote.code.v1.SignalProcessRequest.signal:type_name -> remote.code.v1.ProcessSignal
+	34, // 30: remote.code.v1.SignalProcessResponse.process:type_name -> remote.code.v1.ProcessInfo
+	4,  // 31: remote.code.v1.ObserveProcessLogsRequest.streams:type_name -> remote.code.v1.ProcessLogStream
+	1,  // 32: remote.code.v1.ProcessLogHeader.io_mode:type_name -> remote.code.v1.ProcessIOMode
+	4,  // 33: remote.code.v1.ProcessLogHeader.streams:type_name -> remote.code.v1.ProcessLogStream
+	63, // 34: remote.code.v1.ProcessLogChunk.timestamp:type_name -> google.protobuf.Timestamp
+	4,  // 35: remote.code.v1.ProcessLogChunk.stream:type_name -> remote.code.v1.ProcessLogStream
+	5,  // 36: remote.code.v1.ProcessLogEnd.reason:type_name -> remote.code.v1.ProcessLogEndReason
+	2,  // 37: remote.code.v1.ProcessLogEnd.state:type_name -> remote.code.v1.ProcessState
+	43, // 38: remote.code.v1.ObserveProcessLogsResponse.header:type_name -> remote.code.v1.ProcessLogHeader
+	44, // 39: remote.code.v1.ObserveProcessLogsResponse.chunk:type_name -> remote.code.v1.ProcessLogChunk
+	45, // 40: remote.code.v1.ObserveProcessLogsResponse.checkpoint:type_name -> remote.code.v1.ProcessLogCheckpoint
+	46, // 41: remote.code.v1.ObserveProcessLogsResponse.end:type_name -> remote.code.v1.ProcessLogEnd
+	35, // 42: remote.code.v1.ProcessInputOpen.process:type_name -> remote.code.v1.ProcessReference
+	50, // 43: remote.code.v1.ProcessTerminalResize.size:type_name -> remote.code.v1.TerminalSize
+	48, // 44: remote.code.v1.StreamProcessInputRequest.open:type_name -> remote.code.v1.ProcessInputOpen
+	49, // 45: remote.code.v1.StreamProcessInputRequest.data:type_name -> remote.code.v1.ProcessInputData
+	52, // 46: remote.code.v1.StreamProcessInputRequest.close_input:type_name -> remote.code.v1.ProcessInputClose
+	53, // 47: remote.code.v1.StreamProcessInputRequest.detach:type_name -> remote.code.v1.ProcessInputDetach
+	51, // 48: remote.code.v1.StreamProcessInputRequest.resize:type_name -> remote.code.v1.ProcessTerminalResize
+	34, // 49: remote.code.v1.ProcessInputOpened.process:type_name -> remote.code.v1.ProcessInfo
+	50, // 50: remote.code.v1.ProcessTerminalResizeAck.size:type_name -> remote.code.v1.TerminalSize
+	8,  // 51: remote.code.v1.ProcessInputEnd.reason:type_name -> remote.code.v1.ProcessInputEndReason
+	34, // 52: remote.code.v1.ProcessInputEnd.process:type_name -> remote.code.v1.ProcessInfo
+	55, // 53: remote.code.v1.StreamProcessInputResponse.opened:type_name -> remote.code.v1.ProcessInputOpened
+	56, // 54: remote.code.v1.StreamProcessInputResponse.ack:type_name -> remote.code.v1.ProcessInputAck
+	58, // 55: remote.code.v1.StreamProcessInputResponse.end:type_name -> remote.code.v1.ProcessInputEnd
+	57, // 56: remote.code.v1.StreamProcessInputResponse.resize_ack:type_name -> remote.code.v1.ProcessTerminalResizeAck
+	35, // 57: remote.code.v1.DeleteProcessRequest.process:type_name -> remote.code.v1.ProcessReference
+	34, // 58: remote.code.v1.DeleteProcessResponse.process:type_name -> remote.code.v1.ProcessInfo
+	9,  // 59: remote.code.v1.ControllerService.GetInfo:input_type -> remote.code.v1.GetInfoRequest
+	12, // 60: remote.code.v1.FileService.Stat:input_type -> remote.code.v1.StatRequest
+	14, // 61: remote.code.v1.FileService.List:input_type -> remote.code.v1.ListRequest
+	17, // 62: remote.code.v1.FileService.Tree:input_type -> remote.code.v1.TreeRequest
+	20, // 63: remote.code.v1.FileService.Upload:input_type -> remote.code.v1.UploadRequest
+	22, // 64: remote.code.v1.FileService.Download:input_type -> remote.code.v1.DownloadRequest
+	26, // 65: remote.code.v1.FileService.Remove:input_type -> remote.code.v1.RemoveRequest
+	28, // 66: remote.code.v1.FileService.Move:input_type -> remote.code.v1.MoveRequest
+	30, // 67: remote.code.v1.FileService.Chmod:input_type -> remote.code.v1.ChmodRequest
+	32, // 68: remote.code.v1.FileService.Mkdir:input_type -> remote.code.v1.MkdirRequest
+	36, // 69: remote.code.v1.ProcessService.StartProcess:input_type -> remote.code.v1.StartProcessRequest
+	38, // 70: remote.code.v1.ProcessService.ListProcesses:input_type -> remote.code.v1.ListProcessesRequest
+	40, // 71: remote.code.v1.ProcessService.SignalProcess:input_type -> remote.code.v1.SignalProcessRequest
+	60, // 72: remote.code.v1.ProcessService.DeleteProcess:input_type -> remote.code.v1.DeleteProcessRequest
+	42, // 73: remote.code.v1.ProcessService.ObserveProcessLogs:input_type -> remote.code.v1.ObserveProcessLogsRequest
+	54, // 74: remote.code.v1.ProcessService.StreamProcessInput:input_type -> remote.code.v1.StreamProcessInputRequest
+	10, // 75: remote.code.v1.ControllerService.GetInfo:output_type -> remote.code.v1.GetInfoResponse
+	13, // 76: remote.code.v1.FileService.Stat:output_type -> remote.code.v1.StatResponse
+	15, // 77: remote.code.v1.FileService.List:output_type -> remote.code.v1.ListResponse
+	18, // 78: remote.code.v1.FileService.Tree:output_type -> remote.code.v1.TreeResponse
+	21, // 79: remote.code.v1.FileService.Upload:output_type -> remote.code.v1.UploadResponse
+	25, // 80: remote.code.v1.FileService.Download:output_type -> remote.code.v1.DownloadResponse
+	27, // 81: remote.code.v1.FileService.Remove:output_type -> remote.code.v1.RemoveResponse
+	29, // 82: remote.code.v1.FileService.Move:output_type -> remote.code.v1.MoveResponse
+	31, // 83: remote.code.v1.FileService.Chmod:output_type -> remote.code.v1.ChmodResponse
+	33, // 84: remote.code.v1.FileService.Mkdir:output_type -> remote.code.v1.MkdirResponse
+	37, // 85: remote.code.v1.ProcessService.StartProcess:output_type -> remote.code.v1.StartProcessResponse
+	39, // 86: remote.code.v1.ProcessService.ListProcesses:output_type -> remote.code.v1.ListProcessesResponse
+	41, // 87: remote.code.v1.ProcessService.SignalProcess:output_type -> remote.code.v1.SignalProcessResponse
+	61, // 88: remote.code.v1.ProcessService.DeleteProcess:output_type -> remote.code.v1.DeleteProcessResponse
+	47, // 89: remote.code.v1.ProcessService.ObserveProcessLogs:output_type -> remote.code.v1.ObserveProcessLogsResponse
+	59, // 90: remote.code.v1.ProcessService.StreamProcessInput:output_type -> remote.code.v1.StreamProcessInputResponse
+	75, // [75:91] is the sub-list for method output_type
+	59, // [59:75] is the sub-list for method input_type
+	59, // [59:59] is the sub-list for extension type_name
+	59, // [59:59] is the sub-list for extension extendee
+	0,  // [0:59] is the sub-list for field type_name
 }
 
 func init() { file_remote_code_v1_remote_code_proto_init() }
@@ -4199,16 +4419,18 @@ func file_remote_code_v1_remote_code_proto_init() {
 		(*ObserveProcessLogsResponse_Checkpoint)(nil),
 		(*ObserveProcessLogsResponse_End)(nil),
 	}
-	file_remote_code_v1_remote_code_proto_msgTypes[43].OneofWrappers = []any{
+	file_remote_code_v1_remote_code_proto_msgTypes[45].OneofWrappers = []any{
 		(*StreamProcessInputRequest_Open)(nil),
 		(*StreamProcessInputRequest_Data)(nil),
 		(*StreamProcessInputRequest_CloseInput)(nil),
 		(*StreamProcessInputRequest_Detach)(nil),
+		(*StreamProcessInputRequest_Resize)(nil),
 	}
-	file_remote_code_v1_remote_code_proto_msgTypes[47].OneofWrappers = []any{
+	file_remote_code_v1_remote_code_proto_msgTypes[50].OneofWrappers = []any{
 		(*StreamProcessInputResponse_Opened)(nil),
 		(*StreamProcessInputResponse_Ack)(nil),
 		(*StreamProcessInputResponse_End)(nil),
+		(*StreamProcessInputResponse_ResizeAck)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -4216,7 +4438,7 @@ func file_remote_code_v1_remote_code_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_remote_code_v1_remote_code_proto_rawDesc), len(file_remote_code_v1_remote_code_proto_rawDesc)),
 			NumEnums:      9,
-			NumMessages:   51,
+			NumMessages:   54,
 			NumExtensions: 0,
 			NumServices:   3,
 		},
