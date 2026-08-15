@@ -75,3 +75,5 @@ public client 的 `ProcessAttachment` 在本地组合两条既有流：先获取
 
 CLI 进入 raw terminal mode，原样传送控制键和 ANSI 序列，监听 `SIGWINCH` 并发送 resize。
 `Ctrl-] d` 释放 writer 且停止日志观察，远端进程继续运行；所有完成和错误路径都先恢复本地终端。
+每次 attach 使用独立的本地 alternate screen，退出时恢复 REPL 原屏幕；连接建立后先发送一个临时
+尺寸再恢复真实尺寸，保证已运行的 Vim 等 TUI 即使窗口大小未变化也会收到 `SIGWINCH` 并完整重绘。

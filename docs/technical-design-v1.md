@@ -169,7 +169,8 @@ START -> METADATA -> CHUNK* -> CLIENT_EOF -> VERIFY -> PUBLISH -> RESPONSE
 
 `attach` 是客户端对 `StreamProcessInput` 和 `ObserveProcessLogs` 的组合，不增加新的 gRPC 方法。
 交互期间 CLI 退出 readline 行模式并进入 raw mode，监听 `SIGWINCH`，通过有限 ACK 窗口流水线化
-输入；detach 或任何错误后恢复终端，再回到 REPL。
+输入。每次连接使用独立 alternate screen，并通过尺寸扰动强制已运行的 TUI 重绘；detach 或任何
+错误后恢复原屏幕和终端状态，再回到 REPL。
 
 虚拟 cwd 使用 `/` 开头仅供展示，wire path 始终是相对路径。`cd ..` 可以回到父目录但不能高于 `/`。远端路径不做本地 glob 展开。
 

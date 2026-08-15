@@ -10,7 +10,16 @@ import (
 	remoteclient "github.com/qq1426155093/remote-code/pkg/client"
 )
 
-const attachEscapeByte = byte(0x1d)
+const (
+	attachEscapeByte          = byte(0x1d)
+	attachEnterScreenSequence = "\x1b[?1049h\x1b[2J\x1b[H"
+	attachLeaveScreenSequence = "\x1b[?1049l"
+)
+
+type terminalDimensions struct {
+	rows    uint32
+	columns uint32
+}
 
 var errDetachRequested = errors.New("process detach requested")
 
@@ -35,9 +44,7 @@ func (r *REPL) attach(reference *codev1.ProcessReference) error {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	attachment, err := r.client.OpenProcessAttachment(ctx, reference, remoteclient.ProcessAttachOptions{
-		Rows: rows, Columns: columns,
-	})
+	attachment, err := r.client.OpenProcessAttachment(ctx, reference, remoteclient.ProcessAttachOptions{})
 	if err != nil {
 		return err
 	}
@@ -50,11 +57,27 @@ func (r *REPL) attach(reference *codev1.ProcessReference) error {
 		return fmt.Errorf("enter raw terminal mode: %w", err)
 	}
 	restored := false
-	defer func() {
+	screenActive := false
+	cleanupTerminal := func() error {
+		var cleanupErrors []error
 		if !restored {
-			_ = restore()
+			cleanupErrors = append(cleanupErrors, restore())
+			restored = true
 		}
+		if screenActive {
+			cleanupErrors = append(cleanupErrors, writeTerminalSequence(r.stdout, attachLeaveScreenSequence))
+			screenActive = false
+		}
+		return errors.Join(cleanupErrors...)
+	}
+	defer func() {
+		_ = cleanupTerminal()
 	}()
+	screenActive = true
+	if err := writeTerminalSequence(r.stdout, attachEnterScreenSequence); err != nil {
+		_ = attachment.Detach()
+		return errors.Join(fmt.Errorf("enter attached terminal screen: %w", err), cleanupTerminal())
+	}
 
 	resizeEvents, stopResize := r.terminal.resizeEvents()
 	defer stopResize()
@@ -65,8 +88,12 @@ func (r *REPL) attach(reference *codev1.ProcessReference) error {
 
 	detached := false
 	inputDone := false
-	var result error
-	finished := false
+	result := forceAttachmentRedraw(attachment, rows, columns)
+	finished := result != nil
+	if finished {
+		_ = attachment.Detach()
+		<-outputResult
+	}
 	for !finished {
 		select {
 		case inputErr := <-inputResult:
@@ -121,16 +148,46 @@ func (r *REPL) attach(reference *codev1.ProcessReference) error {
 	if !inputDone {
 		<-inputResult
 	}
-	if restoreErr := restore(); result == nil {
-		result = restoreErr
+	if cleanupErr := cleanupTerminal(); result == nil {
+		result = cleanupErr
 	}
-	restored = true
 	if detached && result == nil {
 		fmt.Fprintf(r.stdout, "\r\ndetached from %s (%s)\n", process.GetName(), process.GetId())
 	} else {
 		fmt.Fprint(r.stdout, "\r\n")
 	}
 	return result
+}
+
+func forceAttachmentRedraw(attachment *remoteclient.ProcessAttachment, rows, columns uint32) error {
+	for _, size := range attachmentRedrawSizes(rows, columns) {
+		if err := attachment.Resize(size.rows, size.columns); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func attachmentRedrawSizes(rows, columns uint32) []terminalDimensions {
+	result := make([]terminalDimensions, 0, 2)
+	switch {
+	case rows > 1:
+		result = append(result, terminalDimensions{rows: rows - 1, columns: columns})
+	case columns > 1:
+		result = append(result, terminalDimensions{rows: rows, columns: columns - 1})
+	}
+	return append(result, terminalDimensions{rows: rows, columns: columns})
+}
+
+func writeTerminalSequence(writer io.Writer, sequence string) error {
+	written, err := io.WriteString(writer, sequence)
+	if err != nil {
+		return err
+	}
+	if written != len(sequence) {
+		return io.ErrShortWrite
+	}
+	return nil
 }
 
 func (r *REPL) forwardAttachmentInput(ctx context.Context, attachment *remoteclient.ProcessAttachment) error {

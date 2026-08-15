@@ -68,6 +68,22 @@ func TestFilterAttachInputRecognizesDetachAndLiteralEscape(t *testing.T) {
 	}
 }
 
+func TestAttachmentRedrawSizesForceAChangeBeforeRestoringSize(t *testing.T) {
+	tests := []struct {
+		rows, columns uint32
+		want          []terminalDimensions
+	}{
+		{rows: 24, columns: 80, want: []terminalDimensions{{rows: 23, columns: 80}, {rows: 24, columns: 80}}},
+		{rows: 1, columns: 80, want: []terminalDimensions{{rows: 1, columns: 79}, {rows: 1, columns: 80}}},
+		{rows: 1, columns: 1, want: []terminalDimensions{{rows: 1, columns: 1}}},
+	}
+	for _, test := range tests {
+		if got := attachmentRedrawSizes(test.rows, test.columns); !reflect.DeepEqual(got, test.want) {
+			t.Errorf("attachmentRedrawSizes(%d, %d) = %+v, want %+v", test.rows, test.columns, got, test.want)
+		}
+	}
+}
+
 func TestParseProcessSignalOptions(t *testing.T) {
 	options, err := parseProcessSignalOptions([]string{"-s", "SIGKILL", "-w", "pid:123"})
 	if err != nil {
