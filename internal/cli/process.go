@@ -91,7 +91,7 @@ func (r *REPL) listProcesses(arguments []string) error {
 			all = true
 			continue
 		}
-		return fmt.Errorf("unknown ps option %q; %s", argument, commandUsage["ps"])
+		return usageErrorf("unknown ps option %q", argument)
 	}
 	ctx, cancel := r.commandContext()
 	defer cancel()
@@ -131,7 +131,7 @@ func (r *REPL) signalProcess(arguments []string) error {
 
 func (r *REPL) forgetProcess(arguments []string) error {
 	if len(arguments) == 0 {
-		return errors.New(commandUsage["forget"])
+		return usageError()
 	}
 	selectors := make([]*codev1.ProcessSelector, 0, len(arguments))
 	for _, argument := range arguments {
@@ -250,7 +250,7 @@ func (r *REPL) observeProcessLogs(arguments []string) error {
 
 func (r *REPL) writeProcessInput(arguments []string) error {
 	if len(arguments) != 1 {
-		return errors.New(commandUsage["stdin"])
+		return usageError()
 	}
 	if r.line == nil {
 		return errors.New("stdin submode requires an interactive terminal")
@@ -315,7 +315,7 @@ func parseProcessLogOptions(arguments []string) (processLogOptions, error) {
 			options.follow = true
 		case "-n", "--tail":
 			if index+1 >= len(arguments) || options.tail != nil || options.offset != nil {
-				return processLogOptions{}, errors.New(commandUsage["logs"])
+				return processLogOptions{}, usageError()
 			}
 			index++
 			value, err := strconv.ParseUint(arguments[index], 10, 64)
@@ -325,7 +325,7 @@ func parseProcessLogOptions(arguments []string) (processLogOptions, error) {
 			options.tail = &value
 		case "--offset":
 			if index+1 >= len(arguments) || options.offset != nil || options.tail != nil {
-				return processLogOptions{}, errors.New(commandUsage["logs"])
+				return processLogOptions{}, usageError()
 			}
 			index++
 			value, err := strconv.ParseUint(arguments[index], 10, 64)
@@ -348,13 +348,13 @@ func parseProcessLogOptions(arguments []string) (processLogOptions, error) {
 			index = len(arguments)
 		default:
 			if strings.HasPrefix(arguments[index], "-") {
-				return processLogOptions{}, fmt.Errorf("unknown logs option %q; %s", arguments[index], commandUsage["logs"])
+				return processLogOptions{}, usageErrorf("unknown logs option %q", arguments[index])
 			}
 			values = append(values, arguments[index])
 		}
 	}
 	if len(values) != 1 || !uuidPattern.MatchString(values[0]) {
-		return processLogOptions{}, errors.New(commandUsage["logs"])
+		return processLogOptions{}, usageError()
 	}
 	options.processID = strings.ToLower(values[0])
 	if stdoutSet {
@@ -382,21 +382,21 @@ func parseProcessStartOptions(arguments []string) (processStartOptions, error) {
 		switch argument {
 		case "--name":
 			if index+1 >= len(arguments) || arguments[index+1] == "" || nameSet {
-				return processStartOptions{}, errors.New(commandUsage["exec"])
+				return processStartOptions{}, usageError()
 			}
 			options.name = arguments[index+1]
 			nameSet = true
 			index += 2
 		case "--cwd":
 			if index+1 >= len(arguments) || cwdSet {
-				return processStartOptions{}, errors.New(commandUsage["exec"])
+				return processStartOptions{}, usageError()
 			}
 			options.workingDirectory = arguments[index+1]
 			cwdSet = true
 			index += 2
 		case "-e", "--env":
 			if index+1 >= len(arguments) {
-				return processStartOptions{}, errors.New(commandUsage["exec"])
+				return processStartOptions{}, usageError()
 			}
 			key, value, ok := strings.Cut(arguments[index+1], "=")
 			if !ok || key == "" {
@@ -438,14 +438,14 @@ func parseProcessStartOptions(arguments []string) (processStartOptions, error) {
 		case "--":
 			index++
 			if index >= len(arguments) {
-				return processStartOptions{}, errors.New(commandUsage["exec"])
+				return processStartOptions{}, usageError()
 			}
 			options.command = arguments[index]
 			options.arguments = append([]string(nil), arguments[index+1:]...)
 			index = len(arguments)
 		default:
 			if strings.HasPrefix(argument, "-") {
-				return processStartOptions{}, fmt.Errorf("unknown exec option %q; %s", argument, commandUsage["exec"])
+				return processStartOptions{}, usageErrorf("unknown exec option %q", argument)
 			}
 			options.command = argument
 			options.arguments = append([]string(nil), arguments[index+1:]...)
@@ -453,7 +453,7 @@ func parseProcessStartOptions(arguments []string) (processStartOptions, error) {
 		}
 	}
 	if options.command == "" {
-		return processStartOptions{}, errors.New(commandUsage["exec"])
+		return processStartOptions{}, usageError()
 	}
 	if options.attach {
 		if modeSet && options.ioMode == codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE {
@@ -472,7 +472,7 @@ func parseProcessSignalOptions(arguments []string) (processSignalOptions, error)
 		switch arguments[index] {
 		case "-s", "--signal":
 			if index+1 >= len(arguments) {
-				return processSignalOptions{}, errors.New(commandUsage["kill"])
+				return processSignalOptions{}, usageError()
 			}
 			index++
 			signal, err := parseProcessSignal(arguments[index])
@@ -487,13 +487,13 @@ func parseProcessSignalOptions(arguments []string) (processSignalOptions, error)
 			index = len(arguments)
 		default:
 			if strings.HasPrefix(arguments[index], "-") {
-				return processSignalOptions{}, fmt.Errorf("unknown kill option %q; %s", arguments[index], commandUsage["kill"])
+				return processSignalOptions{}, usageErrorf("unknown kill option %q", arguments[index])
 			}
 			values = append(values, arguments[index])
 		}
 	}
 	if len(values) != 1 {
-		return processSignalOptions{}, errors.New(commandUsage["kill"])
+		return processSignalOptions{}, usageError()
 	}
 	reference, err := parseProcessReference(values[0])
 	if err != nil {

@@ -25,7 +25,7 @@ var errDetachRequested = errors.New("process detach requested")
 
 func (r *REPL) attachProcess(arguments []string) error {
 	if len(arguments) != 1 {
-		return errors.New(commandUsage["attach"])
+		return usageError()
 	}
 	reference, err := parseProcessReference(arguments[0])
 	if err != nil {

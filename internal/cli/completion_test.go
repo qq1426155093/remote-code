@@ -38,7 +38,7 @@ func TestCompleterSuggestsCommandsOptionsAndArguments(t *testing.T) {
 		{Name: "finished", State: codev1.ProcessState_PROCESS_STATE_EXITED},
 		{Name: "failed", State: codev1.ProcessState_PROCESS_STATE_FAILED},
 	}}
-	completer := newCompleter(client, func() string { return "." }, time.Second)
+	completer := newCompleter(client, func() string { return "." }, time.Second, defaultCommandRegistry)
 	tests := []struct {
 		name       string
 		line       string
@@ -78,7 +78,7 @@ func TestCompleterResolvesRemotePathsFromCurrentDirectory(t *testing.T) {
 	client := &fakeCompletionClient{files: map[string][]*codev1.FileInfo{
 		"docs": {{Name: "guide", Type: codev1.FileType_FILE_TYPE_DIRECTORY}},
 	}}
-	completer := newCompleter(client, func() string { return "docs" }, time.Second)
+	completer := newCompleter(client, func() string { return "docs" }, time.Second, defaultCommandRegistry)
 	got, _ := completer.Do([]rune("tree g"), len([]rune("tree g")))
 	if len(got) != 1 || string(got[0]) != "uide/" {
 		t.Fatalf("Do(tree g) = %q, want guide directory completion", got)
@@ -93,7 +93,7 @@ func TestCompleterSuggestsAttachablePTYProcesses(t *testing.T) {
 		{Name: "editor", State: codev1.ProcessState_PROCESS_STATE_RUNNING, IoMode: codev1.ProcessIOMode_PROCESS_IO_MODE_PTY, InputMode: codev1.ProcessInputMode_PROCESS_INPUT_MODE_MANAGED, InputState: codev1.ProcessInputState_PROCESS_INPUT_STATE_OPEN},
 		{Name: "pipe", State: codev1.ProcessState_PROCESS_STATE_RUNNING, IoMode: codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE, InputMode: codev1.ProcessInputMode_PROCESS_INPUT_MODE_MANAGED, InputState: codev1.ProcessInputState_PROCESS_INPUT_STATE_OPEN},
 	}}
-	completer := newCompleter(client, func() string { return "." }, time.Second)
+	completer := newCompleter(client, func() string { return "." }, time.Second, defaultCommandRegistry)
 	got, offset := completer.Do([]rune("attach ed"), len([]rune("attach ed")))
 	if len(got) != 1 || string(got[0]) != "itor " || offset != 2 {
 		t.Fatalf("attach completion = %q, %d", got, offset)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -23,9 +22,10 @@ type completionProcessClient interface {
 }
 
 type commandCompleter struct {
-	client  completionFileClient
-	cwd     func() string
-	timeout time.Duration
+	client   completionFileClient
+	cwd      func() string
+	timeout  time.Duration
+	commands *commandRegistry
 }
 
 type completionCandidate struct {
@@ -48,11 +48,11 @@ const (
 	completeFiles
 )
 
-func newCompleter(client completionFileClient, cwd func() string, timeout time.Duration) *commandCompleter {
+func newCompleter(client completionFileClient, cwd func() string, timeout time.Duration, commands *commandRegistry) *commandCompleter {
 	if timeout <= 0 || timeout > maxCompletionTimeout {
 		timeout = maxCompletionTimeout
 	}
-	return &commandCompleter{client: client, cwd: cwd, timeout: timeout}
+	return &commandCompleter{client: client, cwd: cwd, timeout: timeout, commands: commands}
 }
 
 // Do implements readline.AutoCompleter. Candidates are generated only for the
@@ -66,84 +66,84 @@ func (c *commandCompleter) Do(line []rune, pos int) ([][]rune, int) {
 	}
 	input := parseCompletionInput(line[:pos])
 	if len(input.values) == 1 {
-		return formatCompletions(input, commandCompletionCandidates())
+		return formatCompletions(input, c.commands.commandCandidates())
 	}
 
-	command := input.values[0]
+	spec, ok := c.commands.lookup(input.values[0])
+	if !ok || spec.complete == nil {
+		return formatCompletions(input, nil)
+	}
 	arguments := input.values[1:]
 	current := arguments[len(arguments)-1]
 	previous := arguments[:len(arguments)-1]
-	var candidates []completionCandidate
-	switch command {
-	case "help":
-		if len(previous) == 0 {
-			candidates = commandCompletionCandidates()
-		}
-	case "cd":
-		if len(previous) == 0 {
-			candidates = c.completeRemotePath(current, completeDirectories)
-		}
-	case "ls":
-		candidates = c.completeWithOption(previous, current, "-l", 1, completeAnyPath)
-	case "tree":
-		if len(previous) == 0 {
-			candidates = c.completeRemotePath(current, completeDirectories)
-		}
-	case "stat":
-		if len(previous) == 0 {
-			candidates = c.completeRemotePath(current, completeAnyPath)
-		}
-	case "cat":
-		if len(previous) == 0 {
-			candidates = c.completeRemotePath(current, completeFiles)
-		}
-	case "upload":
-		switch len(previous) {
-		case 0:
-			candidates = completeLocalPath(current, completeFiles)
-		case 1:
-			candidates = c.completeRemotePath(current, completeAnyPath)
-		}
-	case "download":
-		switch len(previous) {
-		case 0:
-			candidates = c.completeRemotePath(current, completeFiles)
-		case 1:
-			candidates = completeLocalPath(current, completeAnyPath)
-		}
-	case "mkdir":
-		candidates = c.completeWithOption(previous, current, "-p", 1, completeDirectories)
-	case "rm":
-		candidates = c.completeWithOption(previous, current, "-r", 1, completeAnyPath)
-	case "mv":
-		candidates = c.completeWithOption(previous, current, "-f", 2, completeAnyPath)
-	case "chmod":
-		switch len(previous) {
-		case 0:
-			for _, mode := range []string{"0600", "0640", "0644", "0700", "0755"} {
-				candidates = append(candidates, completionCandidate{value: mode, finish: true})
-			}
-		case 1:
-			candidates = c.completeRemotePath(current, completeAnyPath)
-		}
-	case "exec":
-		candidates = c.completeExec(previous, current)
-	case "ps":
-		if len(previous) == 0 && (current == "" || strings.HasPrefix(current, "-")) {
-			candidates = []completionCandidate{{value: "-a", finish: true}}
-		}
-	case "kill":
-		candidates = c.completeKill(previous, current)
-	case "forget":
-		candidates = c.completeForget(previous, current)
-	case "logs":
-		candidates = c.completeLogs(previous, current)
-	case "stdin":
-		candidates = c.completeProcessInput(previous, current)
-	case "attach":
-		candidates = c.completeProcessAttach(previous, current)
-	}
+	candidates := spec.complete(c, previous, current)
 	return formatCompletions(input, candidates)
+}
+
+func (c *commandCompleter) completeHelp(previous []string, _ string) []completionCandidate {
+	if len(previous) != 0 {
+		return nil
+	}
+	return c.commands.commandCandidates()
+}
+
+func completeFirstRemotePath(kind completionPathKind) commandCompletion {
+	return func(c *commandCompleter, previous []string, current string) []completionCandidate {
+		if len(previous) != 0 {
+			return nil
+		}
+		return c.completeRemotePath(current, kind)
+	}
+}
+
+func completeRemotePathWithOption(option string, maxValues int, kind completionPathKind) commandCompletion {
+	return func(c *commandCompleter, previous []string, current string) []completionCandidate {
+		return c.completeWithOption(previous, current, option, maxValues, kind)
+	}
+}
+
+func (c *commandCompleter) completeUpload(previous []string, current string) []completionCandidate {
+	switch len(previous) {
+	case 0:
+		return completeLocalPath(current, completeFiles)
+	case 1:
+		return c.completeRemotePath(current, completeAnyPath)
+	default:
+		return nil
+	}
+}
+
+func (c *commandCompleter) completeDownload(previous []string, current string) []completionCandidate {
+	switch len(previous) {
+	case 0:
+		return c.completeRemotePath(current, completeFiles)
+	case 1:
+		return completeLocalPath(current, completeAnyPath)
+	default:
+		return nil
+	}
+}
+
+func (c *commandCompleter) completeChmod(previous []string, current string) []completionCandidate {
+	switch len(previous) {
+	case 0:
+		candidates := make([]completionCandidate, 0, 5)
+		for _, mode := range []string{"0600", "0640", "0644", "0700", "0755"} {
+			candidates = append(candidates, completionCandidate{value: mode, finish: true})
+		}
+		return candidates
+	case 1:
+		return c.completeRemotePath(current, completeAnyPath)
+	default:
+		return nil
+	}
+}
+
+func (c *commandCompleter) completePS(previous []string, current string) []completionCandidate {
+	if len(previous) == 0 && (current == "" || strings.HasPrefix(current, "-")) {
+		return []completionCandidate{{value: "-a", finish: true}}
+	}
+	return nil
 }
 
 func (c *commandCompleter) completeForget(previous []string, current string) []completionCandidate {
@@ -389,19 +389,6 @@ func (c *commandCompleter) completeKill(previous []string, current string) []com
 }
 
 var processSignalCompletions = []string{"CONT", "HUP", "INT", "KILL", "QUIT", "STOP", "TERM", "USR1", "USR2"}
-
-func commandCompletionCandidates() []completionCandidate {
-	names := make([]string, 0, len(commandUsage))
-	for name := range commandUsage {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	candidates := make([]completionCandidate, 0, len(names))
-	for _, name := range names {
-		candidates = append(candidates, completionCandidate{value: name, finish: true})
-	}
-	return candidates
-}
 
 func (c *commandCompleter) completeWithOption(previous []string, current, option string, maxValues int, kind completionPathKind) []completionCandidate {
 	usedOption := false

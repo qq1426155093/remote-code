@@ -37,6 +37,7 @@ type Config struct {
 type REPL struct {
 	client           *remoteclient.Client
 	line             *readline.Instance
+	commands         *commandRegistry
 	stdout           io.Writer
 	stderr           io.Writer
 	terminal         terminalController
@@ -57,14 +58,14 @@ func New(client *remoteclient.Client, line *readline.Instance, config Config) *R
 		stderr = os.Stderr
 	}
 	repl := &REPL{
-		client: client, line: line, stdout: stdout, stderr: stderr,
+		client: client, line: line, commands: defaultCommandRegistry, stdout: stdout, stderr: stderr,
 		terminal: newLocalTerminal(config.Stdin), timeout: config.Timeout, catMaxBytes: config.CatMaxBytes, cwd: ".",
 		interruptContext: func(parent context.Context) (context.Context, context.CancelFunc) {
 			return signal.NotifyContext(parent, os.Interrupt)
 		},
 	}
 	if line != nil && line.Config != nil {
-		line.Config.AutoComplete = newCompleter(client, func() string { return repl.cwd }, config.Timeout)
+		line.Config.AutoComplete = newCompleter(client, func() string { return repl.cwd }, config.Timeout, repl.commands)
 	}
 	return repl
 }
@@ -94,124 +95,20 @@ func (r *REPL) Run() error {
 		if len(arguments) == 0 {
 			continue
 		}
-		if arguments[0] == "exit" || arguments[0] == "quit" {
-			if len(arguments) != 1 {
-				r.printError(fmt.Errorf("usage: %s", arguments[0]))
-				continue
-			}
+		action, err := r.execute(arguments)
+		if err != nil {
+			r.printError(err)
+			continue
+		}
+		if action == commandExit {
 			return nil
 		}
-		if err := r.execute(arguments); err != nil {
-			r.printError(err)
-		}
 	}
-}
-
-func (r *REPL) execute(arguments []string) error {
-	switch arguments[0] {
-	case "help":
-		return r.help(arguments[1:])
-	case "pwd":
-		if len(arguments) != 1 {
-			return errors.New("usage: pwd")
-		}
-		fmt.Fprintln(r.stdout, displayCWD(r.cwd))
-		return nil
-	case "cd":
-		return r.changeDirectory(arguments[1:])
-	case "ls":
-		return r.list(arguments[1:])
-	case "tree":
-		return r.tree(arguments[1:])
-	case "exec":
-		return r.startProcess(arguments[1:])
-	case "ps":
-		return r.listProcesses(arguments[1:])
-	case "kill":
-		return r.signalProcess(arguments[1:])
-	case "forget":
-		return r.forgetProcess(arguments[1:])
-	case "logs":
-		return r.observeProcessLogs(arguments[1:])
-	case "stdin":
-		return r.writeProcessInput(arguments[1:])
-	case "attach":
-		return r.attachProcess(arguments[1:])
-	case "stat":
-		return r.stat(arguments[1:])
-	case "cat":
-		return r.cat(arguments[1:])
-	case "upload":
-		return r.upload(arguments[1:])
-	case "download":
-		return r.download(arguments[1:])
-	case "mkdir":
-		return r.mkdir(arguments[1:])
-	case "rm":
-		return r.remove(arguments[1:])
-	case "mv":
-		return r.move(arguments[1:])
-	case "chmod":
-		return r.chmod(arguments[1:])
-	case "clear":
-		if len(arguments) != 1 {
-			return errors.New("usage: clear")
-		}
-		fmt.Fprint(r.stdout, "\033[H\033[2J")
-		return nil
-	default:
-		return fmt.Errorf("unknown command %q; type 'help' for available commands", arguments[0])
-	}
-}
-
-func (r *REPL) help(arguments []string) error {
-	if len(arguments) > 1 {
-		return errors.New("usage: help [command]")
-	}
-	if len(arguments) == 1 {
-		usage, ok := commandUsage[arguments[0]]
-		if !ok {
-			return fmt.Errorf("unknown command %q", arguments[0])
-		}
-		fmt.Fprintln(r.stdout, usage)
-		return nil
-	}
-	commands := []string{"help [command]", "pwd", "cd [REMOTE_DIR]", "ls [-l] [REMOTE_PATH]", "tree [REMOTE_PATH]", "stat REMOTE_PATH", "cat REMOTE_FILE", "upload LOCAL_FILE [REMOTE_FILE]", "download REMOTE_FILE [LOCAL_FILE]", "mkdir [-p] REMOTE_DIR", "rm [-r] REMOTE_PATH", "mv [-f] SOURCE DESTINATION", "chmod OCTAL_MODE REMOTE_PATH", "exec [--name NAME] [--pipe|--pty] [--stdin|--attach] [--cwd REMOTE_DIR] [-e KEY=VALUE ...] [--] CMD [ARG ...]", "ps [-a]", "kill [-s SIGNAL] [-w] PROCESS", "stdin PROCESS", "attach PROCESS", "forget PROCESS_OR_GLOB [PROCESS_OR_GLOB ...]", "logs [-f] [-n LINES|--offset OFFSET] [--stdout|--stderr] PROCESS_ID (Ctrl-C stops following; process continues)", "clear", "exit | quit"}
-	for _, command := range commands {
-		fmt.Fprintln(r.stdout, command)
-	}
-	return nil
-}
-
-var commandUsage = map[string]string{
-	"help":     "usage: help [command]",
-	"pwd":      "usage: pwd",
-	"cd":       "usage: cd [REMOTE_DIR]",
-	"ls":       "usage: ls [-l] [REMOTE_PATH]",
-	"tree":     "usage: tree [REMOTE_PATH]",
-	"stat":     "usage: stat REMOTE_PATH",
-	"cat":      "usage: cat REMOTE_FILE",
-	"upload":   "usage: upload LOCAL_FILE [REMOTE_FILE]",
-	"download": "usage: download REMOTE_FILE [LOCAL_FILE]",
-	"mkdir":    "usage: mkdir [-p] REMOTE_DIR",
-	"rm":       "usage: rm [-r] REMOTE_PATH",
-	"mv":       "usage: mv [-f] SOURCE DESTINATION",
-	"chmod":    "usage: chmod OCTAL_MODE REMOTE_PATH",
-	"exec":     "usage: exec [--name NAME] [--pipe|--pty] [--stdin|--attach] [--cwd REMOTE_DIR] [-e KEY=VALUE ...] [--] CMD [ARG ...]",
-	"ps":       "usage: ps [-a]",
-	"kill":     "usage: kill [-s SIGNAL] [-w] PROCESS",
-	"forget":   "usage: forget PROCESS_OR_GLOB [PROCESS_OR_GLOB ...]",
-	"logs":     "usage: logs [-f] [-n LINES|--offset OFFSET] [--stdout|--stderr] PROCESS_ID\nCtrl-C stops --follow; the process continues",
-	"stdin":    "usage: stdin PROCESS",
-	"attach":   "usage: attach PROCESS",
-	"clear":    "usage: clear",
-	"exit":     "usage: exit",
-	"quit":     "usage: quit",
 }
 
 func (r *REPL) changeDirectory(arguments []string) error {
 	if len(arguments) > 1 {
-		return errors.New("usage: cd [REMOTE_DIR]")
+		return usageError()
 	}
 	target := "/"
 	if len(arguments) == 1 {
@@ -248,7 +145,7 @@ func (r *REPL) list(arguments []string) error {
 		filtered = append(filtered, argument)
 	}
 	if len(filtered) > 1 {
-		return errors.New("usage: ls [-l] [REMOTE_PATH]")
+		return usageError()
 	}
 	target := ""
 	if len(filtered) == 1 {
@@ -279,7 +176,7 @@ func (r *REPL) list(arguments []string) error {
 
 func (r *REPL) tree(arguments []string) error {
 	if len(arguments) > 1 {
-		return errors.New("usage: tree [REMOTE_PATH]")
+		return usageError()
 	}
 	target := ""
 	if len(arguments) == 1 {
@@ -326,7 +223,7 @@ func printTreeChildren(writer io.Writer, children []*codev1.TreeNode, prefix str
 
 func (r *REPL) stat(arguments []string) error {
 	if len(arguments) != 1 {
-		return errors.New("usage: stat REMOTE_PATH")
+		return usageError()
 	}
 	remotePath, err := resolveRemotePath(r.cwd, arguments[0])
 	if err != nil {
@@ -348,7 +245,7 @@ func (r *REPL) stat(arguments []string) error {
 
 func (r *REPL) cat(arguments []string) error {
 	if len(arguments) != 1 {
-		return errors.New("usage: cat REMOTE_FILE")
+		return usageError()
 	}
 	remotePath, err := resolveRemotePath(r.cwd, arguments[0])
 	if err != nil {
@@ -369,7 +266,7 @@ func (r *REPL) cat(arguments []string) error {
 
 func (r *REPL) upload(arguments []string) error {
 	if len(arguments) < 1 || len(arguments) > 2 {
-		return errors.New("usage: upload LOCAL_FILE [REMOTE_FILE]")
+		return usageError()
 	}
 	target := filepath.Base(arguments[0])
 	if len(arguments) == 2 {
@@ -391,7 +288,7 @@ func (r *REPL) upload(arguments []string) error {
 
 func (r *REPL) download(arguments []string) error {
 	if len(arguments) < 1 || len(arguments) > 2 {
-		return errors.New("usage: download REMOTE_FILE [LOCAL_FILE]")
+		return usageError()
 	}
 	remotePath, err := resolveRemotePath(r.cwd, arguments[0])
 	if err != nil {
@@ -417,7 +314,7 @@ func (r *REPL) download(arguments []string) error {
 func (r *REPL) mkdir(arguments []string) error {
 	parents, values, err := parseBooleanOption(arguments, "-p")
 	if err != nil || len(values) != 1 {
-		return errors.New("usage: mkdir [-p] REMOTE_DIR")
+		return usageError()
 	}
 	remotePath, err := resolveRemotePath(r.cwd, values[0])
 	if err != nil {
@@ -436,7 +333,7 @@ func (r *REPL) mkdir(arguments []string) error {
 func (r *REPL) remove(arguments []string) error {
 	recursive, values, err := parseBooleanOption(arguments, "-r")
 	if err != nil || len(values) != 1 {
-		return errors.New("usage: rm [-r] REMOTE_PATH")
+		return usageError()
 	}
 	remotePath, err := resolveRemotePath(r.cwd, values[0])
 	if err != nil {
@@ -454,7 +351,7 @@ func (r *REPL) remove(arguments []string) error {
 func (r *REPL) move(arguments []string) error {
 	overwrite, values, err := parseBooleanOption(arguments, "-f")
 	if err != nil || len(values) != 2 {
-		return errors.New("usage: mv [-f] SOURCE DESTINATION")
+		return usageError()
 	}
 	source, err := resolveRemotePath(r.cwd, values[0])
 	if err != nil {
@@ -476,7 +373,7 @@ func (r *REPL) move(arguments []string) error {
 
 func (r *REPL) chmod(arguments []string) error {
 	if len(arguments) != 2 {
-		return errors.New("usage: chmod OCTAL_MODE REMOTE_PATH")
+		return usageError()
 	}
 	mode, err := parseMode(arguments[0])
 	if err != nil {
