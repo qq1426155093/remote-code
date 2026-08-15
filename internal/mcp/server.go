@@ -61,7 +61,7 @@ func NewServer(prepared *Prepared, fileService *files.Service, processService *p
 			if info := request.ClientInfo(); info != nil {
 				clientName = info.Name
 			}
-			return runner.call(ctx, compiled, request.Params.Arguments, clientName), nil
+			return runner.call(ctx, compiled, request.Params.Arguments, clientName, request.ProtocolVersion()), nil
 		})
 	}
 	codec, err := newCursorCodec(prepared.Registry.digest)
@@ -108,11 +108,11 @@ func toolListMiddleware(codec cursorCodec, pageSize int, tools []*mcpsdk.Tool) m
 				return next(ctx, method, request)
 			}
 			typed, ok := request.(*mcpsdk.ListToolsRequest)
-			if !ok || typed.Params == nil {
+			if !ok {
 				return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: "invalid tools/list parameters"}
 			}
 			offset := 0
-			if typed.Params.Cursor != "" {
+			if typed.Params != nil && typed.Params.Cursor != "" {
 				decoded, err := codec.decode(typed.Params.Cursor, len(tools))
 				if err != nil {
 					return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: "invalid cursor"}
@@ -124,8 +124,13 @@ func toolListMiddleware(codec cursorCodec, pageSize int, tools []*mcpsdk.Tool) m
 				end = len(tools)
 			}
 			page := make([]*mcpsdk.Tool, end-offset)
-			copy(page, tools[offset:end])
-			result := &mcpsdk.ListToolsResult{Tools: page}
+			for index, tool := range tools[offset:end] {
+				page[index] = toolForProtocol(tool, typed.ProtocolVersion())
+			}
+			result := &mcpsdk.ListToolsResult{
+				Cacheable: mcpsdk.Cacheable{CacheScope: "public"},
+				Tools:     page,
+			}
 			if end < len(tools) {
 				cursor, err := codec.encode(end)
 				if err != nil {
@@ -136,6 +141,29 @@ func toolListMiddleware(codec cursorCodec, pageSize int, tools []*mcpsdk.Tool) m
 			return result, nil
 		}
 	}
+}
+
+const arbitraryJSONToolOutputProtocol = "2026-07-28"
+
+func toolForProtocol(tool *mcpsdk.Tool, protocolVersion string) *mcpsdk.Tool {
+	if supportsArbitraryJSONToolOutput(protocolVersion) || outputSchemaIsObject(tool.OutputSchema) {
+		return tool
+	}
+	clone := *tool
+	clone.OutputSchema = nil
+	return &clone
+}
+
+func supportsArbitraryJSONToolOutput(protocolVersion string) bool {
+	return protocolVersion >= arbitraryJSONToolOutputProtocol
+}
+
+func outputSchemaIsObject(schema any) bool {
+	if schema == nil {
+		return true
+	}
+	root, ok := schema.(map[string]any)
+	return ok && root["type"] == "object"
 }
 
 func (s *Server) Address() string { return s.listener.Addr().String() }

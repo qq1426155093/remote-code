@@ -41,7 +41,7 @@ func newRunner(config Config, registry *Registry, hosts HostDispatcher) *runner 
 	return result
 }
 
-func (r *runner) call(ctx context.Context, tool *CompiledTool, raw json.RawMessage, clientName string) (result *mcpsdk.CallToolResult) {
+func (r *runner) call(ctx context.Context, tool *CompiledTool, raw json.RawMessage, clientName, protocolVersion string) (result *mcpsdk.CallToolResult) {
 	started := time.Now()
 	callID := invocationID()
 	resultIsError := true
@@ -103,8 +103,18 @@ func (r *runner) call(ctx context.Context, tool *CompiledTool, raw json.RawMessa
 	resultIsError = false
 	return &mcpsdk.CallToolResult{
 		Content:           []mcpsdk.Content{&mcpsdk.TextContent{Text: string(encoded)}},
-		StructuredContent: normalized,
+		StructuredContent: structuredContentForProtocol(normalized, protocolVersion),
 	}
+}
+
+func structuredContentForProtocol(value any, protocolVersion string) any {
+	if supportsArbitraryJSONToolOutput(protocolVersion) {
+		return value
+	}
+	if _, ok := value.(map[string]any); ok {
+		return value
+	}
+	return nil
 }
 
 func safeSchemaError(err error) string {

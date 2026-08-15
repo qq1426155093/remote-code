@@ -83,6 +83,80 @@ func TestStreamableHTTPListsAndCallsConfiguredTool(t *testing.T) {
 	}
 }
 
+func TestToolListMiddlewareAcceptsOmittedParams(t *testing.T) {
+	codec, err := newCursorCodec([32]byte{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tools := []*mcpsdk.Tool{{Name: "test.echo"}}
+	handler := toolListMiddleware(codec, 100, tools)(func(context.Context, string, mcpsdk.Request) (mcpsdk.Result, error) {
+		t.Fatal("tools/list unexpectedly reached the next handler")
+		return nil, nil
+	})
+
+	result, err := handler(context.Background(), "tools/list", &mcpsdk.ListToolsRequest{})
+	if err != nil {
+		t.Fatalf("tools/list without params returned error: %v", err)
+	}
+	listed, ok := result.(*mcpsdk.ListToolsResult)
+	if !ok || len(listed.Tools) != 1 || listed.Tools[0].Name != "test.echo" {
+		t.Fatalf("tools/list result = %#v", result)
+	}
+}
+
+func TestToolListMiddlewareAdaptsArrayOutputSchemaForLegacyClients(t *testing.T) {
+	codec, err := newCursorCodec([32]byte{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tool := &mcpsdk.Tool{Name: "test.list", OutputSchema: map[string]any{"type": "array"}}
+	handler := toolListMiddleware(codec, 100, []*mcpsdk.Tool{tool})(func(context.Context, string, mcpsdk.Request) (mcpsdk.Result, error) {
+		t.Fatal("tools/list unexpectedly reached the next handler")
+		return nil, nil
+	})
+	tests := []struct {
+		name            string
+		protocolVersion string
+		wantSchema      bool
+	}{
+		{name: "legacy", protocolVersion: "2025-11-25", wantSchema: false},
+		{name: "modern", protocolVersion: "2026-07-28", wantSchema: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			params := &mcpsdk.ListToolsParams{Meta: mcpsdk.Meta{mcpsdk.MetaKeyProtocolVersion: test.protocolVersion}}
+			result, err := handler(context.Background(), "tools/list", &mcpsdk.ListToolsRequest{Params: params})
+			if err != nil {
+				t.Fatal(err)
+			}
+			listed := result.(*mcpsdk.ListToolsResult)
+			if got := listed.Tools[0].OutputSchema != nil; got != test.wantSchema {
+				t.Fatalf("output schema present = %t, want %t", got, test.wantSchema)
+			}
+			if listed.CacheScope != "public" {
+				t.Fatalf("cache scope = %q, want public", listed.CacheScope)
+			}
+		})
+	}
+	if tool.OutputSchema == nil {
+		t.Fatal("legacy adaptation mutated the registered tool")
+	}
+}
+
+func TestStructuredContentForProtocol(t *testing.T) {
+	array := []any{"one"}
+	if got := structuredContentForProtocol(array, "2025-11-25"); got != nil {
+		t.Fatalf("legacy array structured content = %#v", got)
+	}
+	if got := structuredContentForProtocol(array, "2026-07-28"); got == nil {
+		t.Fatal("modern array structured content was omitted")
+	}
+	object := map[string]any{"value": "one"}
+	if got := structuredContentForProtocol(object, "2025-11-25"); got == nil {
+		t.Fatal("legacy object structured content was omitted")
+	}
+}
+
 type bearerTransport struct {
 	token string
 	base  http.RoundTripper
