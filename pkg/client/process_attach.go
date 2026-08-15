@@ -11,7 +11,10 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const processAttachPendingOperations = 32
+const (
+	processAttachPendingOperations = 32
+	processAttachDefaultTailLines  = 100_000
+)
 
 type processAttachAckKind uint8
 
@@ -30,9 +33,13 @@ type processAttachExpectedAck struct {
 
 // ProcessAttachOptions controls one interactive PTY attachment. Rows and
 // Columns must either both be zero or both describe the current local terminal.
+// TailLines controls how much retained PTY output is replayed before following
+// live output. Nil replays up to 100,000 logical lines; zero starts at the
+// current log boundary without replaying history.
 type ProcessAttachOptions struct {
-	Rows    uint32
-	Columns uint32
+	Rows      uint32
+	Columns   uint32
+	TailLines *uint64
 }
 
 // ProcessAttachment combines the existing process-input and process-log RPCs
@@ -61,8 +68,8 @@ type ProcessAttachment struct {
 	offset   uint64
 }
 
-// OpenProcessAttachment acquires the exclusive managed-input writer and then
-// follows PTY output from the current log boundary. It does not introduce a
+// OpenProcessAttachment acquires the exclusive managed-input writer, replays
+// retained PTY output, and then follows live output. It does not introduce a
 // separate attach RPC; both streams remain independently observable on wire.
 func (c *Client) OpenProcessAttachment(ctx context.Context, process *codev1.ProcessReference, options ProcessAttachOptions) (*ProcessAttachment, error) {
 	if process == nil {
@@ -106,7 +113,10 @@ func (c *Client) OpenProcessAttachment(ctx context.Context, process *codev1.Proc
 		return nil, status.Error(codes.FailedPrecondition, "interactive attachment requires a PTY process")
 	}
 
-	tail := uint64(0)
+	tail := uint64(processAttachDefaultTailLines)
+	if options.TailLines != nil {
+		tail = *options.TailLines
+	}
 	logs, err := c.ObserveProcessLogs(attachmentContext, opened.GetProcess().GetId(), ProcessLogOptions{
 		Streams:   []codev1.ProcessLogStream{codev1.ProcessLogStream_PROCESS_LOG_STREAM_STDOUT},
 		TailLines: &tail,
@@ -153,30 +163,15 @@ func (c *Client) OpenProcessAttachment(ctx context.Context, process *codev1.Proc
 }
 
 func prepareProcessAttachmentLogs(stream codev1.ProcessService_ObserveProcessLogsClient, processID string) (uint64, error) {
-	var sawHeader bool
-	for {
-		response, err := stream.Recv()
-		if err != nil {
-			return 0, err
-		}
-		if header := response.GetHeader(); header != nil {
-			if sawHeader || header.GetProcessId() != processID || header.GetIoMode() != codev1.ProcessIOMode_PROCESS_IO_MODE_PTY {
-				return 0, status.Error(codes.DataLoss, "invalid process attachment log header")
-			}
-			sawHeader = true
-			continue
-		}
-		if checkpoint := response.GetCheckpoint(); checkpoint != nil && checkpoint.GetReplayComplete() {
-			if !sawHeader {
-				return 0, status.Error(codes.DataLoss, "process attachment log checkpoint preceded its header")
-			}
-			return checkpoint.GetNextOffset(), nil
-		}
-		if response.GetChunk() != nil || response.GetEnd() != nil {
-			return 0, status.Error(codes.DataLoss, "process attachment log stream ended during setup")
-		}
-		return 0, status.Error(codes.DataLoss, "process attachment log stream returned an empty frame")
+	response, err := stream.Recv()
+	if err != nil {
+		return 0, err
 	}
+	header := response.GetHeader()
+	if header == nil || header.GetProcessId() != processID || header.GetIoMode() != codev1.ProcessIOMode_PROCESS_IO_MODE_PTY {
+		return 0, status.Error(codes.DataLoss, "invalid process attachment log header")
+	}
+	return header.GetResolvedStartOffset(), nil
 }
 
 // Process returns the stable process snapshot obtained while opening.

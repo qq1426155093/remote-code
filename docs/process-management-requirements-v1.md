@@ -94,7 +94,8 @@ PTY 没有独立的 write-side close，close_input 返回 failed-precondition；
 模式发送 Ctrl-D 字节，或通过 `SignalProcess` 结束进程。输入内容不持久化、不写 controller 日志。
 
 交互式客户端不增加 `AttachProcess` RPC，而是将本输入流与
-`ObserveProcessLogs(tail_lines=0, follow=true)` 组合；detach 仅终止这两条客户端流，不终止进程。
+`ObserveProcessLogs(tail_lines=100000, follow=true)` 组合，在新的本地终端屏幕中回放仍保留的输出后
+继续实时观察；调用方可以显式使用 `tail_lines=0` 跳过历史。detach 仅终止这两条客户端流，不终止进程。
 
 ## 3. 生命周期
 

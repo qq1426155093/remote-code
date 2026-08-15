@@ -69,9 +69,11 @@ controller 重启时原活动记录转换为 LOST，输入状态转换为 CLOSED
 ## 7. 交互式 attach
 
 public client 的 `ProcessAttachment` 在本地组合两条既有流：先获取输入 writer 和稳定 UUID，再以
-`tail_lines=0, follow=true` 从当前日志边界观察 PTY stdout。最多保留 32 个未确认输入/resize
-操作，使逐键交互无需逐次等待网络 RTT，同时保持有限背压。任一流失败会取消另一条流；进程退出时
-以日志 end 为准，确保退出前的尾部输出已经发送。
+`tail_lines=100000, follow=true` 回放仍保留的 PTY stdout 并从快照边界继续观察；调用方可显式把
+`TailLines` 设为 0 来跳过回放。日志 header 返回后即建立 attachment，历史由有界输出 channel
+逐块传递，避免 attach 因大段回放而一次性缓存全部日志。最多保留 32 个未确认输入/resize 操作，
+使逐键交互无需逐次等待网络 RTT，同时保持有限背压。任一流失败会取消另一条流；进程退出时以日志
+end 为准，确保退出前的尾部输出已经发送。
 
 CLI 进入 raw terminal mode，原样传送控制键和 ANSI 序列，监听 `SIGWINCH` 并发送 resize。
 `Ctrl-] d` 释放 writer 且停止日志观察，远端进程继续运行；所有完成和错误路径都先恢复本地终端。

@@ -561,6 +561,9 @@ func TestClientAttachesToPTYResizesAndReattachesOverGRPC(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenProcessAttachment(second) error = %v", err)
 	}
+	if output := readAttachmentUntil(t, ctx, second, "size:42x120"); !strings.Contains(output, "size:42x120") {
+		t.Fatalf("second attachment replay = %q, want first attachment output", output)
+	}
 	if _, err := second.Write([]byte("size\nexit\n")); err != nil {
 		t.Fatalf("second attachment Write() error = %v", err)
 	}
