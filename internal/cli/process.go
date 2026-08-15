@@ -593,6 +593,10 @@ func processIOModeName(mode codev1.ProcessIOMode) string {
 	return strings.ToLower(strings.TrimPrefix(mode.String(), "PROCESS_IO_MODE_"))
 }
 
+func processInputModeName(mode codev1.ProcessInputMode) string {
+	return strings.ToLower(strings.TrimPrefix(mode.String(), "PROCESS_INPUT_MODE_"))
+}
+
 func processInputStateName(state codev1.ProcessInputState) string {
 	return strings.ToLower(strings.TrimPrefix(state.String(), "PROCESS_INPUT_STATE_"))
 }
@@ -613,6 +617,10 @@ func processExitName(process *codev1.ProcessInfo) string {
 
 func displayProcessCommand(process *codev1.ProcessInfo) string {
 	parts := []string{process.GetCommand()}
+	if process.GetArgumentsRedacted() {
+		parts = append(parts, "[arguments redacted]")
+		return strings.Join(parts, " ")
+	}
 	for _, argument := range process.GetArguments() {
 		parts = append(parts, strconv.Quote(argument))
 	}

@@ -17,7 +17,8 @@ import (
 )
 
 const (
-	recordSchemaVersion = 1
+	recordSchemaVersion = 2
+	oldestRecordSchema  = 1
 	metadataFileName    = "metadata.json"
 	statusFileName      = "status.json"
 	stdoutFileName      = "stdout.log"
@@ -26,16 +27,19 @@ const (
 )
 
 type recordMetadata struct {
-	SchemaVersion    int       `json:"schema_version"`
-	ID               string    `json:"id"`
-	Name             string    `json:"name"`
-	IOMode           string    `json:"io_mode"`
-	InputMode        string    `json:"input_mode,omitempty"`
-	Command          string    `json:"command"`
-	Arguments        []string  `json:"arguments,omitempty"`
-	WorkingDirectory string    `json:"working_directory"`
-	EnvironmentKeys  []string  `json:"environment_keys,omitempty"`
-	CreatedAt        time.Time `json:"created_at"`
+	SchemaVersion     int       `json:"schema_version"`
+	ID                string    `json:"id"`
+	Name              string    `json:"name"`
+	IOMode            string    `json:"io_mode"`
+	InputMode         string    `json:"input_mode,omitempty"`
+	Command           string    `json:"command"`
+	Arguments         []string  `json:"arguments,omitempty"`
+	WorkingDirectory  string    `json:"working_directory"`
+	EnvironmentKeys   []string  `json:"environment_keys,omitempty"`
+	TemplateName      string    `json:"template_name,omitempty"`
+	TemplateRevision  string    `json:"template_revision,omitempty"`
+	ArgumentsRedacted bool      `json:"arguments_redacted,omitempty"`
+	CreatedAt         time.Time `json:"created_at"`
 }
 
 type recordStatus struct {
@@ -335,7 +339,7 @@ func loadRecord(directory string) (*codev1.ProcessInfo, error) {
 	if err := readJSON(filepath.Join(directory, statusFileName), &state); err != nil {
 		return nil, err
 	}
-	if metadata.SchemaVersion != recordSchemaVersion || !uuidPattern.MatchString(metadata.ID) || metadata.ID != filepath.Base(directory) {
+	if metadata.SchemaVersion < oldestRecordSchema || metadata.SchemaVersion > recordSchemaVersion || !uuidPattern.MatchString(metadata.ID) || metadata.ID != filepath.Base(directory) {
 		return nil, errors.New("invalid process record metadata")
 	}
 	ioMode, ok := parseStoredIOMode(metadata.IOMode)
@@ -372,6 +376,7 @@ func loadRecord(directory string) (*codev1.ProcessInfo, error) {
 		WorkingDirectory: metadata.WorkingDirectory, EnvironmentKeys: append([]string(nil), metadata.EnvironmentKeys...),
 		CreatedAt: timestamppb.New(metadata.CreatedAt), ExitCode: state.ExitCode, ExitSignal: state.ExitSignal,
 		InputMode: inputMode, InputState: inputState,
+		TemplateName: metadata.TemplateName, TemplateRevision: metadata.TemplateRevision, ArgumentsRedacted: metadata.ArgumentsRedacted,
 	}
 	if state.StartedAt != nil {
 		result.StartedAt = timestamppb.New(*state.StartedAt)
@@ -388,6 +393,14 @@ func loadRecord(directory string) (*codev1.ProcessInfo, error) {
 			return nil, errors.New("invalid process record environment key")
 		}
 	}
+	if result.GetTemplateName() == "" {
+		if result.GetTemplateRevision() != "" || result.GetArgumentsRedacted() {
+			return nil, errors.New("invalid process record template origin")
+		}
+	} else if !identifierPattern.MatchString(result.GetTemplateName()) || !templateRevisionPattern.MatchString(result.GetTemplateRevision()) ||
+		!result.GetArgumentsRedacted() || len(result.GetArguments()) != 0 {
+		return nil, errors.New("invalid process record template origin")
+	}
 	return result, nil
 }
 
@@ -401,6 +414,7 @@ func metadataFromInfo(info *codev1.ProcessInfo) recordMetadata {
 		InputMode: storedInputMode(info.GetInputMode()),
 		Command:   info.GetCommand(), Arguments: append([]string(nil), info.GetArguments()...),
 		WorkingDirectory: info.GetWorkingDirectory(), EnvironmentKeys: append([]string(nil), info.GetEnvironmentKeys()...),
+		TemplateName: info.GetTemplateName(), TemplateRevision: info.GetTemplateRevision(), ArgumentsRedacted: info.GetArgumentsRedacted(),
 		CreatedAt: info.GetCreatedAt().AsTime(),
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
+	processservice "github.com/qq1426155093/remote-code/internal/process"
 	"github.com/qq1426155093/remote-code/internal/server"
 	remoteclient "github.com/qq1426155093/remote-code/pkg/client"
 )
@@ -113,6 +114,85 @@ func TestREPLUsesCurrentDirectoryForExecAndSupportsPSAll(t *testing.T) {
 	}
 	if bytes.Contains(stdout.Bytes(), []byte("cwd-job")) {
 		t.Fatalf("ps -a output contains forgotten process: %s", stdout.String())
+	}
+}
+
+func TestREPLDiscoversAndStartsProcessTemplate(t *testing.T) {
+	workspace := t.TempDir()
+	definition := filepath.Join(t.TempDir(), "cli.process-template.yaml")
+	definitionYAML := `version: 1
+language: expr
+templates:
+  - name: sleeper
+    description: Start a bounded sleep process.
+    parameters_schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required: [seconds]
+      additionalProperties: false
+      properties:
+        seconds:
+          type: string
+          enum: ["30"]
+          description: Sleep duration in seconds.
+    command: sleep
+    io_mode: pipe
+    input_mode: disabled
+    render: |-
+      {"arguments": [parameters.seconds], "working_directory": ".", "environment": {}}
+`
+	if err := os.WriteFile(definition, []byte(definitionYAML), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	controller, err := server.New(server.Config{
+		ListenAddress: "127.0.0.1:0", Workspace: workspace, RuntimeDirectory: t.TempDir(), MaxProcesses: 1,
+		ProcessTemplates: processservice.TemplateConfig{DefinitionFiles: []string{definition}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	serveErrors := make(chan error, 1)
+	go func() { serveErrors <- controller.Serve() }()
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = controller.Shutdown(ctx)
+		select {
+		case <-serveErrors:
+		case <-time.After(5 * time.Second):
+			t.Error("controller did not stop")
+		}
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	client, err := remoteclient.New(ctx, remoteclient.Config{Address: controller.Address()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	var stdout bytes.Buffer
+	repl := New(client, nil, Config{Timeout: 5 * time.Second, Stdout: &stdout})
+	if err := repl.listProcessTemplates(nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "sleeper") || !strings.Contains(stdout.String(), "Start a bounded sleep process") {
+		t.Fatalf("templates output = %s", stdout.String())
+	}
+	stdout.Reset()
+	if err := repl.startProcessFromTemplate([]string{"--name", "templated-sleep", "--params", `{"seconds":"30"}`, "sleeper"}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(stdout.String(), `"seconds"`) || !strings.Contains(stdout.String(), "from template sleeper@") {
+		t.Fatalf("exec-template output = %s", stdout.String())
+	}
+	active, err := client.ListProcesses(ctx)
+	if err != nil || len(active) != 1 || active[0].GetName() != "templated-sleep" || !active[0].GetArgumentsRedacted() {
+		t.Fatalf("templated process = %+v, %v", active, err)
+	}
+	if _, err := client.SignalProcess(ctx, &codev1.ProcessReference{
+		Value: &codev1.ProcessReference_Id{Id: active[0].GetId()},
+	}, codev1.ProcessSignal_PROCESS_SIGNAL_KILL, true); err != nil {
+		t.Fatal(err)
 	}
 }
 

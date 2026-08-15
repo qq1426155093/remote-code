@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 const (
@@ -60,6 +61,15 @@ type ProcessStartOptions struct {
 	InputMode        codev1.ProcessInputMode
 	TerminalSize     *codev1.TerminalSize
 	Environment      map[string]string
+}
+
+// ProcessTemplateStartOptions describes one server-side template invocation.
+type ProcessTemplateStartOptions struct {
+	TemplateName             string
+	Parameters               *structpb.Struct
+	ProcessName              string
+	TerminalSize             *codev1.TerminalSize
+	ExpectedTemplateRevision string
 }
 
 // New creates a connection and verifies it with GetInfo before returning.
@@ -161,6 +171,52 @@ func (c *Client) StartProcessWithOptions(ctx context.Context, options ProcessSta
 		return nil, status.Error(codes.DataLoss, "start process response has no process")
 	}
 	return response.GetProcess(), nil
+}
+
+// ListProcessTemplates returns configured template summaries sorted by name.
+func (c *Client) ListProcessTemplates(ctx context.Context) ([]*codev1.ProcessTemplateSummary, error) {
+	response, err := c.processes.ListProcessTemplates(ctx, &codev1.ListProcessTemplatesRequest{})
+	if err != nil {
+		return nil, err
+	}
+	for _, summary := range response.GetTemplates() {
+		if summary == nil || summary.GetName() == "" || summary.GetRevision() == "" {
+			return nil, status.Error(codes.DataLoss, "list process templates response contains an invalid summary")
+		}
+	}
+	return response.GetTemplates(), nil
+}
+
+// GetProcessTemplate returns one public template definition and parameter schema.
+func (c *Client) GetProcessTemplate(ctx context.Context, name string) (*codev1.ProcessTemplate, error) {
+	response, err := c.processes.GetProcessTemplate(ctx, &codev1.GetProcessTemplateRequest{Name: name})
+	if err != nil {
+		return nil, err
+	}
+	if response.GetTemplate() == nil || response.GetTemplate().GetSummary() == nil || response.GetTemplate().GetParametersSchema() == nil {
+		return nil, status.Error(codes.DataLoss, "get process template response is incomplete")
+	}
+	return response.GetTemplate(), nil
+}
+
+// StartProcessFromTemplate renders a configured process template on the
+// controller and launches it without exposing the dynamic argv in ProcessInfo.
+func (c *Client) StartProcessFromTemplate(ctx context.Context, options ProcessTemplateStartOptions) (*codev1.ProcessInfo, error) {
+	response, err := c.processes.StartProcessFromTemplate(ctx, &codev1.StartProcessFromTemplateRequest{
+		TemplateName: options.TemplateName, Parameters: options.Parameters, ProcessName: options.ProcessName,
+		TerminalSize: options.TerminalSize, ExpectedTemplateRevision: options.ExpectedTemplateRevision,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if response.GetProcess() == nil {
+		return nil, status.Error(codes.DataLoss, "start process from template response has no process")
+	}
+	process := response.GetProcess()
+	if process.GetTemplateName() != options.TemplateName || process.GetTemplateRevision() == "" || !process.GetArgumentsRedacted() || len(process.GetArguments()) != 0 {
+		return nil, status.Error(codes.DataLoss, "start process from template response has invalid template origin metadata")
+	}
+	return process, nil
 }
 
 // ListProcesses returns active processes by default. Passing true includes

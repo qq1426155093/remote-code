@@ -6,7 +6,8 @@ Remote Code 是一个面向远程开发任务的 Code Agent 控制平面。它�
 
 > 项目状态：文件与基础进程控制已可运行，包含带 Tab 补全的交互式 CLI、结构化目录树、
 > gRPC controller、流式上传/下载、PTY/pipe 启动、可回放/跟随的持久化输出日志、进程列表、
-> 信号、历史删除、自动回收、重启历史恢复和可重连的远程 PTY attach。controller 也可从多个
+> 信号、历史删除、自动回收、重启历史恢复、可重连的远程 PTY attach，以及由 JSON Schema 和受限
+> Expr 驱动的服务端进程模板。controller 也可从多个
 > `.mcp.yaml` 文件加载 Expr tool，并通过带认证的 Streamable HTTP MCP endpoint 暴露文件与进程能力。
 > Agent 语义仍是后续版本计划。
 
@@ -47,6 +48,9 @@ remote-code:/> logs -n 100 --follow 7aa5daab-e886-4889-9ec3-92d461883091
 # 按 Ctrl-C 停止 follow；远端进程继续运行
 remote-code:/> kill -s TERM -w listing
 remote-code:/> forget listing 'test-*' glob:reused-name
+remote-code:/> templates
+remote-code:/> templates code-agent
+remote-code:/> exec-template --attach --params-file ./agent-parameters.json code-agent
 ```
 
 默认仅允许 loopback 明文监听。远程部署应配置 `--tls-cert`、`--tls-key` 和
@@ -55,11 +59,12 @@ remote-code:/> forget listing 'test-*' glob:reused-name
 [技术方案](docs/technical-design-v1.md)、[通用进程详细设计](docs/process-management-design-v1.md)、
 [进程日志观测详细设计](docs/process-log-observation-design-v1.md)、
 [进程标准输入详细设计](docs/process-input-design-v1.md)和
+[进程模板详细设计](docs/process-template-design-v1.md)以及
 [Controller 配置文件](docs/controller-configuration.md)。可配置 MCP Server 的契约与实现依据见
 [MCP Server 需求](docs/mcp-server-requirements-v1.md)和
 [MCP Server 详细设计](docs/mcp-server-design-v1.md)。
 
-MCP 默认关闭。启用时使用 TOML schema v2，配置独立 HTTP listener、bearer token 和 workspace
+MCP 默认关闭。启用时使用 TOML schema v2 或 v3，配置独立 HTTP listener、bearer token 和 workspace
 之外的定义文件。仓库提供可直接参考并通过启动期编译检查的
 [`file.mcp.yaml`](configs/mcp/file.mcp.yaml) 与
 [`process.mcp.yaml`](configs/mcp/process.mcp.yaml)。`--check-config` 会读取严格 YAML、编译 JSON Schema
@@ -195,6 +200,9 @@ service FileService {
 
 service ProcessService {
   rpc StartProcess(StartProcessRequest) returns (StartProcessResponse);
+  rpc ListProcessTemplates(ListProcessTemplatesRequest) returns (ListProcessTemplatesResponse);
+  rpc GetProcessTemplate(GetProcessTemplateRequest) returns (GetProcessTemplateResponse);
+  rpc StartProcessFromTemplate(StartProcessFromTemplateRequest) returns (StartProcessFromTemplateResponse);
   rpc ListProcesses(ListProcessesRequest) returns (ListProcessesResponse);
   rpc SignalProcess(SignalProcessRequest) returns (SignalProcessResponse);
   rpc DeleteProcess(DeleteProcessRequest) returns (DeleteProcessResponse);
@@ -215,6 +223,12 @@ Linux `tree` 的文本。文件上传和下载采用分块流并用 SHA-256 校�
 USR1、USR2、STOP 或 CONT。`DeleteProcess` 只删除一个终态进程的完整历史目录；
 `BatchDeleteProcesses` 接受多个精确引用或名称 glob，按 UUID 去重并逐项返回删除状态。
 直接子进程始终由 controller `Wait` 回收。
+
+`StartProcessFromTemplate` 接受模板名称、`google.protobuf.Struct` 动态参数、可选进程实例名称和初始
+终端尺寸。controller 先用模板的 JSON Schema 校验参数，再运行只能访问 `parameters` 的纯 Expr，生成
+arguments、cwd 和环境覆盖，最后进入与 `StartProcess` 相同的 validator/runner。模板 executable、I/O
+模式和输入模式由 operator 静态配置；模板定义在启动期编译且必须位于 workspace 外。模板启动的动态
+argv 默认从 `ProcessInfo` 和持久化 metadata 中脱敏，只记录模板名称和 SHA-256 revision。
 
 进程记录位于 `--runtime-dir/<uuid>/`。`metadata.json` 与 `status.json` 保存元数据和状态；
 `logs/` 使用带 stdout/stderr tag、逻辑 offset、CRC 和 tail 索引的 v2 分段格式。PIPE 保留双流

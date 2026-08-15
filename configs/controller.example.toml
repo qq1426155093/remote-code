@@ -1,5 +1,5 @@
-# remote-code-controller configuration, TOML schema version 2.
-version = 2
+# remote-code-controller configuration, TOML schema version 3.
+version = 3
 
 # All file RPCs and relative process working directories are confined here.
 workspace = "/srv/remote-code/workspace"
@@ -27,6 +27,14 @@ max_observers_per_process = 8
 # Store only the path in this file; keep the token in a mode-0600 file.
 # [auth]
 # token_file = "/etc/remote-code/controller.token"
+
+# Process template definitions are trusted operator configuration. Copy the
+# repository examples outside the workspace before enabling them.
+[process_templates]
+definition_files = []
+# definition_files = [
+#   "/etc/remote-code/process-templates/code-agents.process-template.yaml",
+# ]
 
 # MCP is disabled by default. Enabling it requires auth.token_file and at
 # least one definition file outside the workspace. It reuses the global TLS.

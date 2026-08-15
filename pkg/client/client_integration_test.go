@@ -15,11 +15,13 @@ import (
 	"time"
 
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
+	processservice "github.com/qq1426155093/remote-code/internal/process"
 	"github.com/qq1426155093/remote-code/internal/server"
 	client "github.com/qq1426155093/remote-code/pkg/client"
 	"golang.org/x/term"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 func TestClientFileLifecycleOverGRPC(t *testing.T) {
@@ -224,6 +226,87 @@ func TestClientProcessLifecycleOverGRPC(t *testing.T) {
 	}
 	if all, err := remote.ListProcesses(ctx, true); err != nil || len(all) != 0 {
 		t.Fatalf("ListProcesses(all after delete) = %+v, %v", all, err)
+	}
+}
+
+func TestClientProcessTemplateLifecycleOverGRPC(t *testing.T) {
+	t.Setenv("REMOTE_CODE_CLIENT_PROCESS_HELPER", "1")
+	workspace := t.TempDir()
+	definition := filepath.Join(t.TempDir(), "client.process-template.yaml")
+	contents := `version: 1
+language: expr
+templates:
+  - name: client-helper
+    description: Run the gRPC client helper without exposing dynamic values.
+    parameters_schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required: [prompt]
+      additionalProperties: false
+      properties:
+        prompt:
+          type: string
+          description: Sensitive test prompt.
+    command: ` + strconv.Quote(os.Args[0]) + `
+    io_mode: pipe
+    input_mode: disabled
+    render: |-
+      {
+        "arguments": ["-test.run=^TestClientProcessHelper$", "--", "logs"],
+        "working_directory": ".",
+        "environment": {"REMOTE_CODE_TEMPLATE_PROMPT": parameters.prompt}
+      }
+`
+	if err := os.WriteFile(definition, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	controller, err := server.New(server.Config{
+		ListenAddress: "127.0.0.1:0", Workspace: workspace, RuntimeDirectory: t.TempDir(), MaxProcesses: 1,
+		ProcessTemplates: processservice.TemplateConfig{DefinitionFiles: []string{definition}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	serveErrors := make(chan error, 1)
+	go func() { serveErrors <- controller.Serve() }()
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = controller.Shutdown(ctx)
+		select {
+		case <-serveErrors:
+		case <-time.After(5 * time.Second):
+			t.Error("controller did not stop")
+		}
+	})
+	remote := connectClient(t, controller.Address(), "")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if remote.Info().GetProcessTemplateCount() != 1 {
+		t.Fatalf("Info().ProcessTemplateCount = %d", remote.Info().GetProcessTemplateCount())
+	}
+	templates, err := remote.ListProcessTemplates(ctx)
+	if err != nil || len(templates) != 1 || templates[0].GetName() != "client-helper" {
+		t.Fatalf("ListProcessTemplates() = %+v, %v", templates, err)
+	}
+	template, err := remote.GetProcessTemplate(ctx, "client-helper")
+	if err != nil || template.GetParametersSchema() == nil {
+		t.Fatalf("GetProcessTemplate() = %+v, %v", template, err)
+	}
+	parameters, _ := structpb.NewStruct(map[string]any{"prompt": "never-persist-this-prompt"})
+	started, err := remote.StartProcessFromTemplate(ctx, client.ProcessTemplateStartOptions{
+		TemplateName: "client-helper", Parameters: parameters, ProcessName: "templated-client",
+		ExpectedTemplateRevision: template.GetSummary().GetRevision(),
+	})
+	if err != nil {
+		t.Fatalf("StartProcessFromTemplate() error = %v", err)
+	}
+	if started.GetTemplateName() != "client-helper" || !started.GetArgumentsRedacted() || len(started.GetArguments()) != 0 {
+		t.Fatalf("StartProcessFromTemplate() = %+v", started)
+	}
+	invalid, _ := structpb.NewStruct(map[string]any{"prompt": "value", "unknown": true})
+	if _, err := remote.StartProcessFromTemplate(ctx, client.ProcessTemplateStartOptions{TemplateName: "client-helper", Parameters: invalid}); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("StartProcessFromTemplate(invalid parameters) code = %s, error = %v", status.Code(err), err)
 	}
 }
 

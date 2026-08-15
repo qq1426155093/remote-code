@@ -19,6 +19,7 @@ import (
 const (
 	controllerConfigVersionV1 = 1
 	controllerConfigVersionV2 = 2
+	controllerConfigVersionV3 = 3
 	maxControllerConfigBytes  = 1 << 20
 	maxConfiguredProcesses    = 4096
 )
@@ -53,7 +54,12 @@ type controllerFileConfig struct {
 		RetentionAfterExit *string `toml:"retention_after_exit"`
 		MaxObservers       *int    `toml:"max_observers_per_process"`
 	} `toml:"process_logs"`
-	MCP *mcpFileConfig `toml:"mcp"`
+	ProcessTemplates *processTemplateFileConfig `toml:"process_templates"`
+	MCP              *mcpFileConfig             `toml:"mcp"`
+}
+
+type processTemplateFileConfig struct {
+	DefinitionFiles *[]string `toml:"definition_files"`
 }
 
 type mcpFileConfig struct {
@@ -218,11 +224,14 @@ func loadControllerConfig(name string) (controllerFileConfig, error) {
 		}
 		return controllerFileConfig{}, fmt.Errorf("decode controller config %q: %s", name, details)
 	}
-	if config.Version != controllerConfigVersionV1 && config.Version != controllerConfigVersionV2 {
-		return controllerFileConfig{}, fmt.Errorf("controller config version must be %d or %d", controllerConfigVersionV1, controllerConfigVersionV2)
+	if config.Version != controllerConfigVersionV1 && config.Version != controllerConfigVersionV2 && config.Version != controllerConfigVersionV3 {
+		return controllerFileConfig{}, fmt.Errorf("controller config version must be %d, %d, or %d", controllerConfigVersionV1, controllerConfigVersionV2, controllerConfigVersionV3)
 	}
 	if config.Version == controllerConfigVersionV1 && config.MCP != nil {
 		return controllerFileConfig{}, errors.New("controller config version 1 does not support the mcp table")
+	}
+	if config.Version < controllerConfigVersionV3 && config.ProcessTemplates != nil {
+		return controllerFileConfig{}, fmt.Errorf("controller config version %d does not support the process_templates table", config.Version)
 	}
 	return config, nil
 }
@@ -273,6 +282,9 @@ func applyControllerFileConfig(options *controllerOptions, config controllerFile
 	}
 	if config.ProcessLogs.MaxObservers != nil {
 		options.serverConfig.ProcessLogs.MaxObservers = *config.ProcessLogs.MaxObservers
+	}
+	if config.ProcessTemplates != nil && config.ProcessTemplates.DefinitionFiles != nil {
+		options.serverConfig.ProcessTemplates.DefinitionFiles = append([]string(nil), (*config.ProcessTemplates.DefinitionFiles)...)
 	}
 	if config.MCP != nil {
 		if err := applyMCPFileConfig(&options.serverConfig.MCP, *config.MCP); err != nil {

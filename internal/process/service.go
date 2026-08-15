@@ -54,6 +54,7 @@ type Config struct {
 	RuntimeDirectory string
 	MaxProcesses     int
 	Logs             LogConfig
+	Templates        *TemplateRegistry
 }
 
 // Service manages process lifecycle and implements the gRPC process API.
@@ -63,6 +64,7 @@ type Service struct {
 	root         *os.Root
 	store        *recordStore
 	maxProcesses int
+	templates    *TemplateRegistry
 
 	mu          sync.Mutex
 	starts      sync.WaitGroup
@@ -97,6 +99,12 @@ type validatedStart struct {
 	terminalSize     *codev1.TerminalSize
 	environment      []string
 	environmentKeys  []string
+}
+
+type startOrigin struct {
+	templateName     string
+	templateRevision string
+	redactArguments  bool
 }
 
 type batchDeleteTarget struct {
@@ -147,7 +155,10 @@ func New(config Config) (*Service, error) {
 		root: root, store: store, maxProcesses: maxProcesses,
 		processes: make(map[string]*managedProcess), activeNames: make(map[string]string),
 		byName: make(map[string]string), byPID: make(map[int64]string),
-		logConfig: logConfig, janitorStop: make(chan struct{}), janitorDone: make(chan struct{}),
+		logConfig: logConfig, janitorStop: make(chan struct{}), janitorDone: make(chan struct{}), templates: config.Templates,
+	}
+	if service.templates == nil {
+		service.templates = &TemplateRegistry{byName: make(map[string]*compiledProcessTemplate)}
 	}
 	loaded, err := store.load()
 	if err != nil {
@@ -179,8 +190,17 @@ func (s *Service) MaxProcesses() int {
 	return s.maxProcesses
 }
 
+// ProcessTemplateCount returns the number of immutable configured templates.
+func (s *Service) ProcessTemplateCount() int {
+	return s.templates.Count()
+}
+
 // StartProcess launches a concrete command in its own process group.
 func (s *Service) StartProcess(ctx context.Context, request *codev1.StartProcessRequest) (*codev1.StartProcessResponse, error) {
+	return s.startProcess(ctx, request, startOrigin{})
+}
+
+func (s *Service) startProcess(ctx context.Context, request *codev1.StartProcessRequest, origin startOrigin) (*codev1.StartProcessResponse, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, status.FromContextError(err).Err()
 	}
@@ -200,13 +220,18 @@ func (s *Service) StartProcess(ctx context.Context, request *codev1.StartProcess
 	if start.name == "" {
 		start.name = automaticProcessName(start.command, id)
 	}
+	publicArguments := append([]string(nil), start.arguments...)
+	if origin.redactArguments {
+		publicArguments = nil
+	}
 	record := &managedProcess{
 		info: &codev1.ProcessInfo{
 			Id: id, Name: start.name, IoMode: start.ioMode, State: codev1.ProcessState_PROCESS_STATE_STARTING,
-			Command: start.command, Arguments: append([]string(nil), start.arguments...),
+			Command: start.command, Arguments: publicArguments,
 			WorkingDirectory: displayWorkingDirectory(start.workingDirectory),
 			CreatedAt:        timestamppb.Now(), EnvironmentKeys: append([]string(nil), start.environmentKeys...),
 			InputMode: start.inputMode, InputState: codev1.ProcessInputState_PROCESS_INPUT_STATE_UNAVAILABLE,
+			TemplateName: origin.templateName, TemplateRevision: origin.templateRevision, ArgumentsRedacted: origin.redactArguments,
 		},
 		done: make(chan struct{}),
 	}

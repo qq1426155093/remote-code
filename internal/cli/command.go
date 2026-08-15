@@ -149,6 +149,8 @@ var defaultCommandRegistry = mustCommandRegistry([]commandSpec{
 	{name: "mv", arguments: "[-f] SOURCE DESTINATION", handler: (*REPL).move, complete: completeRemotePathWithOption("-f", 2, completeAnyPath)},
 	{name: "chmod", arguments: "OCTAL_MODE REMOTE_PATH", handler: (*REPL).chmod, complete: (*commandCompleter).completeChmod},
 	{name: "exec", arguments: "[--name NAME] [--pipe|--pty] [--stdin|--attach] [--cwd REMOTE_DIR] [-e KEY=VALUE ...] [--] CMD [ARG ...]", handler: (*REPL).startProcess, complete: (*commandCompleter).completeExec},
+	{name: "templates", arguments: "[TEMPLATE]", handler: (*REPL).listProcessTemplates, complete: (*commandCompleter).completeProcessTemplateName},
+	{name: "exec-template", arguments: "[--name NAME] [--attach] [--params JSON|--params-file LOCAL_FILE] TEMPLATE", handler: (*REPL).startProcessFromTemplate, complete: (*commandCompleter).completeExecTemplate},
 	{name: "ps", arguments: "[-a]", handler: (*REPL).listProcesses, complete: (*commandCompleter).completePS},
 	{name: "kill", arguments: "[-s SIGNAL] [-w] PROCESS", handler: (*REPL).signalProcess, complete: (*commandCompleter).completeKill},
 	{name: "stdin", arguments: "PROCESS", handler: (*REPL).writeProcessInput, complete: (*commandCompleter).completeProcessInput},

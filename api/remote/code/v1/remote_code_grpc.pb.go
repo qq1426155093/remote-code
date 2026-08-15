@@ -524,13 +524,16 @@ var FileService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	ProcessService_StartProcess_FullMethodName         = "/remote.code.v1.ProcessService/StartProcess"
-	ProcessService_ListProcesses_FullMethodName        = "/remote.code.v1.ProcessService/ListProcesses"
-	ProcessService_SignalProcess_FullMethodName        = "/remote.code.v1.ProcessService/SignalProcess"
-	ProcessService_DeleteProcess_FullMethodName        = "/remote.code.v1.ProcessService/DeleteProcess"
-	ProcessService_BatchDeleteProcesses_FullMethodName = "/remote.code.v1.ProcessService/BatchDeleteProcesses"
-	ProcessService_ObserveProcessLogs_FullMethodName   = "/remote.code.v1.ProcessService/ObserveProcessLogs"
-	ProcessService_StreamProcessInput_FullMethodName   = "/remote.code.v1.ProcessService/StreamProcessInput"
+	ProcessService_StartProcess_FullMethodName             = "/remote.code.v1.ProcessService/StartProcess"
+	ProcessService_ListProcessTemplates_FullMethodName     = "/remote.code.v1.ProcessService/ListProcessTemplates"
+	ProcessService_GetProcessTemplate_FullMethodName       = "/remote.code.v1.ProcessService/GetProcessTemplate"
+	ProcessService_StartProcessFromTemplate_FullMethodName = "/remote.code.v1.ProcessService/StartProcessFromTemplate"
+	ProcessService_ListProcesses_FullMethodName            = "/remote.code.v1.ProcessService/ListProcesses"
+	ProcessService_SignalProcess_FullMethodName            = "/remote.code.v1.ProcessService/SignalProcess"
+	ProcessService_DeleteProcess_FullMethodName            = "/remote.code.v1.ProcessService/DeleteProcess"
+	ProcessService_BatchDeleteProcesses_FullMethodName     = "/remote.code.v1.ProcessService/BatchDeleteProcesses"
+	ProcessService_ObserveProcessLogs_FullMethodName       = "/remote.code.v1.ProcessService/ObserveProcessLogs"
+	ProcessService_StreamProcessInput_FullMethodName       = "/remote.code.v1.ProcessService/StreamProcessInput"
 )
 
 // ProcessServiceClient is the client API for ProcessService service.
@@ -538,6 +541,9 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ProcessServiceClient interface {
 	StartProcess(ctx context.Context, in *StartProcessRequest, opts ...grpc.CallOption) (*StartProcessResponse, error)
+	ListProcessTemplates(ctx context.Context, in *ListProcessTemplatesRequest, opts ...grpc.CallOption) (*ListProcessTemplatesResponse, error)
+	GetProcessTemplate(ctx context.Context, in *GetProcessTemplateRequest, opts ...grpc.CallOption) (*GetProcessTemplateResponse, error)
+	StartProcessFromTemplate(ctx context.Context, in *StartProcessFromTemplateRequest, opts ...grpc.CallOption) (*StartProcessFromTemplateResponse, error)
 	ListProcesses(ctx context.Context, in *ListProcessesRequest, opts ...grpc.CallOption) (*ListProcessesResponse, error)
 	SignalProcess(ctx context.Context, in *SignalProcessRequest, opts ...grpc.CallOption) (*SignalProcessResponse, error)
 	DeleteProcess(ctx context.Context, in *DeleteProcessRequest, opts ...grpc.CallOption) (*DeleteProcessResponse, error)
@@ -558,6 +564,36 @@ func (c *processServiceClient) StartProcess(ctx context.Context, in *StartProces
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(StartProcessResponse)
 	err := c.cc.Invoke(ctx, ProcessService_StartProcess_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *processServiceClient) ListProcessTemplates(ctx context.Context, in *ListProcessTemplatesRequest, opts ...grpc.CallOption) (*ListProcessTemplatesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListProcessTemplatesResponse)
+	err := c.cc.Invoke(ctx, ProcessService_ListProcessTemplates_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *processServiceClient) GetProcessTemplate(ctx context.Context, in *GetProcessTemplateRequest, opts ...grpc.CallOption) (*GetProcessTemplateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetProcessTemplateResponse)
+	err := c.cc.Invoke(ctx, ProcessService_GetProcessTemplate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *processServiceClient) StartProcessFromTemplate(ctx context.Context, in *StartProcessFromTemplateRequest, opts ...grpc.CallOption) (*StartProcessFromTemplateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StartProcessFromTemplateResponse)
+	err := c.cc.Invoke(ctx, ProcessService_StartProcessFromTemplate_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -641,6 +677,9 @@ type ProcessService_StreamProcessInputClient = grpc.BidiStreamingClient[StreamPr
 // for forward compatibility.
 type ProcessServiceServer interface {
 	StartProcess(context.Context, *StartProcessRequest) (*StartProcessResponse, error)
+	ListProcessTemplates(context.Context, *ListProcessTemplatesRequest) (*ListProcessTemplatesResponse, error)
+	GetProcessTemplate(context.Context, *GetProcessTemplateRequest) (*GetProcessTemplateResponse, error)
+	StartProcessFromTemplate(context.Context, *StartProcessFromTemplateRequest) (*StartProcessFromTemplateResponse, error)
 	ListProcesses(context.Context, *ListProcessesRequest) (*ListProcessesResponse, error)
 	SignalProcess(context.Context, *SignalProcessRequest) (*SignalProcessResponse, error)
 	DeleteProcess(context.Context, *DeleteProcessRequest) (*DeleteProcessResponse, error)
@@ -659,6 +698,15 @@ type UnimplementedProcessServiceServer struct{}
 
 func (UnimplementedProcessServiceServer) StartProcess(context.Context, *StartProcessRequest) (*StartProcessResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method StartProcess not implemented")
+}
+func (UnimplementedProcessServiceServer) ListProcessTemplates(context.Context, *ListProcessTemplatesRequest) (*ListProcessTemplatesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListProcessTemplates not implemented")
+}
+func (UnimplementedProcessServiceServer) GetProcessTemplate(context.Context, *GetProcessTemplateRequest) (*GetProcessTemplateResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetProcessTemplate not implemented")
+}
+func (UnimplementedProcessServiceServer) StartProcessFromTemplate(context.Context, *StartProcessFromTemplateRequest) (*StartProcessFromTemplateResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method StartProcessFromTemplate not implemented")
 }
 func (UnimplementedProcessServiceServer) ListProcesses(context.Context, *ListProcessesRequest) (*ListProcessesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListProcesses not implemented")
@@ -713,6 +761,60 @@ func _ProcessService_StartProcess_Handler(srv interface{}, ctx context.Context, 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ProcessServiceServer).StartProcess(ctx, req.(*StartProcessRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ProcessService_ListProcessTemplates_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListProcessTemplatesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProcessServiceServer).ListProcessTemplates(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProcessService_ListProcessTemplates_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProcessServiceServer).ListProcessTemplates(ctx, req.(*ListProcessTemplatesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ProcessService_GetProcessTemplate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetProcessTemplateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProcessServiceServer).GetProcessTemplate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProcessService_GetProcessTemplate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProcessServiceServer).GetProcessTemplate(ctx, req.(*GetProcessTemplateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ProcessService_StartProcessFromTemplate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StartProcessFromTemplateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProcessServiceServer).StartProcessFromTemplate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProcessService_StartProcessFromTemplate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProcessServiceServer).StartProcessFromTemplate(ctx, req.(*StartProcessFromTemplateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -817,6 +919,18 @@ var ProcessService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "StartProcess",
 			Handler:    _ProcessService_StartProcess_Handler,
+		},
+		{
+			MethodName: "ListProcessTemplates",
+			Handler:    _ProcessService_ListProcessTemplates_Handler,
+		},
+		{
+			MethodName: "GetProcessTemplate",
+			Handler:    _ProcessService_GetProcessTemplate_Handler,
+		},
+		{
+			MethodName: "StartProcessFromTemplate",
+			Handler:    _ProcessService_StartProcessFromTemplate_Handler,
 		},
 		{
 			MethodName: "ListProcesses",

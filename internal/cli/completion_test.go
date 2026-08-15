@@ -15,6 +15,7 @@ type fakeCompletionClient struct {
 	files     map[string][]*codev1.FileInfo
 	requests  []string
 	processes []*codev1.ProcessInfo
+	templates []*codev1.ProcessTemplateSummary
 }
 
 func (f *fakeCompletionClient) List(_ context.Context, remotePath string) ([]*codev1.FileInfo, error) {
@@ -24,6 +25,10 @@ func (f *fakeCompletionClient) List(_ context.Context, remotePath string) ([]*co
 
 func (f *fakeCompletionClient) ListProcesses(context.Context, ...bool) ([]*codev1.ProcessInfo, error) {
 	return f.processes, nil
+}
+
+func (f *fakeCompletionClient) ListProcessTemplates(context.Context) ([]*codev1.ProcessTemplateSummary, error) {
+	return f.templates, nil
 }
 
 func TestCompleterSuggestsCommandsOptionsAndArguments(t *testing.T) {
@@ -37,7 +42,7 @@ func TestCompleterSuggestsCommandsOptionsAndArguments(t *testing.T) {
 		{Name: "worker", State: codev1.ProcessState_PROCESS_STATE_RUNNING},
 		{Name: "finished", State: codev1.ProcessState_PROCESS_STATE_EXITED},
 		{Name: "failed", State: codev1.ProcessState_PROCESS_STATE_FAILED},
-	}}
+	}, templates: []*codev1.ProcessTemplateSummary{{Name: "agent"}}}
 	completer := newCompleter(client, func() string { return "." }, time.Second, defaultCommandRegistry)
 	tests := []struct {
 		name       string
@@ -53,6 +58,9 @@ func TestCompleterSuggestsCommandsOptionsAndArguments(t *testing.T) {
 		{name: "quoted remote file", line: "cat \"hello", want: []string{" world.txt\" "}, wantOffset: 6},
 		{name: "mode hints", line: "chmod 064", want: []string{"0 ", "4 "}, wantOffset: 3},
 		{name: "exec options", line: "exec --p", want: []string{"ipe ", "ty "}, wantOffset: 3},
+		{name: "template name", line: "templates ag", want: []string{"ent "}, wantOffset: 2},
+		{name: "exec template name", line: "exec-template ag", want: []string{"ent "}, wantOffset: 2},
+		{name: "exec template options", line: "exec-template --a", want: []string{"ttach "}, wantOffset: 3},
 		{name: "ps all", line: "ps -", want: []string{"a "}, wantOffset: 1},
 		{name: "signal", line: "kill -s T", want: []string{"ERM "}, wantOffset: 1},
 		{name: "running process", line: "kill wor", want: []string{"ker "}, wantOffset: 3},

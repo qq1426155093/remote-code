@@ -21,6 +21,10 @@ type completionProcessClient interface {
 	ListProcesses(context.Context, ...bool) ([]*codev1.ProcessInfo, error)
 }
 
+type completionTemplateClient interface {
+	ListProcessTemplates(context.Context) ([]*codev1.ProcessTemplateSummary, error)
+}
+
 type commandCompleter struct {
 	client   completionFileClient
 	cwd      func() string
@@ -278,6 +282,94 @@ func (c *commandCompleter) completeExec(previous []string, current string) []com
 		}
 	}
 	return candidates
+}
+
+func (c *commandCompleter) completeProcessTemplateName(previous []string, current string) []completionCandidate {
+	if len(previous) != 0 || strings.HasPrefix(current, "-") {
+		return nil
+	}
+	return c.processTemplateCandidates()
+}
+
+func (c *commandCompleter) completeExecTemplate(previous []string, current string) []completionCandidate {
+	if len(previous) > 0 {
+		switch previous[len(previous)-1] {
+		case "--params-file":
+			return completeLocalPath(current, completeFiles)
+		case "--name", "--params":
+			return nil
+		}
+	}
+	used := make(map[string]bool)
+	expectValue := false
+	templateSeen := false
+	optionsEnded := false
+	for _, argument := range previous {
+		if expectValue {
+			expectValue = false
+			continue
+		}
+		switch {
+		case optionsEnded:
+			templateSeen = true
+		case argument == "--name" || argument == "--params" || argument == "--params-file":
+			if argument != "--name" {
+				used["parameters"] = true
+			} else {
+				used[argument] = true
+			}
+			expectValue = true
+		case argument == "--attach":
+			used[argument] = true
+		case argument == "--":
+			optionsEnded = true
+		default:
+			templateSeen = true
+		}
+	}
+	if templateSeen {
+		return nil
+	}
+	var candidates []completionCandidate
+	if !optionsEnded && (current == "" || strings.HasPrefix(current, "-")) {
+		for _, option := range []struct {
+			value string
+			key   string
+		}{
+			{value: "--name", key: "--name"},
+			{value: "--attach", key: "--attach"},
+			{value: "--params", key: "parameters"},
+			{value: "--params-file", key: "parameters"},
+		} {
+			if !used[option.key] {
+				candidates = append(candidates, completionCandidate{value: option.value, finish: true})
+			}
+		}
+	}
+	if current == "" || !strings.HasPrefix(current, "-") {
+		candidates = append(candidates, c.processTemplateCandidates()...)
+	}
+	return candidates
+}
+
+func (c *commandCompleter) processTemplateCandidates() []completionCandidate {
+	client, ok := c.client.(completionTemplateClient)
+	if !ok {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+	templates, err := client.ListProcessTemplates(ctx)
+	if err != nil {
+		return nil
+	}
+	result := make([]completionCandidate, 0, len(templates))
+	for _, template := range templates {
+		if template != nil && template.GetName() != "" {
+			result = append(result, completionCandidate{value: template.GetName(), finish: true})
+		}
+	}
+	return result
 }
 
 func (c *commandCompleter) completeProcessAttach(previous []string, current string) []completionCandidate {

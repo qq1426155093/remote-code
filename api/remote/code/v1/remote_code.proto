@@ -3,6 +3,7 @@ syntax = "proto3";
 package remote.code.v1;
 
 import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
 import "google/rpc/status.proto";
 
 option go_package = "github.com/qq1426155093/remote-code/api/remote/code/v1;codev1";
@@ -25,6 +26,9 @@ service FileService {
 
 service ProcessService {
   rpc StartProcess(StartProcessRequest) returns (StartProcessResponse);
+  rpc ListProcessTemplates(ListProcessTemplatesRequest) returns (ListProcessTemplatesResponse);
+  rpc GetProcessTemplate(GetProcessTemplateRequest) returns (GetProcessTemplateResponse);
+  rpc StartProcessFromTemplate(StartProcessFromTemplateRequest) returns (StartProcessFromTemplateResponse);
   rpc ListProcesses(ListProcessesRequest) returns (ListProcessesResponse);
   rpc SignalProcess(SignalProcessRequest) returns (SignalProcessResponse);
   rpc DeleteProcess(DeleteProcessRequest) returns (DeleteProcessResponse);
@@ -42,6 +46,7 @@ message GetInfoResponse {
   int64 max_upload_bytes = 4;
   reserved 5;
   uint32 max_processes = 6;
+  uint32 process_template_count = 7;
 }
 
 enum FileType {
@@ -258,6 +263,13 @@ message ProcessInfo {
   repeated string environment_keys = 14;
   ProcessInputMode input_mode = 15;
   ProcessInputState input_state = 16;
+  // Set for processes created through StartProcessFromTemplate.
+  string template_name = 17;
+  // SHA-256 revision of the immutable template used for this process.
+  string template_revision = 18;
+  // True when dynamic argv was deliberately omitted from ProcessInfo and
+  // persistent metadata.
+  bool arguments_redacted = 19;
 }
 
 message ProcessReference {
@@ -285,6 +297,49 @@ message StartProcessRequest {
 }
 
 message StartProcessResponse {
+  ProcessInfo process = 1;
+}
+
+message ProcessTemplateSummary {
+  string name = 1;
+  string description = 2;
+  string revision = 3;
+  ProcessIOMode io_mode = 4;
+  ProcessInputMode input_mode = 5;
+}
+
+message ProcessTemplate {
+  ProcessTemplateSummary summary = 1;
+  // JSON Schema Draft 2020-12 object accepted by this template.
+  google.protobuf.Struct parameters_schema = 2;
+}
+
+message ListProcessTemplatesRequest {}
+
+message ListProcessTemplatesResponse {
+  repeated ProcessTemplateSummary templates = 1;
+}
+
+message GetProcessTemplateRequest {
+  string name = 1;
+}
+
+message GetProcessTemplateResponse {
+  ProcessTemplate template = 1;
+}
+
+message StartProcessFromTemplateRequest {
+  string template_name = 1;
+  // Unset is equivalent to an empty object.
+  google.protobuf.Struct parameters = 2;
+  string process_name = 3;
+  // Optional initial size; valid only for a PTY template.
+  TerminalSize terminal_size = 4;
+  // When non-empty, the launch fails if the current template revision differs.
+  string expected_template_revision = 5;
+}
+
+message StartProcessFromTemplateResponse {
   ProcessInfo process = 1;
 }
 

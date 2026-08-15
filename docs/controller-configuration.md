@@ -22,10 +22,10 @@ remote-code-controller \
 除 `max_processes` 被命令行覆盖外，其它值仍来自 TOML。布尔值可以显式反向覆盖，例如
 `--allow-insecure-remote=false`。
 
-## TOML schema v1 与 v2
+## TOML schema v1、v2 与 v3
 
 ```toml
-version = 2
+version = 3
 workspace = "/srv/remote-code/workspace"
 listen_address = "127.0.0.1:9443"
 runtime_directory = "/var/run/remote-code-controller"
@@ -46,6 +46,11 @@ key_file = "/etc/remote-code/tls/server.key"
 
 [auth]
 token_file = "/etc/remote-code/controller.token"
+
+[process_templates]
+definition_files = [
+  "/etc/remote-code/process-templates/code-agents.process-template.yaml",
+]
 
 [mcp]
 enabled = true
@@ -73,8 +78,9 @@ max_tool_timeout = "5m"
 tool_list_page_size = 100
 ```
 
-`version` 必须存在。schema v1 继续兼容，但不允许 `[mcp]`；schema v2 可省略 `[mcp]`，此时 MCP
-保持关闭。TLS certificate/key 必须同时配置。认证配置只接受 token 文件路径，
+`version` 必须存在。schema v1 继续兼容，但不允许 `[mcp]`；schema v2 增加 MCP；schema v3 增加
+`[process_templates]`。v3 可省略该 table 或配置空 `definition_files`，此时没有进程模板。TLS
+certificate/key 必须同时配置。认证配置只接受 token 文件路径，
 不允许直接把 token 放进 TOML。所有相对路径按 controller 进程的当前工作目录解释；生产
 配置建议使用绝对路径。
 
@@ -99,6 +105,12 @@ controller 拒绝启动。配置文件最大 1 MiB。
 | `tls.certificate_file` | `--tls-cert` | 空 |
 | `tls.key_file` | `--tls-key` | 空 |
 | `auth.token_file` | `--token-file` | 空 |
+
+`process_templates.definition_files` 首版不提供命令行覆盖。每个文件必须以
+`.process-template.yaml` 结尾，是 workspace 外的普通文件，且最终路径不能是符号链接。模板文件使用
+严格 YAML、JSON Schema Draft 2020-12 和纯 Expr 渲染；完整字段、安全边界和示例见
+[进程模板详细设计](process-template-design-v1.md)以及
+[`code-agents.process-template.yaml`](../configs/process-templates/code-agents.process-template.yaml)。
 
 MCP 字段首版不提供命令行覆盖，以免列表字段产生不明确的替换/追加语义。默认值如下：
 
@@ -138,5 +150,6 @@ remote-code-controller --config /etc/remote-code/controller.toml --check-config
 成功时输出 `configuration OK`。日志尺寸包含 segment 与索引；segment 和单进程上限不得小于
 256 KiB，总日志上限不得小于单进程上限，保留周期不能为负数，单进程观察者上限为 1–1024。
 校验还包含 schema、字段类型、范围、TLS 配对与证书内容、明文远端监听策略、workspace 目录、token
-文件，以及全部 MCP YAML/JSON Schema/Expr/capability。listener 是否可绑定以及 runtime 目录创建仍在
-实际启动时验证；检查过程不会执行 tool 或 host function。
+文件、全部进程模板 YAML/JSON Schema/Expr，以及全部 MCP YAML/JSON Schema/Expr/capability。listener
+是否可绑定以及 runtime 目录创建仍在实际启动时验证；检查过程不会渲染模板、执行 tool 或调用 host
+function。

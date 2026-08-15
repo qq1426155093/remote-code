@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -89,7 +90,7 @@ func TestLoadControllerConfigRejectsInvalidFiles(t *testing.T) {
 		want     string
 	}{
 		{name: "missing version", contents: `workspace = "/work"`, want: "version must be 1"},
-		{name: "future version", contents: "version = 3\n", want: "version must be 1 or 2"},
+		{name: "future version", contents: "version = 4\n", want: "version must be 1, 2, or 3"},
 		{name: "unknown field", contents: "version = 1\nmax_proceses = 2\n", want: "unknown field"},
 		{name: "wrong type", contents: "version = 1\nmax_processes = \"many\"\n", want: "cannot decode"},
 		{name: "duplicate key", contents: "version = 1\nmax_processes = 2\nmax_processes = 3\n", want: "already defined"},
@@ -143,6 +144,35 @@ max_tool_timeout = "2m"
 	v1WithMCP := writeControllerConfig(t, "version = 1\n[mcp]\nenabled = false\n")
 	if _, err := loadControllerConfig(v1WithMCP); err == nil || !strings.Contains(err.Error(), "version 1") {
 		t.Fatalf("v1 MCP error = %v", err)
+	}
+}
+
+func TestLoadControllerConfigV3ProcessTemplates(t *testing.T) {
+	definition := filepath.Join(t.TempDir(), "agents.process-template.yaml")
+	configFile := writeControllerConfig(t, `
+version = 3
+workspace = "/work"
+
+[process_templates]
+definition_files = ["`+definition+`"]
+`)
+	file, err := loadControllerConfig(configFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := defaultControllerOptions()
+	if err := applyControllerFileConfig(&options, file); err != nil {
+		t.Fatal(err)
+	}
+	if len(options.serverConfig.ProcessTemplates.DefinitionFiles) != 1 || options.serverConfig.ProcessTemplates.DefinitionFiles[0] != definition {
+		t.Fatalf("process template config = %+v", options.serverConfig.ProcessTemplates)
+	}
+
+	for _, version := range []int{1, 2} {
+		name := writeControllerConfig(t, fmt.Sprintf("version = %d\n[process_templates]\ndefinition_files = []\n", version))
+		if _, err := loadControllerConfig(name); err == nil || !strings.Contains(err.Error(), "does not support the process_templates table") {
+			t.Fatalf("loadControllerConfig(version %d with templates) error = %v", version, err)
+		}
 	}
 }
 
@@ -281,6 +311,49 @@ enabled = true
 listen_address = "127.0.0.1:0"
 definition_files = ["`+definition+`"]
 allowed_host_capabilities = []
+`)
+	var stdout bytes.Buffer
+	if err := runController([]string{"--config", configFile, "--check-config"}, &stdout, &bytes.Buffer{}); err != nil {
+		t.Fatalf("runController() error = %v", err)
+	}
+	if stdout.String() != "configuration OK\n" {
+		t.Fatalf("output = %q", stdout.String())
+	}
+}
+
+func TestRunControllerChecksProcessTemplatesWithoutListening(t *testing.T) {
+	workspace := t.TempDir()
+	definition := filepath.Join(t.TempDir(), "check.process-template.yaml")
+	definitionYAML := `
+version: 1
+language: expr
+templates:
+  - name: check
+    description: Check process template configuration.
+    parameters_schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required: [cwd]
+      additionalProperties: false
+      properties:
+        cwd:
+          type: string
+          description: Workspace-relative directory.
+    command: check-command
+    io_mode: pipe
+    input_mode: disabled
+    render: |-
+      {"arguments": [], "working_directory": parameters.cwd, "environment": {}}
+`
+	if err := os.WriteFile(definition, []byte(strings.TrimSpace(definitionYAML)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	configFile := writeControllerConfig(t, `
+version = 3
+workspace = "`+workspace+`"
+runtime_directory = "`+t.TempDir()+`"
+[process_templates]
+definition_files = ["`+definition+`"]
 `)
 	var stdout bytes.Buffer
 	if err := runController([]string{"--config", configFile, "--check-config"}, &stdout, &bytes.Buffer{}); err != nil {

@@ -1,0 +1,36 @@
+version: 1
+language: expr
+
+templates:
+  - name: code-agent
+    description: Example interactive code agent with a model and initial prompt.
+    parameters_schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required: [model, prompt, working_directory]
+      additionalProperties: false
+      properties:
+        model:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Model identifier accepted by the configured agent executable.
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 32768
+          description: Initial task prompt; controller process metadata will not persist it.
+        working_directory:
+          type: string
+          minLength: 1
+          maxLength: 4096
+          description: Workspace-relative directory in which to start the agent.
+    command: agent-command
+    io_mode: pty
+    input_mode: managed
+    render: |-
+      {
+        "arguments": ["--model", parameters.model, "--prompt", parameters.prompt],
+        "working_directory": parameters.working_directory,
+        "environment": {}
+      }

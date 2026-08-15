@@ -36,14 +36,17 @@ type Config struct {
 	RuntimeDirectory    string
 	MaxProcesses        int
 	ProcessLogs         processservice.LogConfig
+	ProcessTemplates    processservice.TemplateConfig
 	MCP                 mcpserver.Config
 }
 
-// Prepared contains validated controller configuration and compiled MCP tools.
-// Preparing does not bind listeners or invoke any tool host function.
+// Prepared contains validated controller configuration, compiled process
+// templates, and compiled MCP tools. Preparing does not bind listeners, render
+// a process template, or invoke any tool host function.
 type Prepared struct {
-	Config Config
-	MCP    *mcpserver.Prepared
+	Config           Config
+	ProcessTemplates *processservice.TemplateRegistry
+	MCP              *mcpserver.Prepared
 }
 
 // Server owns the listener, gRPC server and workspace handle.
@@ -90,11 +93,15 @@ func Prepare(config Config) (*Prepared, error) {
 	config.MCP.Token = config.Token
 	config.MCP.TLSCertificateFile = config.TLSCertificateFile
 	config.MCP.TLSKeyFile = config.TLSKeyFile
+	processTemplates, err := processservice.PrepareTemplates(config.ProcessTemplates, config.Workspace)
+	if err != nil {
+		return nil, fmt.Errorf("prepare process templates: %w", err)
+	}
 	mcpPrepared, err := mcpserver.Prepare(config.MCP, config.Workspace, config.ListenAddress)
 	if err != nil {
 		return nil, fmt.Errorf("prepare MCP server: %w", err)
 	}
-	return &Prepared{Config: config, MCP: mcpPrepared}, nil
+	return &Prepared{Config: config, ProcessTemplates: processTemplates, MCP: mcpPrepared}, nil
 }
 
 // NewPrepared creates services and binds listeners from prepared configuration.
@@ -110,7 +117,7 @@ func NewPrepared(prepared *Prepared) (*Server, error) {
 	}
 	processService, err := processservice.New(processservice.Config{
 		Workspace: config.Workspace, RuntimeDirectory: config.RuntimeDirectory, MaxProcesses: config.MaxProcesses,
-		Logs: config.ProcessLogs,
+		Logs: config.ProcessLogs, Templates: prepared.ProcessTemplates,
 	})
 	if err != nil {
 		_ = fileService.Close()
@@ -251,11 +258,12 @@ type controllerService struct {
 
 func (s *controllerService) GetInfo(context.Context, *codev1.GetInfoRequest) (*codev1.GetInfoResponse, error) {
 	return &codev1.GetInfoResponse{
-		ControllerVersion: version.Version,
-		ApiVersion:        version.APIVersion,
-		WorkspaceName:     s.files.WorkspaceName(),
-		MaxUploadBytes:    s.files.MaxUploadBytes(),
-		MaxProcesses:      uint32(s.processes.MaxProcesses()),
+		ControllerVersion:    version.Version,
+		ApiVersion:           version.APIVersion,
+		WorkspaceName:        s.files.WorkspaceName(),
+		MaxUploadBytes:       s.files.MaxUploadBytes(),
+		MaxProcesses:         uint32(s.processes.MaxProcesses()),
+		ProcessTemplateCount: uint32(s.processes.ProcessTemplateCount()),
 	}, nil
 }
 

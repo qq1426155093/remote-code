@@ -304,8 +304,10 @@ func processInfoJSON(process *codev1.ProcessInfo) any {
 		"state":   strings.ToLower(strings.TrimPrefix(process.GetState().String(), "PROCESS_STATE_")),
 		"command": process.GetCommand(), "arguments": append([]string(nil), process.GetArguments()...),
 		"working_directory": process.GetWorkingDirectory(), "environment_keys": append([]string(nil), process.GetEnvironmentKeys()...),
-		"input_mode":  strings.ToLower(strings.TrimPrefix(process.GetInputMode().String(), "PROCESS_INPUT_MODE_")),
-		"input_state": strings.ToLower(strings.TrimPrefix(process.GetInputState().String(), "PROCESS_INPUT_STATE_")),
+		"input_mode":    strings.ToLower(strings.TrimPrefix(process.GetInputMode().String(), "PROCESS_INPUT_MODE_")),
+		"input_state":   strings.ToLower(strings.TrimPrefix(process.GetInputState().String(), "PROCESS_INPUT_STATE_")),
+		"template_name": process.GetTemplateName(), "template_revision": process.GetTemplateRevision(),
+		"arguments_redacted": process.GetArgumentsRedacted(),
 	}
 	if process.GetCreatedAt() != nil {
 		result["created_at"] = process.GetCreatedAt().AsTime().UTC().Format("2006-01-02T15:04:05.000000000Z")

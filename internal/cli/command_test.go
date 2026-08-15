@@ -91,6 +91,8 @@ rm [-r] REMOTE_PATH
 mv [-f] SOURCE DESTINATION
 chmod OCTAL_MODE REMOTE_PATH
 exec [--name NAME] [--pipe|--pty] [--stdin|--attach] [--cwd REMOTE_DIR] [-e KEY=VALUE ...] [--] CMD [ARG ...]
+templates [TEMPLATE]
+exec-template [--name NAME] [--attach] [--params JSON|--params-file LOCAL_FILE] TEMPLATE
 ps [-a]
 kill [-s SIGNAL] [-w] PROCESS
 stdin PROCESS
