@@ -107,6 +107,24 @@ func (r *REPL) signalProcess(arguments []string) error {
 	return nil
 }
 
+func (r *REPL) forgetProcess(arguments []string) error {
+	if len(arguments) != 1 {
+		return errors.New(commandUsage["forget"])
+	}
+	reference, err := parseProcessReference(arguments[0])
+	if err != nil {
+		return err
+	}
+	ctx, cancel := r.commandContext()
+	defer cancel()
+	info, err := r.client.DeleteProcess(ctx, reference)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(r.stdout, "forgot %s (%s)\n", info.GetName(), info.GetId())
+	return nil
+}
+
 func (r *REPL) observeProcessLogs(arguments []string) error {
 	options, err := parseProcessLogOptions(arguments)
 	if err != nil {

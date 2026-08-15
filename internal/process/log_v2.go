@@ -630,6 +630,21 @@ func (l *processLog) releaseObserver() {
 	l.mu.Unlock()
 }
 
+// lockForDeletion excludes retention work while the process directory is
+// removed. Callers must prevent new observers from looking up this log first.
+func (l *processLog) lockForDeletion() bool {
+	l.mu.Lock()
+	if l.observers > 0 {
+		l.mu.Unlock()
+		return false
+	}
+	return true
+}
+
+func (l *processLog) unlockDeletion() {
+	l.mu.Unlock()
+}
+
 func (l *processLog) prepareOffset(offset uint64) (preparedProcessLogRead, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()

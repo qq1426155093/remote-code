@@ -118,6 +118,7 @@ func TestRecordStoreMigratesLegacyLogs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.close() })
 	id := "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
 	directory := store.processDirectory(id)
 	if err := os.Mkdir(directory, 0o700); err != nil {

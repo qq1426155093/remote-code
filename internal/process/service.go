@@ -129,6 +129,7 @@ func New(config Config) (*Service, error) {
 	}
 	if maxProcesses < 0 || maxProcesses > maxTrackedProcesses {
 		_ = root.Close()
+		_ = store.close()
 		return nil, fmt.Errorf("max processes must be between 1 and %d", maxTrackedProcesses)
 	}
 	service := &Service{
@@ -140,17 +141,22 @@ func New(config Config) (*Service, error) {
 	loaded, err := store.load()
 	if err != nil {
 		_ = root.Close()
+		_ = store.close()
 		return nil, err
 	}
 	for _, info := range loaded {
 		logs, openErr := store.openLog(info)
 		if openErr != nil {
 			_ = root.Close()
+			_ = store.close()
 			return nil, fmt.Errorf("open process logs for %s: %w", info.GetId(), openErr)
 		}
 		record := &managedProcess{info: info, logs: logs, done: closedChannel()}
 		service.processes[info.GetId()] = record
 		service.byName[info.GetName()] = info.GetId()
+		if info.GetPid() > 0 {
+			service.byPID[info.GetPid()] = info.GetId()
+		}
 		service.order = append(service.order, info.GetId())
 	}
 	go service.runLogJanitor()
@@ -298,6 +304,44 @@ func (s *Service) ListProcesses(ctx context.Context, request *codev1.ListProcess
 	return &codev1.ListProcessesResponse{Processes: processes}, nil
 }
 
+// DeleteProcess permanently removes one terminal process and all of its
+// persistent metadata and logs. Active processes must be stopped first.
+func (s *Service) DeleteProcess(ctx context.Context, request *codev1.DeleteProcessRequest) (*codev1.DeleteProcessResponse, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, status.FromContextError(err).Err()
+	}
+	if request == nil {
+		return nil, status.Error(codes.InvalidArgument, "delete process request is required")
+	}
+
+	s.mu.Lock()
+	record, err := s.lookupLocked(request.GetProcess())
+	if err != nil {
+		s.mu.Unlock()
+		return nil, err
+	}
+	if isActiveState(record.info.GetState()) {
+		info := cloneProcessInfo(record.info)
+		s.mu.Unlock()
+		return nil, status.Errorf(codes.FailedPrecondition, "process %q is %s; stop it before deleting history", info.GetName(), processStateName(info.GetState()))
+	}
+	if record.logs != nil && !record.logs.lockForDeletion() {
+		s.mu.Unlock()
+		return nil, status.Error(codes.FailedPrecondition, "process logs are being observed")
+	}
+	if record.logs != nil {
+		defer record.logs.unlockDeletion()
+	}
+	info := cloneProcessInfo(record.info)
+	if err := s.store.remove(info.GetId()); err != nil {
+		s.mu.Unlock()
+		return nil, status.Error(codes.Internal, "delete persistent process record failed")
+	}
+	s.removeLocked(record)
+	s.mu.Unlock()
+	return &codev1.DeleteProcessResponse{Process: info}, nil
+}
+
 // SignalProcess sends an allowed signal to the entire managed process group.
 func (s *Service) SignalProcess(ctx context.Context, request *codev1.SignalProcessRequest) (*codev1.SignalProcessResponse, error) {
 	if err := ctx.Err(); err != nil {
@@ -355,9 +399,7 @@ func (s *Service) Shutdown(ctx context.Context) error {
 	s.mu.Lock()
 	records := s.runningLocked()
 	s.mu.Unlock()
-	for _, record := range records {
-		_ = signalProcessGroup(int(record.info.GetPid()), codev1.ProcessSignal_PROCESS_SIGNAL_TERM)
-	}
+	s.signalRecords(records, codev1.ProcessSignal_PROCESS_SIGNAL_TERM)
 	if waitForRecords(ctx, records) {
 		return nil
 	}
@@ -365,9 +407,7 @@ func (s *Service) Shutdown(ctx context.Context) error {
 	s.mu.Lock()
 	remaining := s.runningLocked()
 	s.mu.Unlock()
-	for _, record := range remaining {
-		_ = signalProcessGroup(int(record.info.GetPid()), codev1.ProcessSignal_PROCESS_SIGNAL_KILL)
-	}
+	s.signalRecords(remaining, codev1.ProcessSignal_PROCESS_SIGNAL_KILL)
 	forceContext, cancel := context.WithTimeout(context.Background(), forcedShutdownWait)
 	defer cancel()
 	_ = waitForRecords(forceContext, remaining)
@@ -382,7 +422,7 @@ func (s *Service) Close() error {
 		close(s.janitorStop)
 	}
 	<-s.janitorDone
-	return s.root.Close()
+	return errors.Join(s.root.Close(), s.store.close())
 }
 
 func (s *Service) validateStartRequest(request *codev1.StartProcessRequest) (validatedStart, error) {
@@ -595,6 +635,18 @@ func (s *Service) runningLocked() []*managedProcess {
 	return records
 }
 
+func (s *Service) signalRecords(records []*managedProcess, signal codev1.ProcessSignal) {
+	for _, record := range records {
+		s.mu.Lock()
+		pid := record.info.GetPid()
+		running := record.info.GetState() == codev1.ProcessState_PROCESS_STATE_RUNNING && record.command != nil
+		s.mu.Unlock()
+		if running {
+			_ = signalProcessGroup(int(pid), signal)
+		}
+	}
+}
+
 func (s *Service) makeHistorySpaceLocked() error {
 	for len(s.order) >= maxTrackedProcesses {
 		removed := false
@@ -631,6 +683,13 @@ func (s *Service) removeLocked(record *managedProcess) {
 	}
 	if s.byPID[record.info.GetPid()] == id {
 		delete(s.byPID, record.info.GetPid())
+		for index := len(s.order) - 1; index >= 0; index-- {
+			candidate := s.processes[s.order[index]]
+			if candidate != nil && candidate.info.GetPid() == record.info.GetPid() {
+				s.byPID[record.info.GetPid()] = candidate.info.GetId()
+				break
+			}
+		}
 	}
 	for index, orderedID := range s.order {
 		if orderedID == id {

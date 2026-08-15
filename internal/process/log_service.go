@@ -36,13 +36,15 @@ func (s *Service) ObserveProcessLogs(request *codev1.ObserveProcessLogsRequest, 
 	}
 	logs := record.logs
 	info := cloneProcessInfo(record.info)
-	s.mu.Unlock()
 	if logs == nil {
+		s.mu.Unlock()
 		return status.Error(codes.FailedPrecondition, "process logs are unavailable")
 	}
 	if err := logs.acquireObserver(); err != nil {
+		s.mu.Unlock()
 		return status.Error(codes.ResourceExhausted, err.Error())
 	}
+	s.mu.Unlock()
 	defer logs.releaseObserver()
 
 	var prepared preparedProcessLogRead

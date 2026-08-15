@@ -262,6 +262,28 @@ func TestServiceRejectsDuplicateActiveName(t *testing.T) {
 	stopProcess(t, service, started.GetProcess())
 }
 
+func TestServiceRejectsDeletingActiveProcess(t *testing.T) {
+	t.Setenv(helperEnvironment, "1")
+	service := newTestProcessService(t, t.TempDir(), 1)
+	started, err := service.StartProcess(context.Background(), helperStartRequest(
+		"active-delete", ".", codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE, "sleep",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = service.DeleteProcess(context.Background(), &codev1.DeleteProcessRequest{
+		Process: &codev1.ProcessReference{Value: &codev1.ProcessReference_Name{Name: started.GetProcess().GetName()}},
+	})
+	if status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("DeleteProcess(active) code = %s, want FailedPrecondition", status.Code(err))
+	}
+	listed, listErr := service.ListProcesses(context.Background(), &codev1.ListProcessesRequest{})
+	if listErr != nil || len(listed.GetProcesses()) != 1 || listed.GetProcesses()[0].GetId() != started.GetProcess().GetId() {
+		t.Fatalf("active process after rejected delete = %+v, %v", listed, listErr)
+	}
+	stopProcess(t, service, started.GetProcess())
+}
+
 func TestServiceValidatesStartsAndActiveLimit(t *testing.T) {
 	t.Setenv(helperEnvironment, "1")
 	workspace := t.TempDir()

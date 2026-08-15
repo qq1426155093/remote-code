@@ -213,6 +213,15 @@ func TestClientProcessLifecycleOverGRPC(t *testing.T) {
 	if all, err := remote.ListProcesses(ctx, true); err != nil || len(all) != 1 || all[0].GetId() != started.GetId() {
 		t.Fatalf("ListProcesses(all after exit) = %+v, %v", all, err)
 	}
+	deleted, err := remote.DeleteProcess(ctx, &codev1.ProcessReference{
+		Value: &codev1.ProcessReference_Id{Id: started.GetId()},
+	})
+	if err != nil || deleted.GetId() != started.GetId() {
+		t.Fatalf("DeleteProcess() = %+v, %v", deleted, err)
+	}
+	if all, err := remote.ListProcesses(ctx, true); err != nil || len(all) != 0 {
+		t.Fatalf("ListProcesses(all after delete) = %+v, %v", all, err)
+	}
 }
 
 func TestClientObservesProcessLogsOverGRPC(t *testing.T) {

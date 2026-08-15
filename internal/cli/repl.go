@@ -122,6 +122,8 @@ func (r *REPL) execute(arguments []string) error {
 		return r.listProcesses(arguments[1:])
 	case "kill":
 		return r.signalProcess(arguments[1:])
+	case "forget":
+		return r.forgetProcess(arguments[1:])
 	case "logs":
 		return r.observeProcessLogs(arguments[1:])
 	case "stat":
@@ -163,7 +165,7 @@ func (r *REPL) help(arguments []string) error {
 		fmt.Fprintln(r.stdout, usage)
 		return nil
 	}
-	commands := []string{"help [command]", "pwd", "cd [REMOTE_DIR]", "ls [-l] [REMOTE_PATH]", "tree [REMOTE_PATH]", "stat REMOTE_PATH", "cat REMOTE_FILE", "upload LOCAL_FILE [REMOTE_FILE]", "download REMOTE_FILE [LOCAL_FILE]", "mkdir [-p] REMOTE_DIR", "rm [-r] REMOTE_PATH", "mv [-f] SOURCE DESTINATION", "chmod OCTAL_MODE REMOTE_PATH", "exec [--name NAME] [--pipe|--pty] [--cwd REMOTE_DIR] [-e KEY=VALUE ...] [--] CMD [ARG ...]", "ps [-a]", "kill [-s SIGNAL] [-w] PROCESS", "logs [-f] [-n LINES|--offset OFFSET] [--stdout|--stderr] PROCESS_ID", "clear", "exit | quit"}
+	commands := []string{"help [command]", "pwd", "cd [REMOTE_DIR]", "ls [-l] [REMOTE_PATH]", "tree [REMOTE_PATH]", "stat REMOTE_PATH", "cat REMOTE_FILE", "upload LOCAL_FILE [REMOTE_FILE]", "download REMOTE_FILE [LOCAL_FILE]", "mkdir [-p] REMOTE_DIR", "rm [-r] REMOTE_PATH", "mv [-f] SOURCE DESTINATION", "chmod OCTAL_MODE REMOTE_PATH", "exec [--name NAME] [--pipe|--pty] [--cwd REMOTE_DIR] [-e KEY=VALUE ...] [--] CMD [ARG ...]", "ps [-a]", "kill [-s SIGNAL] [-w] PROCESS", "forget PROCESS", "logs [-f] [-n LINES|--offset OFFSET] [--stdout|--stderr] PROCESS_ID", "clear", "exit | quit"}
 	for _, command := range commands {
 		fmt.Fprintln(r.stdout, command)
 	}
@@ -187,6 +189,7 @@ var commandUsage = map[string]string{
 	"exec":     "usage: exec [--name NAME] [--pipe|--pty] [--cwd REMOTE_DIR] [-e KEY=VALUE ...] [--] CMD [ARG ...]",
 	"ps":       "usage: ps [-a]",
 	"kill":     "usage: kill [-s SIGNAL] [-w] PROCESS",
+	"forget":   "usage: forget PROCESS",
 	"logs":     "usage: logs [-f] [-n LINES|--offset OFFSET] [--stdout|--stderr] PROCESS_ID",
 	"clear":    "usage: clear",
 	"exit":     "usage: exit",

@@ -16,12 +16,13 @@ import (
 
 func TestREPLUsesCurrentDirectoryForExecAndSupportsPSAll(t *testing.T) {
 	workspace := t.TempDir()
+	runtimeDirectory := t.TempDir()
 	if err := os.Mkdir(filepath.Join(workspace, "test"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	controller, err := server.New(server.Config{
 		ListenAddress: "127.0.0.1:0", Workspace: workspace,
-		RuntimeDirectory: t.TempDir(), MaxProcesses: 2,
+		RuntimeDirectory: runtimeDirectory, MaxProcesses: 2,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -79,5 +80,22 @@ func TestREPLUsesCurrentDirectoryForExecAndSupportsPSAll(t *testing.T) {
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte("cwd-job")) || !bytes.Contains(stdout.Bytes(), []byte("exited")) {
 		t.Fatalf("ps -a output = %s", stdout.String())
+	}
+	stdout.Reset()
+	if err := repl.forgetProcess([]string{started.GetId()}); err != nil {
+		t.Fatalf("forget: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte("forgot cwd-job ("+started.GetId()+")")) {
+		t.Fatalf("forget output = %s", stdout.String())
+	}
+	if _, err := os.Stat(filepath.Join(runtimeDirectory, started.GetId())); !os.IsNotExist(err) {
+		t.Fatalf("process runtime directory still exists: %v", err)
+	}
+	stdout.Reset()
+	if err := repl.listProcesses([]string{"-a"}); err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(stdout.Bytes(), []byte("cwd-job")) {
+		t.Fatalf("ps -a output contains forgotten process: %s", stdout.String())
 	}
 }

@@ -49,6 +49,7 @@ type recordStatus struct {
 
 type recordStore struct {
 	directory string
+	root      *os.Root
 	logConfig LogConfig
 }
 
@@ -87,7 +88,15 @@ func openRecordStore(directory string, configurations ...LogConfig) (*recordStor
 	if err != nil {
 		return nil, err
 	}
-	return &recordStore{directory: abs, logConfig: logConfig}, nil
+	root, err := os.OpenRoot(abs)
+	if err != nil {
+		return nil, fmt.Errorf("open runtime directory: %w", err)
+	}
+	return &recordStore{directory: abs, root: root, logConfig: logConfig}, nil
+}
+
+func (s *recordStore) close() error {
+	return s.root.Close()
 }
 
 func (s *recordStore) create(info *codev1.ProcessInfo) (*recordOutput, error) {
@@ -241,6 +250,29 @@ func removeLegacyLogFiles(directory string) {
 
 func (s *recordStore) writeStatus(info *codev1.ProcessInfo, message string) error {
 	return atomicWriteJSON(s.processDirectory(info.GetId()), statusFileName, statusFromInfo(info, message))
+}
+
+func (s *recordStore) remove(id string) error {
+	if !uuidPattern.MatchString(id) {
+		return errors.New("invalid process record id")
+	}
+	info, err := s.root.Lstat(id)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("stat process record directory: %w", err)
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("process record path is not a directory")
+	}
+	if err := s.root.RemoveAll(id); err != nil {
+		return fmt.Errorf("remove process record directory: %w", err)
+	}
+	if err := syncRootDirectory(s.root); err != nil {
+		return fmt.Errorf("sync runtime directory: %w", err)
+	}
+	return nil
 }
 
 func (s *recordStore) load() ([]*codev1.ProcessInfo, error) {
@@ -465,6 +497,15 @@ func readJSON(name string, destination any) error {
 
 func syncDirectory(directory string) error {
 	file, err := os.Open(directory)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	return file.Sync()
+}
+
+func syncRootDirectory(root *os.Root) error {
+	file, err := root.Open(".")
 	if err != nil {
 		return err
 	}

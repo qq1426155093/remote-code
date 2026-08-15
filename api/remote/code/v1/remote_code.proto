@@ -26,6 +26,7 @@ service ProcessService {
   rpc StartProcess(StartProcessRequest) returns (StartProcessResponse);
   rpc ListProcesses(ListProcessesRequest) returns (ListProcessesResponse);
   rpc SignalProcess(SignalProcessRequest) returns (SignalProcessResponse);
+  rpc DeleteProcess(DeleteProcessRequest) returns (DeleteProcessResponse);
   rpc ObserveProcessLogs(ObserveProcessLogsRequest) returns (stream ObserveProcessLogsResponse);
 }
 
@@ -335,4 +336,13 @@ message ObserveProcessLogsResponse {
     ProcessLogCheckpoint checkpoint = 3;
     ProcessLogEnd end = 4;
   }
+}
+
+message DeleteProcessRequest {
+  ProcessReference process = 1;
+}
+
+message DeleteProcessResponse {
+  // Snapshot of the terminal process whose persistent history was deleted.
+  ProcessInfo process = 1;
 }

@@ -183,6 +183,18 @@ func (c *Client) SignalProcess(ctx context.Context, process *codev1.ProcessRefer
 	return response.GetProcess(), nil
 }
 
+// DeleteProcess permanently deletes one terminal process record and its logs.
+func (c *Client) DeleteProcess(ctx context.Context, process *codev1.ProcessReference) (*codev1.ProcessInfo, error) {
+	response, err := c.processes.DeleteProcess(ctx, &codev1.DeleteProcessRequest{Process: process})
+	if err != nil {
+		return nil, err
+	}
+	if response.GetProcess() == nil {
+		return nil, status.Error(codes.DataLoss, "delete process response has no process")
+	}
+	return response.GetProcess(), nil
+}
+
 func (c *Client) Remove(ctx context.Context, remotePath string, recursive bool) error {
 	_, err := c.files.Remove(ctx, &codev1.RemoveRequest{Path: remotePath, Recursive: recursive})
 	return err

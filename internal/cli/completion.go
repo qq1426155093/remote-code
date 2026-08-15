@@ -134,10 +134,39 @@ func (c *commandCompleter) Do(line []rune, pos int) ([][]rune, int) {
 		}
 	case "kill":
 		candidates = c.completeKill(previous, current)
+	case "forget":
+		candidates = c.completeForget(previous, current)
 	case "logs":
 		candidates = c.completeLogs(previous, current)
 	}
 	return formatCompletions(input, candidates)
+}
+
+func (c *commandCompleter) completeForget(previous []string, current string) []completionCandidate {
+	if len(previous) > 0 || strings.HasPrefix(current, "-") {
+		return nil
+	}
+	processClient, ok := c.client.(completionProcessClient)
+	if !ok {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+	processes, err := processClient.ListProcesses(ctx, true)
+	if err != nil {
+		return nil
+	}
+	candidates := make([]completionCandidate, 0, len(processes))
+	for _, process := range processes {
+		if process != nil && !isActiveProcessState(process.GetState()) {
+			candidates = append(candidates, completionCandidate{value: process.GetName(), finish: true})
+		}
+	}
+	return candidates
+}
+
+func isActiveProcessState(state codev1.ProcessState) bool {
+	return state == codev1.ProcessState_PROCESS_STATE_STARTING || state == codev1.ProcessState_PROCESS_STATE_RUNNING
 }
 
 func (c *commandCompleter) completeLogs(previous []string, current string) []completionCandidate {

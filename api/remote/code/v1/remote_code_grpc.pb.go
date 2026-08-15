@@ -527,6 +527,7 @@ const (
 	ProcessService_StartProcess_FullMethodName       = "/remote.code.v1.ProcessService/StartProcess"
 	ProcessService_ListProcesses_FullMethodName      = "/remote.code.v1.ProcessService/ListProcesses"
 	ProcessService_SignalProcess_FullMethodName      = "/remote.code.v1.ProcessService/SignalProcess"
+	ProcessService_DeleteProcess_FullMethodName      = "/remote.code.v1.ProcessService/DeleteProcess"
 	ProcessService_ObserveProcessLogs_FullMethodName = "/remote.code.v1.ProcessService/ObserveProcessLogs"
 )
 
@@ -537,6 +538,7 @@ type ProcessServiceClient interface {
 	StartProcess(ctx context.Context, in *StartProcessRequest, opts ...grpc.CallOption) (*StartProcessResponse, error)
 	ListProcesses(ctx context.Context, in *ListProcessesRequest, opts ...grpc.CallOption) (*ListProcessesResponse, error)
 	SignalProcess(ctx context.Context, in *SignalProcessRequest, opts ...grpc.CallOption) (*SignalProcessResponse, error)
+	DeleteProcess(ctx context.Context, in *DeleteProcessRequest, opts ...grpc.CallOption) (*DeleteProcessResponse, error)
 	ObserveProcessLogs(ctx context.Context, in *ObserveProcessLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ObserveProcessLogsResponse], error)
 }
 
@@ -578,6 +580,16 @@ func (c *processServiceClient) SignalProcess(ctx context.Context, in *SignalProc
 	return out, nil
 }
 
+func (c *processServiceClient) DeleteProcess(ctx context.Context, in *DeleteProcessRequest, opts ...grpc.CallOption) (*DeleteProcessResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteProcessResponse)
+	err := c.cc.Invoke(ctx, ProcessService_DeleteProcess_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *processServiceClient) ObserveProcessLogs(ctx context.Context, in *ObserveProcessLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ObserveProcessLogsResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &ProcessService_ServiceDesc.Streams[0], ProcessService_ObserveProcessLogs_FullMethodName, cOpts...)
@@ -604,6 +616,7 @@ type ProcessServiceServer interface {
 	StartProcess(context.Context, *StartProcessRequest) (*StartProcessResponse, error)
 	ListProcesses(context.Context, *ListProcessesRequest) (*ListProcessesResponse, error)
 	SignalProcess(context.Context, *SignalProcessRequest) (*SignalProcessResponse, error)
+	DeleteProcess(context.Context, *DeleteProcessRequest) (*DeleteProcessResponse, error)
 	ObserveProcessLogs(*ObserveProcessLogsRequest, grpc.ServerStreamingServer[ObserveProcessLogsResponse]) error
 	mustEmbedUnimplementedProcessServiceServer()
 }
@@ -623,6 +636,9 @@ func (UnimplementedProcessServiceServer) ListProcesses(context.Context, *ListPro
 }
 func (UnimplementedProcessServiceServer) SignalProcess(context.Context, *SignalProcessRequest) (*SignalProcessResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SignalProcess not implemented")
+}
+func (UnimplementedProcessServiceServer) DeleteProcess(context.Context, *DeleteProcessRequest) (*DeleteProcessResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteProcess not implemented")
 }
 func (UnimplementedProcessServiceServer) ObserveProcessLogs(*ObserveProcessLogsRequest, grpc.ServerStreamingServer[ObserveProcessLogsResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method ObserveProcessLogs not implemented")
@@ -702,6 +718,24 @@ func _ProcessService_SignalProcess_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ProcessService_DeleteProcess_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteProcessRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProcessServiceServer).DeleteProcess(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProcessService_DeleteProcess_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProcessServiceServer).DeleteProcess(ctx, req.(*DeleteProcessRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ProcessService_ObserveProcessLogs_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(ObserveProcessLogsRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -731,6 +765,10 @@ var ProcessService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SignalProcess",
 			Handler:    _ProcessService_SignalProcess_Handler,
+		},
+		{
+			MethodName: "DeleteProcess",
+			Handler:    _ProcessService_DeleteProcess_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

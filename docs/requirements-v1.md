@@ -57,6 +57,7 @@ remote-code:/docs> exit
 | `exec [--name NAME] [--pipe\|--pty] [--cwd REMOTE_DIR] [-e KEY=VALUE ...] [--] CMD [ARG ...]` | 直接启动通用受管进程 |
 | `ps` / `ps -a` | 分别浏览活动进程，或活动及历史进程 |
 | `kill [-s SIGNAL] [-w] PROCESS` | 向进程组发信号；`-w` 等待进程回收 |
+| `forget PROCESS` | 永久删除终态进程的元数据和输出日志 |
 | `clear` | 清理本地终端显示 |
 | `exit` / `quit` | 关闭连接并退出 CLI |
 
@@ -125,6 +126,7 @@ CLI 只有在 `GetInfo` 调用成功后才进入提示符，因此“连接成�
 - 活动进程名称唯一；终态名称可复用。进程具有服务端生成的 UUID 和 OS PID，可按 UUID、名称或 PID 定位。
 - 活动进程数、参数、环境覆盖和保留的进程历史均有固定上限。通过认证的调用者可执行具体命令，因此此 API 等同于远程执行权限。
 - 进程元数据、原子状态和带 Unix 纳秒时间戳的 stdout/stderr 二进制帧持久化在 runtime 目录；环境变量 value 不落盘。
+- 只有终态进程历史可被显式删除；删除后 UUID runtime 目录和 `ps -a` 条目必须同时消失。
 - 日志不得记录 token、文件内容或上传内容。
 - token 比较采用常量时间比较；启用 token 后，所有业务 RPC 均需认证。
 

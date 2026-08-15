@@ -14,9 +14,10 @@ controller 提供与 Claude Code 无关的通用进程管理能力。任何通�
 - 持久化元数据、状态以及带时间戳的 stdout/stderr 输出块；
 - 按逻辑 offset 或最后 N 行回放日志，并可无缝跟随到进程退出；
 - 列出当前活动进程，或列出活动及历史进程；
+- 永久删除已退出、启动失败或 controller-lost 的进程历史；
 - 按 UUID、名称或 PID 向整个进程组发送受支持的 POSIX 信号；
 - controller 始终 `Wait` 直接子进程，避免僵尸进程；
-- `remote-code` REPL 提供 `exec`、`ps`、`ps -a` 和 `kill` 命令，并让
+- `remote-code` REPL 提供 `exec`、`ps`、`ps -a`、`kill` 和 `forget` 命令，并让
   `cd` 改变的远端当前目录成为后续 `exec` 的默认工作目录。
 
 本版本不包含实时 attach、交互输入、终端尺寸变更、CPU/内存限额和
@@ -64,6 +65,13 @@ RPC context 约束。
 
 只有本次 controller 运行期间处于 `RUNNING` 的进程可以被信号控制。`EXITED`、
 `FAILED` 和 `LOST` 返回 failed-precondition，避免 PID 重用导致误杀。
+
+### 2.4 删除历史
+
+`DeleteProcess` 沿用 UUID、名称和 PID 引用，只允许删除 `EXITED`、`FAILED`、`LOST`
+记录。成功后原子地从内存索引移除记录，并永久删除 `<runtime-dir>/<uuid>` 中的元数据和
+全部日志，因此后续 `ListProcesses(all=true)` 不再返回该记录。活动进程返回
+failed-precondition；日志仍被观察时也拒绝删除，调用方可在观察结束后重试。
 
 ## 3. 生命周期
 
@@ -123,6 +131,7 @@ controller 日志。
 - `ps` 只显示活动进程。
 - `ps -a` 显示活动和历史进程。
 - `kill [-s SIGNAL] [-w] PROCESS` 保持 UUID、名称和 PID 引用能力。
+- `forget PROCESS` 删除终态进程的完整持久化历史。
 - `logs [-f] [-n LINES|--offset OFFSET] [--stdout|--stderr] PROCESS_ID` 回放或持续跟随输出。
 
 命令解析不调用本地 shell。需要 shell 语法时必须显式执行，例如
@@ -145,5 +154,6 @@ controller 日志。
 - PIPE stdout/stderr、PTY 合并输出可按逻辑 offset 或最后 N 行无损回放，并能跟随到退出；
 - kill 对进程组生效，`wait=true` 返回时 leader 已被回收；
 - `ps` 与 `ps -a` 过滤正确，controller 重启后历史可见，遗留活动状态转换为 `LOST`；
+- 删除终态历史后 UUID 目录消失且 `ps -a` 不再显示，活动进程不能被删除；
 - 工作目录逃逸、symlink 逃逸、无效环境变量和超限请求被拒绝；
 - `go test ./...`、`go test -race ./...`、`go vet ./...`、`go build ./...` 全部通过。

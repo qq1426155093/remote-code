@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -116,6 +117,135 @@ func TestServicePersistsFailedStartAndGeneratesName(t *testing.T) {
 	if _, statErr := os.Stat(filepath.Join(runtimeDirectory, failed.GetId(), statusFileName)); statErr != nil {
 		t.Fatalf("failed status missing: %v", statErr)
 	}
+	deleted, deleteErr := service.DeleteProcess(context.Background(), &codev1.DeleteProcessRequest{
+		Process: &codev1.ProcessReference{Value: &codev1.ProcessReference_Name{Name: failed.GetName()}},
+	})
+	if deleteErr != nil || deleted.GetProcess().GetId() != failed.GetId() {
+		t.Fatalf("DeleteProcess(failed) = %+v, %v", deleted, deleteErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(runtimeDirectory, failed.GetId())); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("failed process directory still exists: %v", statErr)
+	}
+}
+
+func TestServiceDeletesExitedProcessHistory(t *testing.T) {
+	t.Setenv(helperEnvironment, "1")
+	workspace := t.TempDir()
+	runtimeDirectory := t.TempDir()
+	service := newProcessServiceAt(t, workspace, runtimeDirectory, 1)
+	started, err := service.StartProcess(context.Background(), helperStartRequest(
+		"delete-history", ".", codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE, "exit", "0",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	exited := waitForProcessExit(t, service, started.GetProcess().GetId())
+	directory := filepath.Join(runtimeDirectory, exited.GetId())
+
+	service.mu.Lock()
+	logs := service.processes[exited.GetId()].logs
+	service.mu.Unlock()
+	if err := logs.acquireObserver(); err != nil {
+		t.Fatal(err)
+	}
+	_, err = service.DeleteProcess(context.Background(), &codev1.DeleteProcessRequest{
+		Process: &codev1.ProcessReference{Value: &codev1.ProcessReference_Id{Id: exited.GetId()}},
+	})
+	if status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("DeleteProcess(observed) code = %s, want FailedPrecondition", status.Code(err))
+	}
+	logs.releaseObserver()
+
+	deleted, err := service.DeleteProcess(context.Background(), &codev1.DeleteProcessRequest{
+		Process: &codev1.ProcessReference{Value: &codev1.ProcessReference_Pid{Pid: exited.GetPid()}},
+	})
+	if err != nil {
+		t.Fatalf("DeleteProcess() error = %v", err)
+	}
+	if deleted.GetProcess().GetId() != exited.GetId() || deleted.GetProcess().GetState() != codev1.ProcessState_PROCESS_STATE_EXITED {
+		t.Fatalf("DeleteProcess() = %+v, want deleted exit snapshot", deleted.GetProcess())
+	}
+	if _, err := os.Stat(directory); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("process directory still exists: %v", err)
+	}
+	all, err := service.ListProcesses(context.Background(), &codev1.ListProcessesRequest{All: true})
+	if err != nil || len(all.GetProcesses()) != 0 {
+		t.Fatalf("ListProcesses(all after delete) = %+v, %v", all, err)
+	}
+	_, err = service.DeleteProcess(context.Background(), &codev1.DeleteProcessRequest{
+		Process: &codev1.ProcessReference{Value: &codev1.ProcessReference_Id{Id: exited.GetId()}},
+	})
+	if status.Code(err) != codes.NotFound {
+		t.Fatalf("DeleteProcess(deleted) code = %s, want NotFound", status.Code(err))
+	}
+}
+
+func TestRecordStoreRemoveStaysWithinPinnedRuntimeRoot(t *testing.T) {
+	parent := t.TempDir()
+	runtimeDirectory := filepath.Join(parent, "runtime")
+	store, err := openRecordStore(runtimeDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.close() })
+	id := "11111111-1111-4111-8111-111111111111"
+	if err := os.Mkdir(filepath.Join(runtimeDirectory, id), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	movedRuntime := filepath.Join(parent, "moved-runtime")
+	if err := os.Rename(runtimeDirectory, movedRuntime); err != nil {
+		t.Fatal(err)
+	}
+	replacement := t.TempDir()
+	replacementRecord := filepath.Join(replacement, id)
+	if err := os.Mkdir(replacementRecord, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(replacementRecord, "must-remain")
+	if err := os.WriteFile(marker, []byte("safe"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(replacement, runtimeDirectory); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.remove(id); err != nil {
+		t.Fatalf("remove() error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(movedRuntime, id)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("pinned process record still exists: %v", err)
+	}
+	if content, err := os.ReadFile(marker); err != nil || string(content) != "safe" {
+		t.Fatalf("replacement runtime record was modified: %q, %v", content, err)
+	}
+}
+
+func TestRecordStoreRemoveRejectsUnsafeRecordNamesAndSymlinks(t *testing.T) {
+	runtimeDirectory := t.TempDir()
+	store, err := openRecordStore(runtimeDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.close() })
+	outside := t.TempDir()
+	marker := filepath.Join(outside, "must-remain")
+	if err := os.WriteFile(marker, []byte("safe"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	id := "22222222-2222-4222-8222-222222222222"
+	if err := os.Symlink(outside, filepath.Join(runtimeDirectory, id)); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.remove(id); err == nil {
+		t.Fatal("remove(symlink record) succeeded")
+	}
+	if err := store.remove("../outside"); err == nil {
+		t.Fatal("remove(traversal record) succeeded")
+	}
+	if content, err := os.ReadFile(marker); err != nil || string(content) != "safe" {
+		t.Fatalf("outside marker was modified: %q, %v", content, err)
+	}
 }
 
 func TestServiceRecoversExitedAndMarksActiveRecordLost(t *testing.T) {
@@ -125,6 +255,7 @@ func TestServiceRecoversExitedAndMarksActiveRecordLost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.close() })
 	created := time.Now().Add(-time.Minute)
 	for _, test := range []struct {
 		id    string
@@ -217,6 +348,15 @@ func TestServiceReloadsExitedProcessAfterRestart(t *testing.T) {
 	got := all.GetProcesses()[0]
 	if got.GetId() != exited.GetId() || got.GetState() != codev1.ProcessState_PROCESS_STATE_EXITED || got.GetExitCode() != 7 {
 		t.Fatalf("reloaded process = %+v", got)
+	}
+	deleted, err := second.DeleteProcess(context.Background(), &codev1.DeleteProcessRequest{
+		Process: &codev1.ProcessReference{Value: &codev1.ProcessReference_Pid{Pid: got.GetPid()}},
+	})
+	if err != nil || deleted.GetProcess().GetId() != got.GetId() {
+		t.Fatalf("DeleteProcess(reloaded by PID) = %+v, %v", deleted, err)
+	}
+	if _, err := os.Stat(filepath.Join(runtimeDirectory, got.GetId())); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("reloaded process directory still exists: %v", err)
 	}
 }
 

@@ -6,7 +6,7 @@ Remote Code 是一个面向远程开发任务的 Code Agent 控制平面。它�
 
 > 项目状态：文件与基础进程控制已可运行，包含带 Tab 补全的交互式 CLI、结构化目录树、
 > gRPC controller、流式上传/下载、PTY/pipe 启动、可回放/跟随的持久化输出日志、进程列表、
-> 信号、自动回收和重启历史恢复。远程 attach 与 Agent 语义仍是后续版本计划。
+> 信号、历史删除、自动回收和重启历史恢复。远程 attach 与 Agent 语义仍是后续版本计划。
 
 ## 快速开始
 
@@ -39,6 +39,7 @@ remote-code:/> ps
 remote-code:/> ps -a
 remote-code:/> logs -n 100 --follow 7aa5daab-e886-4889-9ec3-92d461883091
 remote-code:/> kill -s TERM -w listing
+remote-code:/> forget listing
 ```
 
 默认仅允许 loopback 明文监听。远程部署应配置 `--tls-cert`、`--tls-key` 和
@@ -179,6 +180,7 @@ service ProcessService {
   rpc StartProcess(StartProcessRequest) returns (StartProcessResponse);
   rpc ListProcesses(ListProcessesRequest) returns (ListProcessesResponse);
   rpc SignalProcess(SignalProcessRequest) returns (SignalProcessResponse);
+  rpc DeleteProcess(DeleteProcessRequest) returns (DeleteProcessResponse);
   rpc ObserveProcessLogs(ObserveProcessLogsRequest) returns (stream ObserveProcessLogsResponse);
 }
 ```
@@ -191,7 +193,8 @@ stdin、stdout/stderr、终端 resize、心跳和 detach。
 `StartProcess` 接受具体命令、参数、工作区内 cwd、PIPE/PTY 模式和环境覆盖；它不经 shell
 解释。每个进程具有 UUID、逻辑名称和 OS PID；pipe 与 PTY 模式都使用独立进程组，
 `SignalProcess` 可按 UUID、名称或 PID 向整个组发送 HUP、INT、QUIT、TERM、KILL、
-USR1、USR2、STOP 或 CONT。直接子进程始终由 controller `Wait` 回收。
+USR1、USR2、STOP 或 CONT。`DeleteProcess` 只删除终态进程的完整历史目录；直接子进程始终
+由 controller `Wait` 回收。
 
 进程记录位于 `--runtime-dir/<uuid>/`。`metadata.json` 与 `status.json` 保存元数据和状态；
 `logs/` 使用带 stdout/stderr tag、逻辑 offset、CRC 和 tail 索引的 v2 分段格式。PIPE 保留双流

@@ -94,10 +94,11 @@ service ProcessService {
   rpc StartProcess(StartProcessRequest) returns (StartProcessResponse);
   rpc ListProcesses(ListProcessesRequest) returns (ListProcessesResponse);
   rpc SignalProcess(SignalProcessRequest) returns (SignalProcessResponse);
+  rpc DeleteProcess(DeleteProcessRequest) returns (DeleteProcessResponse);
 }
 ```
 
-`ProcessInfo` 返回 UUID、逻辑名称、OS PID、PTY/pipe 模式、具体命令、参数、虚拟工作目录、环境覆盖 key、状态、时间戳以及可选退出码/退出信号。`StartProcessRequest.environment` 是覆盖 map，value 不会出现在响应或磁盘元数据。`ListProcessesRequest.all` 区分活动进程与完整历史。`ProcessReference` 用 oneof 明确区分 UUID、名称与 PID。`SignalProcess.wait=true` 使用 RPC context 作为等待上限。完整设计见[通用进程管理详细设计 v1](process-management-design-v1.md)。
+`ProcessInfo` 返回 UUID、逻辑名称、OS PID、PTY/pipe 模式、具体命令、参数、虚拟工作目录、环境覆盖 key、状态、时间戳以及可选退出码/退出信号。`StartProcessRequest.environment` 是覆盖 map，value 不会出现在响应或磁盘元数据。`ListProcessesRequest.all` 区分活动进程与完整历史。`ProcessReference` 用 oneof 明确区分 UUID、名称与 PID。`SignalProcess.wait=true` 使用 RPC context 作为等待上限；`DeleteProcess` 永久删除终态进程的 runtime 目录与内存索引。完整设计见[通用进程管理详细设计 v1](process-management-design-v1.md)。
 
 ### 4.4 上传流
 

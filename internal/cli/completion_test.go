@@ -55,6 +55,7 @@ func TestCompleterSuggestsCommandsOptionsAndArguments(t *testing.T) {
 		{name: "ps all", line: "ps -", want: []string{"a "}, wantOffset: 1},
 		{name: "signal", line: "kill -s T", want: []string{"ERM "}, wantOffset: 1},
 		{name: "running process", line: "kill wor", want: []string{"ker "}, wantOffset: 3},
+		{name: "finished process", line: "forget fin", want: []string{"ished "}, wantOffset: 3},
 		{name: "log options", line: "logs --o", want: []string{"ffset "}, wantOffset: 3},
 	}
 	for _, test := range tests {

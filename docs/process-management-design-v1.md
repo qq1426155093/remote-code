@@ -24,6 +24,7 @@ registry 的所有索引和 `ProcessInfo` 状态由同一 mutex 保护。磁盘 
 
 - `StartProcessRequest.environment` 使用 `map<string,string>`；
 - `ListProcessesRequest.all` 控制是否包含终态；
+- `DeleteProcessRequest.process` 复用 `ProcessReference`，响应返回删除前的终态快照；
 - `ProcessInfo` 增加 `created_at`、`environment_keys`；
 - `ProcessState` 增加 `FAILED` 和 `LOST`；
 - `GetInfoResponse.process_commands` 被保留字段号并移除，因为 server 不再维护命令
@@ -61,8 +62,8 @@ metadata；value 只存在于启动请求和 child env 内存中。
 FAILED、释放活动名额和名称，关闭日志，并持久化失败状态。错误响应包含 UUID，但不包含
 命令参数、环境 value 或操作系统错误细节。
 
-名称索引只指向活动进程；PID 索引保留本次运行中成功启动的记录供历史查询。按 name
-查询终态记录时，从创建顺序逆向选择最近一条，以支持名称复用。
+名称和 PID 索引都指向当前可见的最新匹配记录；新启动的活动进程覆盖同名或 PID 历史
+映射。删除最新记录时，从创建顺序逆向恢复下一个匹配项，以支持名称与 PID 复用。
 
 ## 5. runner 与进程组
 
@@ -106,19 +107,24 @@ segment 轮转后使用稀疏 offset 索引定位回放，使用 stdout/stderr �
 更新为 LOST，清除可控制 PID，记录恢复时间和原因。EXITED/FAILED/LOST 直接加载。
 
 加载记录按创建时间、UUID 排序，超过 4096 条时只把最新 4096 条放入内存；不会删除
-磁盘目录。恢复记录没有 `runningCommand`，因此永远不会进入 signal 路径。
+磁盘目录。恢复记录会重建查询索引，但没有 `runningCommand`，因此永远不会进入 signal 路径。
+
+`DeleteProcess` 在 registry 锁内解析引用并确认进程处于终态，再与日志保留任务互斥地删除
+严格 UUID 命名的目录并同步 runtime 根目录，最后清除 UUID/name/PID/order 索引。活动进程
+或仍有日志 observer 的记录返回 `FailedPrecondition`；符号链接或非目录记录不会被递归删除。
 
 ## 8. CLI 与客户端
 
 public client 的 `StartProcess` 接收一个选项结构，避免继续增长位置参数；
-`ListProcesses(ctx, all)` 显式传递过滤条件。REPL parser 支持重复 `-e`/`--env`，遇到
+`ListProcesses(ctx, all)` 显式传递过滤条件，`DeleteProcess` 删除终态历史。REPL parser 支持重复 `-e`/`--env`，遇到
 `--` 后停止解析选项。命令启动成功后打印 name、UUID、PID、mode 和 cwd。
 
 `ObserveProcessLogs` 的 client 选项以互斥指针表达 offset/tail，返回原始 gRPC server stream。
 REPL `logs` 支持 `-f`、`-n`、`--offset`、`--stdout` 和 `--stderr`，并保持二进制 chunk 原样输出。
 
 `exec` 未设置 cwd 时使用 REPL 保存的工作区相对 cwd；显式 `--cwd` 也通过与文件命令
-相同的远端路径解析器相对于当前 cwd 解析。`ps` 仅接受可选 `-a`/`--all`。
+相同的远端路径解析器相对于当前 cwd 解析。`ps` 仅接受可选 `-a`/`--all`，`forget`
+接受一个 UUID、名称或带前缀的 PID 引用。
 
 Tab completion 增加 `exec` 的选项提示、`--cwd` 目录补全和 kill/ps 参数提示。具体命令
 及其参数由目标程序定义，v1 不尝试从 controller 主机 shell 动态生成补全。
@@ -129,7 +135,8 @@ Tab completion 增加 `exec` 的选项提示、`--cwd` 目录补全和 kill/ps �
 - cwd 不存在 -> `NotFound`，非目录 -> `FailedPrecondition`，逃逸/无权限 ->
   `PermissionDenied`；
 - 活动名称冲突 -> `AlreadyExists`；并发或历史索引饱和 -> `ResourceExhausted`；
-- 已退出/丢失进程 signal -> `FailedPrecondition`；引用不存在 -> `NotFound`；
+- 已退出/丢失进程 signal、活动进程 delete、删除正在观察的日志 -> `FailedPrecondition`；
+  引用不存在 -> `NotFound`；
 - 不支持的平台 -> `Unimplemented`；无法创建安全持久化记录 -> `Internal`。
 
 所有返回给客户端和写入 status 的错误都经过清理，不包含 env value、完整 controller
