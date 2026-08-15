@@ -30,6 +30,53 @@ tools:
     script: |-
       process_list(args.all)
 
+  - name: get
+    title: Inspect one managed process
+    description: Return one current or historical process snapshot by stable UUID, logical name, or PID.
+    capabilities: [processes.read]
+    timeout: 10s
+    max_concurrency: 8
+    annotations:
+      read_only: true
+      destructive: false
+      idempotent: true
+      open_world: false
+    input_schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required: [process]
+      additionalProperties: false
+      properties:
+        process:
+          description: Exactly one stable UUID, logical name, or PID reference.
+          oneOf:
+            - type: object
+              required: [id]
+              additionalProperties: false
+              properties:
+                id:
+                  type: string
+                  description: Stable lowercase process UUID.
+            - type: object
+              required: [name]
+              additionalProperties: false
+              properties:
+                name:
+                  type: string
+                  description: Exact logical process name.
+            - type: object
+              required: [pid]
+              additionalProperties: false
+              properties:
+                pid:
+                  type: integer
+                  description: Current or recorded operating-system PID.
+                  minimum: 1
+    output_schema:
+      type: object
+    script: |-
+      process_get(args.process)
+
   - name: start
     title: Start a managed process
     description: Start one executable directly without a shell and return its stable process UUID for later calls.
@@ -75,6 +122,22 @@ tools:
           description: Optional environment variable overrides; values are never returned or persisted.
           additionalProperties:
             type: string
+        terminal_size:
+          type: object
+          description: Optional initial PTY size; invalid for pipe mode.
+          required: [rows, columns]
+          additionalProperties: false
+          properties:
+            rows:
+              type: integer
+              description: Terminal row count.
+              minimum: 1
+              maximum: 65535
+            columns:
+              type: integer
+              description: Terminal column count.
+              minimum: 1
+              maximum: 65535
     output_schema:
       type: object
     script: |-
@@ -114,8 +177,201 @@ tools:
           type: integer
           description: Maximum payload bytes to include in the snapshot.
           minimum: 1
-          maximum: 16777216
+          maximum: 1048576
     output_schema:
       type: object
     script: |-
       process_logs(args.process_id, args.streams, args.tail_lines, args.max_bytes)
+
+  - name: logs_since
+    title: Read incremental process logs
+    description: Read a bounded log snapshot from an exact logical offset and return a decimal next_offset for reliable polling.
+    capabilities: [processes.read]
+    timeout: 15s
+    max_concurrency: 8
+    annotations:
+      read_only: true
+      destructive: false
+      idempotent: true
+      open_world: false
+    input_schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required: [process_id, streams, offset, max_bytes]
+      additionalProperties: false
+      properties:
+        process_id:
+          type: string
+          description: Stable lowercase process UUID.
+        streams:
+          type: array
+          description: Streams to include; an empty array selects both stdout and stderr.
+          uniqueItems: true
+          items:
+            type: string
+            enum: [stdout, stderr]
+        offset:
+          type: string
+          description: Canonical unsigned decimal logical record offset, initially zero and then the previous next_offset.
+          pattern: "^(0|[1-9][0-9]*)$"
+        max_bytes:
+          type: integer
+          description: Maximum raw log payload bytes in this snapshot; the minimum can always hold one maximum-sized log record.
+          minimum: 65536
+          maximum: 1048576
+    output_schema:
+      type: object
+    script: |-
+      process_logs_since(args.process_id, args.streams, args.offset, args.max_bytes)
+
+  - name: stop
+    title: Stop a managed process
+    description: Send TERM to a managed process group and optionally wait for the process leader to exit; it never sends KILL automatically.
+    capabilities: [processes.signal]
+    timeout: 30s
+    max_concurrency: 4
+    annotations:
+      read_only: false
+      destructive: true
+      idempotent: false
+      open_world: false
+    input_schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required: [process, wait]
+      additionalProperties: false
+      properties:
+        process:
+          description: Exactly one stable UUID, logical name, or PID reference.
+          oneOf:
+            - type: object
+              required: [id]
+              additionalProperties: false
+              properties:
+                id:
+                  type: string
+                  description: Stable lowercase process UUID.
+            - type: object
+              required: [name]
+              additionalProperties: false
+              properties:
+                name:
+                  type: string
+                  description: Exact logical process name.
+            - type: object
+              required: [pid]
+              additionalProperties: false
+              properties:
+                pid:
+                  type: integer
+                  description: Current operating-system PID.
+                  minimum: 1
+        wait:
+          type: boolean
+          description: Whether to wait for the process leader to be reaped within the tool deadline.
+    output_schema:
+      type: object
+    script: |-
+      process_signal(args.process, "term", args.wait)
+
+  - name: template_list
+    title: List process templates
+    description: List operator-controlled process templates with descriptions, revisions, and fixed input/output modes.
+    capabilities: [process_templates.read]
+    timeout: 10s
+    max_concurrency: 8
+    annotations:
+      read_only: true
+      destructive: false
+      idempotent: true
+      open_world: false
+    input_schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      additionalProperties: false
+    output_schema:
+      type: array
+      items:
+        type: object
+    script: |-
+      process_template_list()
+
+  - name: template_get
+    title: Inspect a process template
+    description: Return one public process template, including its strict parameter JSON Schema but excluding executable details and environment values.
+    capabilities: [process_templates.read]
+    timeout: 10s
+    max_concurrency: 8
+    annotations:
+      read_only: true
+      destructive: false
+      idempotent: true
+      open_world: false
+    input_schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: Exact operator-defined process template name.
+          minLength: 1
+          maxLength: 64
+    output_schema:
+      type: object
+    script: |-
+      process_template_get(args.name)
+
+  - name: start_template
+    title: Start a process from a template
+    description: Validate parameters against an operator-controlled template, verify an optional revision, and start the redacted managed process.
+    capabilities: [process_templates.start]
+    timeout: 30s
+    max_concurrency: 4
+    annotations:
+      read_only: false
+      destructive: false
+      idempotent: false
+      open_world: true
+    input_schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required: [template_name, parameters]
+      additionalProperties: false
+      properties:
+        template_name:
+          type: string
+          description: Exact operator-defined process template name.
+          minLength: 1
+          maxLength: 64
+        parameters:
+          type: object
+          description: Parameters validated by the selected template's public JSON Schema.
+        process_name:
+          type: string
+          description: Optional logical name for this process instance.
+        expected_template_revision:
+          type: string
+          description: Optional lowercase SHA-256 revision from process.template_get.
+          pattern: "^[0-9a-f]{64}$"
+        terminal_size:
+          type: object
+          description: Optional initial size; valid only for a PTY template.
+          required: [rows, columns]
+          additionalProperties: false
+          properties:
+            rows:
+              type: integer
+              description: Terminal row count.
+              minimum: 1
+              maximum: 65535
+            columns:
+              type: integer
+              description: Terminal column count.
+              minimum: 1
+              maximum: 65535
+    output_schema:
+      type: object
+    script: |-
+      process_template_start(args)

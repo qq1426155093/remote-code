@@ -77,7 +77,7 @@ func (r *runner) call(ctx context.Context, tool *CompiledTool, raw json.RawMessa
 	}
 	callCtx, cancel := context.WithTimeout(ctx, tool.Timeout)
 	defer cancel()
-	callCtx = withInvocation(callCtx, r.hosts, tool.Capabilities)
+	callCtx = withInvocation(callCtx, r.hosts, tool.Capabilities, r.maxResponse)
 	environment := scriptEnvironment{
 		Context: callCtx, Args: argumentMap,
 		Call: scriptCallMetadata{ID: callID, Tool: tool.Name, ClientName: clientName},
@@ -100,11 +100,16 @@ func (r *runner) call(ctx context.Context, tool *CompiledTool, raw json.RawMessa
 	if err != nil || int64(len(encoded)) > r.maxResponse {
 		return toolError("tool result exceeded the response size limit")
 	}
-	resultIsError = false
-	return &mcpsdk.CallToolResult{
+	candidate := &mcpsdk.CallToolResult{
 		Content:           []mcpsdk.Content{&mcpsdk.TextContent{Text: string(encoded)}},
 		StructuredContent: structuredContentForProtocol(normalized, protocolVersion),
 	}
+	wire, err := json.Marshal(candidate)
+	if err != nil || int64(len(wire))+responseEnvelopeReserve > r.maxResponse {
+		return toolError("tool result exceeded the response size limit")
+	}
+	resultIsError = false
+	return candidate
 }
 
 func structuredContentForProtocol(value any, protocolVersion string) any {
@@ -177,7 +182,7 @@ func safeExecutionError(err error, ctx context.Context) string {
 	}
 	switch status.Code(err) {
 	case codes.InvalidArgument, codes.NotFound, codes.AlreadyExists, codes.FailedPrecondition,
-		codes.ResourceExhausted, codes.PermissionDenied, codes.OutOfRange, codes.Unimplemented:
+		codes.ResourceExhausted, codes.PermissionDenied, codes.OutOfRange, codes.Unavailable, codes.Unimplemented:
 		return boundedError(err, 768)
 	case codes.Canceled, codes.DeadlineExceeded:
 		return contextMessage(err)

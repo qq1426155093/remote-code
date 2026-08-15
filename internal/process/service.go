@@ -344,6 +344,21 @@ func (s *Service) ListProcesses(ctx context.Context, request *codev1.ListProcess
 	return &codev1.ListProcessesResponse{Processes: processes}, nil
 }
 
+// GetProcessInfo returns one immutable process snapshot by stable ID, logical
+// name, or PID for in-process adapters such as MCP.
+func (s *Service) GetProcessInfo(ctx context.Context, reference *codev1.ProcessReference) (*codev1.ProcessInfo, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, status.FromContextError(err).Err()
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, err := s.lookupLocked(reference)
+	if err != nil {
+		return nil, err
+	}
+	return cloneProcessInfo(record.info), nil
+}
+
 // DeleteProcess permanently removes one terminal process and all of its
 // persistent metadata and logs. Active processes must be stopped first.
 func (s *Service) DeleteProcess(ctx context.Context, request *codev1.DeleteProcessRequest) (*codev1.DeleteProcessResponse, error) {

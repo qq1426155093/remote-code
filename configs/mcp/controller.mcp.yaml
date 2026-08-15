@@ -1,0 +1,25 @@
+version: 1
+namespace: controller
+description: Controller discovery tools
+language: expr
+
+tools:
+  - name: info
+    title: Inspect controller limits
+    description: Return safe controller version, workspace display name, process limits, upload limit, and process-template count.
+    capabilities: [controller.read]
+    timeout: 5s
+    max_concurrency: 8
+    annotations:
+      read_only: true
+      destructive: false
+      idempotent: true
+      open_world: false
+    input_schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      additionalProperties: false
+    output_schema:
+      type: object
+    script: |-
+      controller_info()

@@ -43,11 +43,21 @@ enabled = false
 listen_address = "127.0.0.1:9444"
 endpoint_path = "/mcp"
 definition_files = [
+  "/etc/remote-code/mcp/controller.mcp.yaml",
   "/etc/remote-code/mcp/file.mcp.yaml",
   "/etc/remote-code/mcp/process.mcp.yaml",
 ]
 allowed_origins = []
-allowed_host_capabilities = []
+allowed_host_capabilities = [
+  "controller.read",
+  "files.read",
+  "files.write",
+  "processes.read",
+  "processes.start",
+  "processes.signal",
+  "process_templates.read",
+  "process_templates.start",
+]
 max_request_bytes = 1048576
 max_response_bytes = 4194304
 max_concurrent_calls = 16

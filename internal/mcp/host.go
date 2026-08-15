@@ -25,20 +25,29 @@ type hostDefinition struct {
 }
 
 var hostCatalog = map[string]hostDefinition{
-	"file_stat":       {"file_stat", "files.read", effectRead, 1},
-	"file_list":       {"file_list", "files.read", effectRead, 1},
-	"file_tree":       {"file_tree", "files.read", effectRead, 1},
-	"file_read_text":  {"file_read_text", "files.read", effectRead, 2},
-	"file_write_text": {"file_write_text", "files.write", effectDestructive, 4},
-	"file_mkdir":      {"file_mkdir", "files.write", effectMutate, 3},
-	"file_move":       {"file_move", "files.write", effectDestructive, 3},
-	"file_chmod":      {"file_chmod", "files.write", effectMutate, 2},
-	"file_remove":     {"file_remove", "files.write", effectDestructive, 2},
-	"process_start":   {"process_start", "processes.start", effectMutate, 1},
-	"process_list":    {"process_list", "processes.read", effectRead, 1},
-	"process_signal":  {"process_signal", "processes.signal", effectDestructive, 3},
-	"process_delete":  {"process_delete", "processes.signal", effectDestructive, 1},
-	"process_logs":    {"process_logs", "processes.read", effectRead, 4},
+	"controller_info":        {"controller_info", "controller.read", effectRead, 0},
+	"file_stat":              {"file_stat", "files.read", effectRead, 1},
+	"file_list":              {"file_list", "files.read", effectRead, 1},
+	"file_tree":              {"file_tree", "files.read", effectRead, 1},
+	"file_read_text":         {"file_read_text", "files.read", effectRead, 2},
+	"file_read_range":        {"file_read_range", "files.read", effectRead, 4},
+	"file_search":            {"file_search", "files.read", effectRead, 1},
+	"file_write_text":        {"file_write_text", "files.write", effectDestructive, 4},
+	"file_apply_patch":       {"file_apply_patch", "files.write", effectDestructive, 3},
+	"file_mkdir":             {"file_mkdir", "files.write", effectMutate, 3},
+	"file_move":              {"file_move", "files.write", effectDestructive, 3},
+	"file_chmod":             {"file_chmod", "files.write", effectMutate, 2},
+	"file_remove":            {"file_remove", "files.delete", effectDestructive, 2},
+	"process_start":          {"process_start", "processes.start", effectMutate, 1},
+	"process_list":           {"process_list", "processes.read", effectRead, 1},
+	"process_get":            {"process_get", "processes.read", effectRead, 1},
+	"process_signal":         {"process_signal", "processes.signal", effectDestructive, 3},
+	"process_delete":         {"process_delete", "processes.delete", effectDestructive, 1},
+	"process_logs":           {"process_logs", "processes.read", effectRead, 4},
+	"process_logs_since":     {"process_logs_since", "processes.read", effectRead, 4},
+	"process_template_list":  {"process_template_list", "process_templates.read", effectRead, 0},
+	"process_template_get":   {"process_template_get", "process_templates.read", effectRead, 1},
+	"process_template_start": {"process_template_start", "process_templates.start", effectMutate, 1},
 }
 
 var capabilityCatalog = func() map[string]struct{} {
@@ -56,21 +65,24 @@ type HostDispatcher interface {
 }
 
 type invocation struct {
-	dispatcher   HostDispatcher
-	capabilities map[string]struct{}
-	mutations    int
-	calls        int
-	resultBytes  int64
+	dispatcher     HostDispatcher
+	capabilities   map[string]struct{}
+	mutations      int
+	calls          int
+	resultBytes    int64
+	maxResultBytes int64
 }
 
 type invocationContextKey struct{}
 
-func withInvocation(ctx context.Context, dispatcher HostDispatcher, capabilities []string) context.Context {
+func withInvocation(ctx context.Context, dispatcher HostDispatcher, capabilities []string, maxResultBytes int64) context.Context {
 	allowed := make(map[string]struct{}, len(capabilities))
 	for _, capability := range capabilities {
 		allowed[capability] = struct{}{}
 	}
-	return context.WithValue(ctx, invocationContextKey{}, &invocation{dispatcher: dispatcher, capabilities: allowed})
+	return context.WithValue(ctx, invocationContextKey{}, &invocation{
+		dispatcher: dispatcher, capabilities: allowed, maxResultBytes: maxResultBytes,
+	})
 }
 
 func hostOptions(names map[string]struct{}) []expr.Option {
@@ -126,7 +138,7 @@ func bindHostOption(definition hostDefinition) expr.Option {
 			return nil, errors.New("host function returned an invalid result")
 		}
 		call.resultBytes += int64(len(encoded))
-		if call.resultBytes > 16<<20 {
+		if call.maxResultBytes > 0 && call.resultBytes > call.maxResultBytes {
 			return nil, errors.New("tool invocation exceeded its host result budget")
 		}
 		return result, nil
@@ -136,6 +148,8 @@ func bindHostOption(definition hostDefinition) expr.Option {
 
 func hostSignature(arity int) any {
 	switch arity {
+	case 0:
+		return new(func(context.Context) any)
 	case 1:
 		return new(func(context.Context, any) any)
 	case 2:

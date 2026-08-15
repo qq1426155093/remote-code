@@ -33,6 +33,60 @@ tools:
     script: |-
       file_list(args.path)
 
+  - name: stat
+    title: Inspect a workspace path
+    description: Return metadata for one workspace-relative path without following the final symbolic link.
+    capabilities: [files.read]
+    timeout: 10s
+    max_concurrency: 8
+    annotations:
+      read_only: true
+      destructive: false
+      idempotent: true
+      open_world: false
+    input_schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required: [path]
+      additionalProperties: false
+      properties:
+        path:
+          type: string
+          description: Workspace-relative path; use a dot for the root.
+          minLength: 1
+          maxLength: 4096
+    output_schema:
+      type: object
+    script: |-
+      file_stat(args.path)
+
+  - name: tree
+    title: Inspect a workspace tree
+    description: Return a bounded recursive tree without following symbolic links; the controller enforces depth and entry limits.
+    capabilities: [files.read]
+    timeout: 15s
+    max_concurrency: 4
+    annotations:
+      read_only: true
+      destructive: false
+      idempotent: true
+      open_world: false
+    input_schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required: [path]
+      additionalProperties: false
+      properties:
+        path:
+          type: string
+          description: Workspace-relative file or directory path.
+          minLength: 1
+          maxLength: 4096
+    output_schema:
+      type: object
+    script: |-
+      file_tree(args.path)
+
   - name: read_text
     title: Read a workspace text file
     description: Read a bounded regular UTF-8 file and return its path, content, size, and SHA-256 digest.
@@ -59,11 +113,102 @@ tools:
           type: integer
           description: Maximum bytes to read before returning a resource-limit error.
           minimum: 1
-          maximum: 16777216
+          maximum: 1048576
     output_schema:
       type: object
     script: |-
       file_read_text(args.path, args.max_bytes)
+
+  - name: read_range
+    title: Read a range of workspace text lines
+    description: Read complete UTF-8 lines from a large regular file and return a resumable next line without loading the entire file.
+    capabilities: [files.read]
+    timeout: 15s
+    max_concurrency: 8
+    annotations:
+      read_only: true
+      destructive: false
+      idempotent: true
+      open_world: false
+    input_schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required: [path, start_line, max_lines, max_bytes]
+      additionalProperties: false
+      properties:
+        path:
+          type: string
+          description: Workspace-relative path to a regular UTF-8 file.
+          minLength: 1
+          maxLength: 4096
+        start_line:
+          type: integer
+          description: One-based first logical line to return.
+          minimum: 1
+        max_lines:
+          type: integer
+          description: Maximum number of complete logical lines to return.
+          minimum: 1
+          maximum: 10000
+        max_bytes:
+          type: integer
+          description: Maximum UTF-8 content bytes in the result; the next line is never partially returned.
+          minimum: 1
+          maximum: 1048576
+    output_schema:
+      type: object
+    script: |-
+      file_read_range(args.path, args.start_line, args.max_lines, args.max_bytes)
+
+  - name: search
+    title: Search workspace text
+    description: Perform a bounded literal search over regular UTF-8 files selected by a recursive glob without following symbolic links.
+    capabilities: [files.read]
+    timeout: 30s
+    max_concurrency: 4
+    annotations:
+      read_only: true
+      destructive: false
+      idempotent: true
+      open_world: false
+    input_schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required: [path, glob, query, case_sensitive, max_results, max_bytes]
+      additionalProperties: false
+      properties:
+        path:
+          type: string
+          description: Workspace-relative directory or file at which the search starts.
+          minLength: 1
+          maxLength: 4096
+        glob:
+          type: string
+          description: Slash-separated path glob relative to path; double-star matches zero or more components.
+          minLength: 1
+          maxLength: 4096
+        query:
+          type: string
+          description: Non-empty literal UTF-8 text to find within individual lines.
+          minLength: 1
+          maxLength: 4096
+        case_sensitive:
+          type: boolean
+          description: Whether matching preserves letter case.
+        max_results:
+          type: integer
+          description: Maximum matching lines to return.
+          minimum: 1
+          maximum: 200
+        max_bytes:
+          type: integer
+          description: Maximum file bytes to scan across the search.
+          minimum: 1
+          maximum: 67108864
+    output_schema:
+      type: object
+    script: |-
+      file_search(args)
 
   - name: write_text
     title: Write a workspace text file
@@ -102,3 +247,109 @@ tools:
       type: object
     script: |-
       file_write_text(args.path, args.content, args.overwrite, args.mode)
+
+  - name: apply_patch
+    title: Apply a checked workspace text patch
+    description: Apply a single-file unified diff only when the current regular UTF-8 file matches the expected SHA-256 digest.
+    capabilities: [files.write]
+    timeout: 30s
+    max_concurrency: 4
+    annotations:
+      read_only: false
+      destructive: true
+      idempotent: true
+      open_world: false
+    input_schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required: [path, expected_sha256, patch]
+      additionalProperties: false
+      properties:
+        path:
+          type: string
+          description: Explicit workspace-relative regular file to modify; diff headers never select the target.
+          minLength: 1
+          maxLength: 4096
+        expected_sha256:
+          type: string
+          description: Lowercase SHA-256 digest returned by file.read_text.
+          pattern: "^[0-9a-f]{64}$"
+        patch:
+          type: string
+          description: A unified diff containing one or more hunks for this file only.
+          minLength: 1
+          maxLength: 1048576
+    output_schema:
+      type: object
+    script: |-
+      file_apply_patch(args.path, args.expected_sha256, args.patch)
+
+  - name: mkdir
+    title: Create a workspace directory
+    description: Create one workspace-relative directory, optionally including missing parents.
+    capabilities: [files.write]
+    timeout: 15s
+    max_concurrency: 4
+    annotations:
+      read_only: false
+      destructive: false
+      idempotent: true
+      open_world: false
+    input_schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required: [path, parents, mode]
+      additionalProperties: false
+      properties:
+        path:
+          type: string
+          description: Workspace-relative directory path.
+          minLength: 1
+          maxLength: 4096
+        parents:
+          type: boolean
+          description: Whether missing parent directories are also created.
+        mode:
+          type: integer
+          description: POSIX permission bits expressed as an integer from 0 through 511.
+          minimum: 0
+          maximum: 511
+    output_schema:
+      type: object
+    script: |-
+      file_mkdir(args.path, args.parents, args.mode)
+
+  - name: move
+    title: Move a workspace path
+    description: Move one workspace-relative path to another, optionally replacing an existing non-directory target.
+    capabilities: [files.write]
+    timeout: 15s
+    max_concurrency: 4
+    annotations:
+      read_only: false
+      destructive: true
+      idempotent: false
+      open_world: false
+    input_schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required: [source, destination, overwrite]
+      additionalProperties: false
+      properties:
+        source:
+          type: string
+          description: Existing workspace-relative source path.
+          minLength: 1
+          maxLength: 4096
+        destination:
+          type: string
+          description: Workspace-relative destination path.
+          minLength: 1
+          maxLength: 4096
+        overwrite:
+          type: boolean
+          description: Whether an existing non-directory destination may be replaced.
+    output_schema:
+      type: object
+    script: |-
+      file_move(args.source, args.destination, args.overwrite)

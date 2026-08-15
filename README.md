@@ -8,7 +8,8 @@ Remote Code 是一个面向远程开发任务的 Code Agent 控制平面。它�
 > gRPC controller、流式上传/下载、PTY/pipe 启动、可回放/跟随的持久化输出日志、进程列表、
 > 信号、历史删除、自动回收、重启历史恢复、可重连的远程 PTY attach，以及由 JSON Schema 和受限
 > Expr 驱动的服务端进程模板。controller 也可从多个
-> `.mcp.yaml` 文件加载 Expr tool，并通过带认证的 Streamable HTTP MCP endpoint 暴露文件与进程能力。
+> `.mcp.yaml` 文件加载 Expr tool，并通过带认证的 Streamable HTTP MCP endpoint 暴露 controller 信息、
+> 有界文件读取/搜索/补丁、进程快照/偏移日志、进程模板和 binary workspace Resource。
 > Agent 语义仍是后续版本计划。
 
 ## 快速开始
@@ -66,9 +67,10 @@ remote-code:/> exec-template --attach --params-file ./agent-parameters.json code
 
 MCP 默认关闭。启用时使用 TOML schema v2 或 v3，配置独立 HTTP listener、bearer token 和 workspace
 之外的定义文件。仓库提供可直接参考并通过启动期编译检查的
-[`file.mcp.yaml`](configs/mcp/file.mcp.yaml) 与
+[`controller.mcp.yaml`](configs/mcp/controller.mcp.yaml)、[`file.mcp.yaml`](configs/mcp/file.mcp.yaml) 与
 [`process.mcp.yaml`](configs/mcp/process.mcp.yaml)。`--check-config` 会读取严格 YAML、编译 JSON Schema
-与 Expr，但不会绑定端口或执行 host function。
+与 Expr，但不会绑定端口或执行 host function。示例默认不发布删除、chmod、任意 signal、stdin、PTY attach
+或日志 follow；`files.read` 还会启用只读的 `workspace:///{+path}` binary Resource template。
 
 controller 同时保留全部命令行参数。使用配置文件时，显式命令行参数覆盖 TOML，例如：
 

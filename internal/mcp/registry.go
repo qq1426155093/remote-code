@@ -191,9 +191,11 @@ func compileTool(config Config, namespace string, definition toolDocument) (*Com
 	if policy.Strongest == effectMutate && annotations.Destructive {
 		return nil, errors.New("non-destructive mutation requires destructive=false")
 	}
-	_, startsProcess := seenCapabilities["processes.start"]
+	_, startsDirectProcess := seenCapabilities["processes.start"]
+	_, startsTemplateProcess := seenCapabilities["process_templates.start"]
+	startsProcess := startsDirectProcess || startsTemplateProcess
 	if startsProcess && annotations.Idempotent {
-		return nil, errors.New("processes.start requires idempotent=false")
+		return nil, errors.New("process start capabilities require idempotent=false")
 	}
 	if annotations.OpenWorld != startsProcess {
 		return nil, fmt.Errorf("open_world must be %t for this script", startsProcess)

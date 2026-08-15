@@ -42,6 +42,7 @@ func NewServer(prepared *Prepared, fileService *files.Service, processService *p
 		PageSize:     config.ToolListPageSize,
 		Capabilities: &mcpsdk.ServerCapabilities{Tools: &mcpsdk.ToolCapabilities{ListChanged: false}},
 	})
+	registerWorkspaceResources(sdkServer, fileService, config, runner.globalSlots)
 	sdkTools := make([]*mcpsdk.Tool, 0, len(prepared.Registry.ordered))
 	for _, compiled := range prepared.Registry.ordered {
 		compiled := compiled

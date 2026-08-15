@@ -16,6 +16,7 @@ const (
 	defaultEndpointPath       = "/mcp"
 	defaultMaxRequestBytes    = int64(1 << 20)
 	defaultMaxResponseBytes   = int64(4 << 20)
+	minimumResponseBytes      = int64(16 << 10)
 	defaultMaxConcurrentCalls = 16
 	defaultRequestsPerSecond  = 20
 	defaultRequestBurst       = 40
@@ -107,8 +108,8 @@ func ValidateConfig(config Config, grpcAddress string) error {
 	if config.MaxRequestBytes <= 0 || config.MaxRequestBytes > 64<<20 {
 		return errors.New("mcp.max_request_bytes must be between 1 and 67108864")
 	}
-	if config.MaxResponseBytes <= 0 || config.MaxResponseBytes > 64<<20 {
-		return errors.New("mcp.max_response_bytes must be between 1 and 67108864")
+	if config.MaxResponseBytes < minimumResponseBytes || config.MaxResponseBytes > 64<<20 {
+		return errors.New("mcp.max_response_bytes must be between 16384 and 67108864")
 	}
 	if config.MaxConcurrentCalls <= 0 || config.MaxConcurrentCalls > 4096 {
 		return errors.New("mcp.max_concurrent_calls must be between 1 and 4096")

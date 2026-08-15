@@ -57,16 +57,20 @@ enabled = true
 listen_address = "127.0.0.1:9444"
 endpoint_path = "/mcp"
 definition_files = [
+  "/etc/remote-code/mcp/controller.mcp.yaml",
   "/etc/remote-code/mcp/file.mcp.yaml",
   "/etc/remote-code/mcp/process.mcp.yaml",
 ]
 allowed_origins = []
 allowed_host_capabilities = [
+  "controller.read",
   "files.read",
   "files.write",
   "processes.read",
   "processes.start",
   "processes.signal",
+  "process_templates.read",
+  "process_templates.start",
 ]
 max_request_bytes = 1048576
 max_response_bytes = 4194304
@@ -130,11 +134,20 @@ MCP 字段首版不提供命令行覆盖，以免列表字段产生不明确的�
 | `mcp.max_tool_timeout` | `5m` |
 | `mcp.tool_list_page_size` | `100` |
 
+`mcp.max_response_bytes` 可配置范围为 `16384` 到 `67108864`；下限保证基础 JSON-RPC/tool error envelope
+以及最小 binary Resource 都有可用空间。
+
 启用 MCP 时 `definition_files` 至少包含一个以 `.mcp.yaml` 结尾的普通文件，且文件物理路径必须位于
 workspace 之外；最终符号链接、重复物理文件以及 `.mcp.yml`/`.mcp` 扩展名都会被拒绝。MCP 强制要求
 全局 token，并复用全局 TLS。MCP 与 gRPC 使用不同 listener；非 loopback 明文监听继续受
-`allow_insecure_remote` 限制。可用 host capability 为 `files.read`、`files.write`、`processes.read`、
-`processes.start` 和 `processes.signal`。
+`allow_insecure_remote` 限制。可用 host capability 为 `controller.read`、`files.read`、`files.write`、
+`files.delete`、`processes.read`、`processes.start`、`processes.signal`、`processes.delete`、
+`process_templates.read` 和 `process_templates.start`。仓库示例不默认使用两个 delete capability。
+
+全局允许 `files.read` 时，MCP endpoint 还会发布 `workspace:///{+path}` Resource template。单次读取只接受
+workspace 内普通文件，内容以 binary resource 返回；原始文件字节上限根据 `max_response_bytes` 扣除
+JSON-RPC/base64 开销后计算，因此不会依赖响应中间件截断。`file.read_text`、`file.read_range` 和
+`process.logs*` 示例也使用较低的 tool 参数上限，最终 structured/text 双份结果仍会在发送前按实际编码大小校验。
 
 首版安全 definition opener 使用 Linux `O_NOFOLLOW` 与 fd identity；在非 Linux 平台启用 MCP 会
 fail closed，普通 gRPC controller 在 MCP 关闭时不受影响。

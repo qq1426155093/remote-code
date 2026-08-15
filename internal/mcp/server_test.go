@@ -1,8 +1,11 @@
 package mcpserver
 
 import (
+	"bytes"
 	"context"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -14,10 +17,14 @@ import (
 
 func TestStreamableHTTPListsAndCallsConfiguredTool(t *testing.T) {
 	workspace := t.TempDir()
+	resourceData := []byte{0, 1, 2, 255}
+	if err := os.WriteFile(filepath.Join(workspace, "artifact.bin"), resourceData, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	definition := writeDefinition(t, validDefinition)
 	prepared, err := Prepare(Config{
 		Enabled: true, ListenAddress: "127.0.0.1:0", EndpointPath: "/mcp",
-		DefinitionFiles: []string{definition}, Token: "test-token",
+		DefinitionFiles: []string{definition}, Token: "test-token", AllowedHostCapabilities: []string{"files.read"},
 	}, workspace, "127.0.0.1:9443")
 	if err != nil {
 		t.Fatal(err)
@@ -70,6 +77,20 @@ func TestStreamableHTTPListsAndCallsConfiguredTool(t *testing.T) {
 	if called.IsError || called.StructuredContent != "src/main.go" {
 		t.Fatalf("call result = %#v", called)
 	}
+	templates, err := session.ListResourceTemplates(ctx, &mcpsdk.ListResourceTemplatesParams{})
+	if err != nil {
+		t.Fatalf("ListResourceTemplates() error = %v", err)
+	}
+	if len(templates.ResourceTemplates) != 1 || templates.ResourceTemplates[0].URITemplate != workspaceResourceTemplate {
+		t.Fatalf("resource templates = %#v", templates.ResourceTemplates)
+	}
+	resource, err := session.ReadResource(ctx, &mcpsdk.ReadResourceParams{URI: "workspace:///artifact.bin"})
+	if err != nil {
+		t.Fatalf("ReadResource() error = %v", err)
+	}
+	if len(resource.Contents) != 1 || !bytes.Equal(resource.Contents[0].Blob, resourceData) {
+		t.Fatalf("resource = %#v", resource)
+	}
 
 	request, _ := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+server.Address()+"/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`))
 	request.Header.Set("Content-Type", "application/json")
@@ -80,6 +101,23 @@ func TestStreamableHTTPListsAndCallsConfiguredTool(t *testing.T) {
 	response.Body.Close()
 	if response.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated status = %d", response.StatusCode)
+	}
+}
+
+func TestWorkspaceResourcePathAndBudget(t *testing.T) {
+	if got, err := workspaceResourcePath("workspace:///dir/file%20name.bin"); err != nil || got != "dir/file name.bin" {
+		t.Fatalf("workspaceResourcePath() = %q, %v", got, err)
+	}
+	for _, value := range []string{
+		"file:///tmp/secret", "workspace://host/file", "workspace:///", "workspace:///file?query=1",
+		"workspace:///file?", "workspace:///file#",
+	} {
+		if _, err := workspaceResourcePath(value); err == nil {
+			t.Fatalf("workspaceResourcePath(%q) succeeded", value)
+		}
+	}
+	if got := maximumResourceBytes(16 << 10); got != 6<<10 {
+		t.Fatalf("maximumResourceBytes() = %d", got)
 	}
 }
 

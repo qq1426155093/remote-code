@@ -3,8 +3,8 @@
 ## 1. 文档状态
 
 本文定义 `remote-code-controller` 可配置 MCP Server 的首版需求。仓库已按本文实现首版 MCP endpoint、
-`.mcp.yaml` 文件加载、JSON Schema 校验、Expr 脚本和 file/process host capability；本文同时保留安全边界
-与兼容性要求，作为后续修改的验收依据。
+`.mcp.yaml` 文件加载、JSON Schema 校验、Expr 脚本、controller/file/process/template host capability 和
+有界 workspace Resource；本文同时保留安全边界与兼容性要求，作为后续修改的验收依据。
 对应的实现方案见[可配置 MCP Server 详细设计 v1](mcp-server-design-v1.md)。
 
 本设计的规范基线为 Model Context Protocol `2026-07-28`：
@@ -22,8 +22,8 @@
 controller 通过配置加载多个以 `.mcp.yaml` 为复合扩展名的定义文件，将这些文件中的 tool 聚合成一个
 MCP Server，并通过 Streamable HTTP 供 Code Agent 调用。
 
-每个 `.mcp.yaml` 文件表示一个逻辑 module，例如 `file.mcp.yaml` 或 `process.mcp.yaml`；一个 module 可以定义
-多个 tool。每个 tool 至少包含：
+每个 `.mcp.yaml` 文件表示一个逻辑 module，例如 `controller.mcp.yaml`、`file.mcp.yaml` 或
+`process.mcp.yaml`；一个 module 可以定义多个 tool。每个 tool 至少包含：
 
 - 唯一名称、标题和面向模型的功能描述；
 - 使用 JSON Schema 表达的参数及参数描述；
@@ -40,7 +40,7 @@ host function 必须复用 controller 现有的工作区边界、进程注册表
 
 首版不包含：
 
-- MCP Resources、Prompts、Sampling、Elicitation 或自定义 MCP extensions；
+- MCP Prompts、Sampling、Elicitation 或自定义 MCP extensions；
 - JSON Schema `x-mcp-header` 参数镜像；
 - 从 HTTP、Git 或其它远端位置下载 `.mcp.yaml` 定义；
 - `.mcp.yaml` 文件热加载以及运行时增删 tool；
@@ -90,6 +90,7 @@ session resumability 或 DELETE session。GET、DELETE、PUT、PATCH 和未支�
 - `server/discover`：面向 `2026-07-28` 客户端公布版本与 `tools` capability；
 - `tools/list`：分页、稳定排序地列出所有已授权 tool；
 - `tools/call`：校验参数并执行 tool；
+- `resources/templates/list` 与 `resources/read`：仅在全局允许 `files.read` 时发布并读取有界 workspace 文件；
 - 仅在兼容旧协议时处理 `initialize` 和 `notifications/initialized`。
 
 首版响应统一使用 `Content-Type: application/json`。客户端即使在 `Accept` 中声明
@@ -147,28 +148,38 @@ process ID、Agent ID 或其它 opaque handle 传递，不能依赖 HTTP 连接�
 
 ## 5. Controller 配置
 
-引入 controller TOML schema v2。loader 必须继续接受 v1，并将其解释为 MCP disabled；v2 增加：
+controller loader 当前接受 TOML schema v1/v2/v3：v1 将 MCP 解释为 disabled，v2 引入 MCP，v3 增加
+process template 定义。启用本节全部能力的示例使用 v3：
 
 ```toml
-version = 2
+version = 3
 workspace = "/srv/remote-code/workspace"
 listen_address = "127.0.0.1:9443"
+
+[process_templates]
+definition_files = [
+  "/etc/remote-code/process-templates/code-agents.process-template.yaml",
+]
 
 [mcp]
 enabled = true
 listen_address = "127.0.0.1:9444"
 endpoint_path = "/mcp"
 definition_files = [
+  "/etc/remote-code/mcp/controller.mcp.yaml",
   "/etc/remote-code/mcp/file.mcp.yaml",
   "/etc/remote-code/mcp/process.mcp.yaml",
 ]
 allowed_origins = []
 allowed_host_capabilities = [
+  "controller.read",
   "files.read",
   "files.write",
   "processes.read",
   "processes.start",
   "processes.signal",
+  "process_templates.read",
+  "process_templates.start",
 ]
 max_request_bytes = 1048576
 max_response_bytes = 4194304
@@ -346,14 +357,17 @@ host function 使用稳定的 snake_case 名称，例如：
 
 | Host function | Capability | 副作用分类 |
 | --- | --- | --- |
-| `file_stat`、`file_list`、`file_tree`、`file_read_text` | `files.read` | read |
+| `controller_info` | `controller.read` | read |
+| `file_stat`、`file_list`、`file_tree`、`file_read_text`、`file_read_range`、`file_search` | `files.read` | read |
 | `file_mkdir`、`file_chmod` | `files.write` | mutate |
-| `file_write_text`、`file_move` | `files.write` | destructive（可能覆盖已有数据） |
+| `file_write_text`、`file_apply_patch`、`file_move` | `files.write` | destructive（可能覆盖已有数据） |
 | `file_remove` | `files.delete` | destructive |
-| `process_list`、`process_logs` | `processes.read` | read |
+| `process_list`、`process_get`、`process_logs`、`process_logs_since` | `processes.read` | read |
 | `process_start` | `processes.start` | mutate |
 | `process_signal` | `processes.signal` | destructive |
 | `process_delete` | `processes.delete` | destructive |
+| `process_template_list`、`process_template_get` | `process_templates.read` | read |
+| `process_template_start` | `process_templates.start` | mutate |
 
 tool 只能使用其 `capabilities` 所授权且同时位于 controller
 `allowed_host_capabilities` 中的函数。脚本引用其它函数时必须在 controller 启动阶段编译失败。
@@ -403,23 +417,25 @@ context deadline 主要约束 host function；由于 Expr 内建求值不能依�
 首版文件 host function 至少覆盖：
 
 - stat、非递归 list、受限 tree；
-- 受最大字节数限制且要求合法 UTF-8 的文本读取；
-- 原子文本写入、mkdir、move、chmod；
+- 受最大字节数限制且要求合法 UTF-8 的完整与按行范围读取，以及同时限制扫描字节、条目、文件和结果数的
+  literal search；
+- 原子文本写入、带 expected SHA-256 的单文件 unified patch、mkdir、move、chmod；
 - 显式 capability 保护的 remove。
 
 所有路径均为 workspace-relative；拒绝绝对路径、`..`、NUL、根目录 destructive 操作和 symlink
-escape。写入沿用同目录临时文件、校验、sync 和原子发布语义。首版不通过 Expr 返回任意尺寸二进制；
-二进制传输后续应使用 resource 或明确的 base64/attachment 设计。
+escape。写入沿用同目录临时文件、校验、sync 和原子发布语义。Expr 不返回任意尺寸二进制；二进制读取
+使用下述有界 workspace Resource。
 
 ### 8.2 进程能力
 
 首版进程 host function 至少覆盖：
 
 - start，返回稳定 UUID、name、PID 和状态；
-- list active/history；
+- list active/history，并按精确 reference 获取一个快照；
 - signal，可选等待；
 - 删除终态历史；
-- 有界日志 snapshot，可选 stream filter 和 tail lines。
+- 有界日志 snapshot，可选 stream filter、tail lines 或可续传的 decimal offset；
+- list/get/start operator-controlled process template，模板启动使用独立 capability。
 
 `process_start` 继续接收具体 executable/arguments，不经 shell 拼接；其远程代码执行风险与 gRPC
 `StartProcess` 相同。只有显式允许 `processes.start` 的 controller 才能加载调用它的 tool。
@@ -427,6 +443,13 @@ escape。写入沿用同目录临时文件、校验、sync 和原子发布语义
 
 首版不暴露 stdin、PTY attach 和 resize。若以后增加，必须采用显式 handle 和独立的有界交互模型，
 不能把连接本身作为 session。
+
+### 8.3 Workspace Resource
+
+全局 allowlist 包含 `files.read` 时，server 发布 `workspace:///{+path}` Resource template。handler 只读取
+workspace 内普通文件，继续复用 `os.Root`、路径和 symlink escape 校验，并以 MCP binary resource 返回。
+单次原始字节上限由 `max_response_bytes` 扣除 JSON-RPC 固定余量后按 base64 的 4/3 膨胀比例反算；读取前
+根据文件大小拒绝超限，不依赖 HTTP middleware 截断。Resource 不支持写入、目录打包或 subscription。
 
 ## 9. 安全与认证
 
@@ -500,7 +523,7 @@ escape。写入沿用同目录临时文件、校验、sync 和原子发布语义
 | arguments/result JSON 节点 | 100,000 |
 | schema 子 schema | 1,024/tool |
 | HTTP request | 1 MiB，可向下配置 |
-| HTTP response | 4 MiB，可向下配置 |
+| HTTP response | 默认 4 MiB，可配置 16 KiB..64 MiB |
 | host call sites | 16/script |
 | mutation call sites | 1/script |
 | 全局在途 tool call | 16，可配置 1..256 |
@@ -509,6 +532,8 @@ escape。写入沿用同目录临时文件、校验、sync 和原子发布语义
 | tool list page | 100，可配置 1..500 |
 
 具体 file/process host function 还必须服从现有 service 的更小限制；多层限制取最小值。
+host 累计结果与最终 tool result 都使用 `max_response_bytes`；最终校验按 structured/text 双份字段的实际
+JSON 编码大小执行，并为 JSON-RPC envelope 保留固定余量，不能只校验 Expr 值本身。
 
 ## 13. 错误模型
 
@@ -595,7 +620,7 @@ tools:
       read_only: false
       destructive: false
       idempotent: false
-      open_world: false
+      open_world: true
 
     input_schema:
       type: object
@@ -627,8 +652,8 @@ tools:
           type: string
           description: Process I/O mode.
           enum:
-            - PIPE
-            - PTY
+            - pipe
+            - pty
 
     output_schema:
       type: object
@@ -645,14 +670,14 @@ tools:
         command: args.command,
         arguments: args.arguments ?? [],
         working_directory: args.working_directory ?? ".",
-        io_mode: args.io_mode ?? "PIPE"
+        io_mode: args.io_mode ?? "pipe"
       })
 ```
 
 ## 15. 验收标准
 
-- controller 可通过 schema v2 TOML 配置至少 `file.mcp.yaml` 和 `process.mcp.yaml`，并在一个 endpoint 中列出
-  两个 module 的 tool；
+- controller 可配置 `controller.mcp.yaml`、`file.mcp.yaml` 和 `process.mcp.yaml`，并在一个 endpoint 中列出
+  三个 module 的 tool；允许 `files.read` 时同时列出 workspace Resource template；
 - 任一文件缺失、非普通文件、schema 错误、Expr 编译错误、未授权 capability 或重复 tool 名都会使
   `--check-config` 和实际启动失败；
 - 多 YAML document、duplicate key、非 string key、anchor/alias/merge/tag 和非 JSON scalar 都会使
@@ -676,6 +701,6 @@ tools:
 - OAuth 2.1 protected-resource 支持与按 token scope 的 tool 过滤；
 - MCP Tasks extension，用于标准化长时间 Agent/workflow 操作；
 - 独立 `ScriptEngine` 后端，在确有多步骤脚本需求时评估 Starlark；
-- 二进制 content、resource link、image/audio 等丰富 tool result；
+- resource link、image/audio 等丰富 tool result，以及可选的 Resource 订阅；
 - Agent 语义 host functions、审批策略和按 workspace/tool 的细粒度授权；
 - 持久化 idempotency key 与调用审计索引。

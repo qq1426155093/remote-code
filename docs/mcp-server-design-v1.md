@@ -28,7 +28,7 @@ pin 经过测试的明确版本；若 YAML v4 仍处于 prerelease，则升级�
 7. 每个脚本最多一次 mutation，避免把 Expr 求值变成隐式事务。
 8. gRPC 与 MCP 复用同一内部能力，不通过网络回连，也不复制安全敏感实现。
 9. controller 启动采用 fail-closed 的两阶段 prepare/listen；任何 tool 错误都阻止发布 registry。
-10. 首版 registry 静态，`tools.listChanged=false`，不实现热加载和长连接事件流。
+10. 首版 registry 与 Resource template 静态，`tools.listChanged=false`，不实现热加载和长连接事件流。
 
 ## 3. 总体架构
 
@@ -38,12 +38,14 @@ flowchart LR
     HTTP --> Middleware[Origin / Auth / Limit / Audit]
     Middleware --> SDK[Official MCP Go SDK]
     SDK --> Registry[Immutable tool registry]
+    SDK --> Resource[Bounded workspace Resource]
     Registry --> InputSchema[Input JSON Schema]
     InputSchema --> Expr[Expr program]
     Expr --> Host[Capability-scoped host dispatcher]
     Host --> FileFacade[File capability facade]
     Host --> ProcessFacade[Process capability facade]
     FileFacade --> FileService[Existing file service]
+    Resource --> FileService
     ProcessFacade --> ProcessService[Existing process service]
     Expr --> OutputSchema[Output normalization + schema]
     OutputSchema --> SDK
@@ -56,7 +58,7 @@ adapter，不建立第二套文件或进程状态。
 
 ```text
 cmd/controller/
-├── config.go                   # controller schema v1/v2 解析与合并
+├── config.go                   # controller schema v1/v2/v3 解析与合并
 └── main.go                     # prepare、listen、双 listener 生命周期
 
 internal/auth/
@@ -73,11 +75,10 @@ internal/mcp/
 ├── script.go                   # Expr compile/run
 ├── script_policy.go            # AST 与副作用策略
 ├── host.go                     # host catalog、capability、effect 分类
-├── host_file.go                # 文件 host function
-├── host_process.go             # 进程 host function
-├── result.go                   # JSON 规范化、大小/输出 schema
-├── errors.go                   # safe tool/protocol error
-├── middleware.go               # Origin、limits、rate、audit
+├── host_controller.go          # controller/file/process host adapter
+├── resource.go                 # 有界 workspace binary Resource
+├── result.go                   # JSON 规范化与大小限制
+├── runner.go                   # schema、Expr、result 与 safe error
 ├── server.go                   # MCP SDK server 与 HTTP server
 └── server_test.go
 
@@ -91,14 +92,15 @@ internal/server/
 
 ## 5. 配置模型
 
-### 5.1 Controller schema v2
+### 5.1 Controller schema v2/v3
 
-`cmd/controller/config.go` 将当前只接受 `version = 1` 改为接受 1 和 2：
+`cmd/controller/config.go` 当前接受 1、2 和 3：v2 引入 MCP，v3 引入 process template：
 
 ```go
 const (
 	controllerConfigVersionV1 = 1
 	controllerConfigVersionV2 = 2
+	controllerConfigVersionV3 = 3
 )
 
 type controllerFileConfig struct {
@@ -111,9 +113,10 @@ type controllerFileConfig struct {
 规则：
 
 - v1 出现 `[mcp]` 是 strict decode/版本错误；
-- v1 读取后规范化为 v2 runtime model，MCP disabled；
-- v2 允许省略 `[mcp]`，仍表示 disabled；
-- v2 `mcp.enabled=true` 时所有必填项和 token requirement 生效；
+- v1 读取后规范化为当前 runtime model，MCP disabled；
+- v2/v3 允许省略 `[mcp]`，仍表示 disabled；
+- v2/v3 `mcp.enabled=true` 时所有必填项和 token requirement 生效；
+- 只有 v3 接受 `[process_templates]`；
 - MCP 配置首版不提供 CLI override，避免 slice 的替换/追加语义不清楚。
 
 runtime config：
@@ -141,6 +144,8 @@ type Config struct {
 ```
 
 TLS 与 Token 从 controller 全局配置复制到 MCP runtime config，`.mcp.yaml` 文件不接触 secret。
+`MaxResponseBytes` 的合法范围为 16 KiB 到 64 MiB；低于 16 KiB 会使基础 error envelope 和 Resource
+预算不可用，因此在 prepare 阶段直接拒绝。
 
 ### 5.2 Prepare/listen 分离
 
@@ -691,7 +696,9 @@ type Invocation struct {
 ```
 
 dispatcher 每次调用再次检查 capability 和 budget，不能只依赖编译阶段。这样即使 program/cache 使用错误
-也不会扩大权限。`HostBudget` 记录动态调用次数和累计返回字节；context 取消在调用 backend 前后检查。
+也不会扩大权限。`HostBudget` 记录动态调用次数和累计返回字节，并以配置的 `max_response_bytes` 为上界；
+context 取消在调用 backend 前后检查。最终 result 还会按 structured/text 同时存在时的实际 JSON 编码大小
+再次校验，避免 host budget 与 HTTP response limit 使用不同常量。
 
 ### 13.3 文件 facade
 
@@ -702,20 +709,27 @@ file_stat(path) -> object
 file_list(path) -> array<object>
 file_tree(path) -> object
 file_read_text(path, max_bytes) -> object
+file_read_range(path, start_line, max_lines, max_bytes) -> object
+file_search(options) -> object
 file_write_text(path, content, overwrite, mode) -> object
+file_apply_patch(path, expected_sha256, patch) -> object
 file_mkdir(path, parents, mode) -> object
 file_move(source, destination, overwrite) -> object
 file_chmod(path, mode) -> object
 file_remove(path, recursive) -> object
 ```
 
-静态 effect 采用“最坏可能副作用”：`file_stat/list/tree/read_text` 为 read，`file_mkdir/chmod` 为
-mutate，`file_write_text/move/remove` 为 destructive。即使某次调用设置 `overwrite=false`，tool
-metadata 也不能随 arguments 变化，因此可能覆盖或删除数据的 host function 一律按 destructive 处理。
+静态 effect 采用“最坏可能副作用”：`file_stat/list/tree/read_text/read_range/search` 为 read，
+`file_mkdir/chmod` 为 mutate，`file_write_text/apply_patch/move/remove` 为 destructive。即使某次调用设置
+`overwrite=false`，tool metadata 也不能随 arguments 变化，因此可能覆盖或删除数据的 host function 一律按
+destructive 处理。
 
 所有返回 object 使用稳定 snake_case JSON field。`file_read_text` 在读取期间限制 bytes，验证 UTF-8，返回
 `path/content/size/sha256`；超过限制不截断并伪装成功，而是返回 resource-exhausted tool error。
-`file_write_text` 将 string 转为 bytes 后调用与 Upload 相同的原子写入 core。
+`file_read_range` 只返回完整 UTF-8 行和可续传 `next_line`；`file_search` 是有总扫描字节数、目录条目数、
+文件数、结果数、glob 组件数和 preview 上限的 literal search，目录遍历不跟随 symlink。
+`file_apply_patch` 只接受显式目标路径和单文件 unified diff，
+发布前再次校验 lowercase SHA-256 前置条件。`file_write_text` 与 patch 最终都调用同一原子写入 core。
 
 现有 `files.Service` 同时混合 domain 和 gRPC boundary。实现 MCP 时应先抽取可复用 core 方法，例如：
 
@@ -740,20 +754,36 @@ MCP facade 分别完成 transport 映射并调用 core。若首个增量为了�
 ```text
 process_start(options) -> process object
 process_list(all) -> array<process object>
+process_get(reference) -> process object
 process_signal(reference, signal, wait) -> process object
 process_delete(reference) -> process object
 process_logs(process_id, streams, tail_lines, max_bytes) -> log snapshot object
+process_logs_since(process_id, streams, offset, max_bytes) -> log snapshot object
+process_template_list() -> array<template summary>
+process_template_get(name) -> template object
+process_template_start(options) -> process object
 ```
 
-`process_list/logs` 为 read，`process_start` 为 mutate，`process_signal/delete` 为 destructive。
+`process_list/get/logs/logs_since` 与 template list/get 为 read；direct/template start 为 mutate；
+`process_signal/delete` 为 destructive。模板读取与启动分别使用 `process_templates.read` 和
+`process_templates.start`，不借用更宽泛的 process capability。
 
 options/reference map 通过专用 strict decoder 转成 typed request；禁止未知字段。Facade 可以调用现有
 process service unary method，但必须把 gRPC status 映射为 MCP safe error。日志 streaming implementation
-需要抽取 snapshot reader，`follow=false`，达到 `max_bytes` 时返回明确 truncated metadata。
+抽取为 snapshot reader，`follow=false`；offset 使用 canonical unsigned decimal string 避免 JSON number
+精度损失，达到 `max_bytes` 时返回明确 `bytes_truncated` 与可续传 `next_offset`。
 
 `process_start` 不增加 shell、不允许 script 注入 controller 环境变量 secret，也不绕过
 `MaxProcesses`。返回 process UUID 作为后续调用的显式 handle。`process_signal(wait=true)` 的等待受 tool
 deadline 限制。
+
+### 13.5 Workspace Resource
+
+全局 allowlist 包含 `files.read` 时注册 `workspace:///{+path}` template。Resource handler 复用
+`files.Service` 的 `os.Root` 与普通文件校验，只返回 binary content，不提供目录打包、写入或 subscription。
+原始文件上限从 `max_response_bytes` 扣除固定 JSON-RPC/URI/MIME 余量，再按 base64 的 4/3 wire 膨胀反算，
+同时不得超过文件 service 的单文件上限。Resource read 与 tool call 使用相同的全局并发额度，读取 deadline
+复用 `default_tool_timeout`。
 
 ## 14. Tool annotations
 
@@ -764,8 +794,8 @@ deadline 限制。
 | 全部 host 为 read | `readOnlyHint=true` |
 | 存在 mutate/destructive | `readOnlyHint=false` |
 | 最强 effect 为 destructive | `destructiveHint=true` |
-| `processes.start` | `idempotentHint=false` |
-| 仅本地 controller host，无网络 | `openWorldHint=false` |
+| `processes.start` 或 `process_templates.start` | `idempotentHint=false`、`openWorldHint=true` |
+| 其它仅本地 controller host | `openWorldHint=false` |
 
 `.mcp.yaml` annotation 与推导冲突时启动失败。`idempotent` 对普通写入不能只按函数名自动判定：定义作者必须
 声明，loader 对已知绝不幂等操作强制 false。annotations 只映射到 MCP 元数据，不替代服务端权限。
@@ -1003,7 +1033,7 @@ type AuditEvent struct {
 
 ### 阶段 1：定义与编译
 
-- controller schema v2/v1 compatibility；
+- controller schema v1/v2/v3 compatibility；
 - `.mcp.yaml` typed model、安全 loader、JSON Schema compiler；
 - Expr catalog/policy/compiler、immutable registry；
 - `--check-config` 覆盖全部新校验。
@@ -1011,26 +1041,27 @@ type AuditEvent struct {
 ### 阶段 2：Host facade
 
 - 抽取 file streaming core 为普通 context API；
-- 文件 read/write/list/stat host；
-- process unary/log snapshot host；
+- 文件 stat/tree/range/search/write/checked-patch host；
+- process get/start/offset-log/template host；
 - capability/effect/budget/error mapping。
 
 ### 阶段 3：MCP transport
 
 - pin 官方 SDK；
-- stateless server、tool 注册、runner/result；
+- stateless server、tool/Resource 注册、runner/result；
 - HTTP listener、Origin/auth/limits/rate/audit；
 - 双 listener startup/shutdown。
 
 ### 阶段 4：兼容与文档
 
 - 新旧协议 integration test；
-- `configs/file.mcp.yaml`、`configs/process.mcp.yaml` 安全示例；
+- `configs/mcp/controller.mcp.yaml`、`configs/mcp/file.mcp.yaml`、`configs/mcp/process.mcp.yaml` 示例；
 - 更新 controller configuration、README、部署和 Code Agent 连接说明；
 - 完整 race/fuzz/security review。
 
-每个阶段都保持 build/test 通过；示例 `.mcp.yaml` 只提供低风险只读 tool，`process.start` 示例应默认注释或
-要求 operator 显式加入 capability。
+每个阶段都保持 build/test 通过。MCP 全局默认关闭；加载示例 module 时，operator 仍需在
+`allowed_host_capabilities` 中逐项明确允许其中的 read/write/process/template 能力。示例不默认暴露
+`files.delete`、`processes.delete`、任意自选 signal、stdin、PTY attach 或日志 follow。
 
 ## 22. 备选方案与取舍
 

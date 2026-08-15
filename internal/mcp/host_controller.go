@@ -6,12 +6,15 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
 	"github.com/qq1426155093/remote-code/internal/files"
 	processservice "github.com/qq1426155093/remote-code/internal/process"
+	"github.com/qq1426155093/remote-code/internal/version"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 type controllerHosts struct {
@@ -21,6 +24,15 @@ type controllerHosts struct {
 
 func (h *controllerHosts) Call(ctx context.Context, name string, arguments []any) (any, error) {
 	switch name {
+	case "controller_info":
+		return map[string]any{
+			"controller_version":     version.Version,
+			"api_version":            version.APIVersion,
+			"workspace_name":         h.files.WorkspaceName(),
+			"max_upload_bytes":       h.files.MaxUploadBytes(),
+			"max_processes":          int64(h.processes.MaxProcesses()),
+			"process_template_count": int64(h.processes.ProcessTemplateCount()),
+		}, nil
 	case "file_stat":
 		path, err := stringArgument(arguments[0], "path")
 		if err != nil {
@@ -69,6 +81,38 @@ func (h *controllerHosts) Call(ctx context.Context, name string, arguments []any
 			return nil, err
 		}
 		return map[string]any{"path": result.File.GetPath(), "content": result.Text, "size": result.Size, "sha256": hex.EncodeToString(result.SHA256)}, nil
+	case "file_read_range":
+		path, err := stringArgument(arguments[0], "path")
+		if err != nil {
+			return nil, err
+		}
+		startLine, err := intArgument(arguments[1], "start_line", 1, 1<<53)
+		if err != nil {
+			return nil, err
+		}
+		maxLines, err := intArgument(arguments[2], "max_lines", 1, 10_000)
+		if err != nil {
+			return nil, err
+		}
+		maxBytes, err := intArgument(arguments[3], "max_bytes", 1, 16<<20)
+		if err != nil {
+			return nil, err
+		}
+		result, err := h.files.ReadTextRange(ctx, path, uint64(startLine), int(maxLines), maxBytes)
+		if err != nil {
+			return nil, err
+		}
+		nextLine := any(nil)
+		if result.NextLine > 0 {
+			nextLine = int64(result.NextLine)
+		}
+		return map[string]any{
+			"path": result.Path, "content": result.Content, "size": result.Size,
+			"start_line": int64(result.StartLine), "next_line": nextLine, "line_count": int64(result.LineCount),
+			"eof": result.EOF, "truncated": result.Truncated,
+		}, nil
+	case "file_search":
+		return h.fileSearch(ctx, arguments[0])
 	case "file_write_text":
 		path, err := stringArgument(arguments[0], "path")
 		if err != nil {
@@ -87,6 +131,24 @@ func (h *controllerHosts) Call(ctx context.Context, name string, arguments []any
 			return nil, err
 		}
 		response, err := h.files.WriteText(ctx, path, content, overwrite, uint32(mode))
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"file": fileInfoJSON(response.GetFile()), "size": response.GetSize(), "sha256": hex.EncodeToString(response.GetSha256())}, nil
+	case "file_apply_patch":
+		path, err := stringArgument(arguments[0], "path")
+		if err != nil {
+			return nil, err
+		}
+		expected, err := stringArgument(arguments[1], "expected_sha256")
+		if err != nil {
+			return nil, err
+		}
+		patch, err := stringArgument(arguments[2], "patch")
+		if err != nil {
+			return nil, err
+		}
+		response, err := h.files.ApplyTextPatch(ctx, path, expected, patch)
 		if err != nil {
 			return nil, err
 		}
@@ -179,6 +241,16 @@ func (h *controllerHosts) Call(ctx context.Context, name string, arguments []any
 			result[index] = processInfoJSON(process)
 		}
 		return result, nil
+	case "process_get":
+		reference, err := processReferenceArgument(arguments[0])
+		if err != nil {
+			return nil, err
+		}
+		process, err := h.processes.GetProcessInfo(ctx, reference)
+		if err != nil {
+			return nil, err
+		}
+		return processInfoJSON(process), nil
 	case "process_signal":
 		reference, err := processReferenceArgument(arguments[0])
 		if err != nil {
@@ -209,6 +281,38 @@ func (h *controllerHosts) Call(ctx context.Context, name string, arguments []any
 		return processInfoJSON(response.GetProcess()), nil
 	case "process_logs":
 		return h.processLogs(ctx, arguments)
+	case "process_logs_since":
+		return h.processLogsSince(ctx, arguments)
+	case "process_template_list":
+		response, err := h.processes.ListProcessTemplates(ctx, &codev1.ListProcessTemplatesRequest{})
+		if err != nil {
+			return nil, err
+		}
+		result := make([]any, len(response.GetTemplates()))
+		for index, template := range response.GetTemplates() {
+			result[index] = processTemplateSummaryJSON(template)
+		}
+		return result, nil
+	case "process_template_get":
+		templateName, err := stringArgument(arguments[0], "name")
+		if err != nil {
+			return nil, err
+		}
+		response, err := h.processes.GetProcessTemplate(ctx, &codev1.GetProcessTemplateRequest{Name: templateName})
+		if err != nil {
+			return nil, err
+		}
+		return processTemplateJSON(response.GetTemplate()), nil
+	case "process_template_start":
+		request, err := startProcessTemplateArgument(arguments[0])
+		if err != nil {
+			return nil, err
+		}
+		response, err := h.processes.StartProcessFromTemplate(ctx, request)
+		if err != nil {
+			return nil, err
+		}
+		return processInfoJSON(response.GetProcess()), nil
 	default:
 		return nil, errors.New("unknown host function")
 	}
@@ -219,7 +323,55 @@ func (h *controllerHosts) processLogs(ctx context.Context, arguments []any) (any
 	if err != nil {
 		return nil, err
 	}
-	streamNames, err := stringSliceArgument(arguments[1], "streams")
+	streams, err := logStreamsArgument(arguments[1])
+	if err != nil {
+		return nil, err
+	}
+	tailLines, err := intArgument(arguments[2], "tail_lines", 0, 100000)
+	if err != nil {
+		return nil, err
+	}
+	maxBytes, err := intArgument(arguments[3], "max_bytes", 1, 16<<20)
+	if err != nil {
+		return nil, err
+	}
+	snapshot, err := h.processes.SnapshotLogs(ctx, processID, streams, uint64(tailLines), maxBytes)
+	if err != nil {
+		return nil, err
+	}
+	return logSnapshotJSON(snapshot, false), nil
+}
+
+func (h *controllerHosts) processLogsSince(ctx context.Context, arguments []any) (any, error) {
+	processID, err := stringArgument(arguments[0], "process_id")
+	if err != nil {
+		return nil, err
+	}
+	streams, err := logStreamsArgument(arguments[1])
+	if err != nil {
+		return nil, err
+	}
+	offsetText, err := stringArgument(arguments[2], "offset")
+	if err != nil {
+		return nil, err
+	}
+	offset, err := strconv.ParseUint(offsetText, 10, 64)
+	if err != nil || strconv.FormatUint(offset, 10) != offsetText {
+		return nil, errors.New("offset must be a canonical unsigned decimal string")
+	}
+	maxBytes, err := intArgument(arguments[3], "max_bytes", 1, 16<<20)
+	if err != nil {
+		return nil, err
+	}
+	snapshot, err := h.processes.SnapshotLogsFromOffset(ctx, processID, streams, offset, maxBytes)
+	if err != nil {
+		return nil, err
+	}
+	return logSnapshotJSON(snapshot, true), nil
+}
+
+func logStreamsArgument(value any) ([]codev1.ProcessLogStream, error) {
+	streamNames, err := stringSliceArgument(value, "streams")
 	if err != nil {
 		return nil, err
 	}
@@ -234,22 +386,20 @@ func (h *controllerHosts) processLogs(ctx context.Context, arguments []any) (any
 			return nil, fmt.Errorf("unsupported log stream %q", stream)
 		}
 	}
-	tailLines, err := intArgument(arguments[2], "tail_lines", 0, 100000)
-	if err != nil {
-		return nil, err
-	}
-	maxBytes, err := intArgument(arguments[3], "max_bytes", 1, 16<<20)
-	if err != nil {
-		return nil, err
-	}
-	snapshot, err := h.processes.SnapshotLogs(ctx, processID, streams, uint64(tailLines), maxBytes)
-	if err != nil {
-		return nil, err
+	return streams, nil
+}
+
+func logSnapshotJSON(snapshot *processservice.LogSnapshot, stringOffsets bool) any {
+	offsetValue := func(value uint64) any {
+		if stringOffsets {
+			return strconv.FormatUint(value, 10)
+		}
+		return int64(value)
 	}
 	chunks := make([]any, 0, len(snapshot.Chunks))
 	for _, chunk := range snapshot.Chunks {
 		item := map[string]any{
-			"offset": int64(chunk.Offset), "line_offset": int64(chunk.LineOffset), "timestamp": chunk.Timestamp.UTC().Format("2006-01-02T15:04:05.000000000Z"),
+			"offset": offsetValue(chunk.Offset), "line_offset": offsetValue(chunk.LineOffset), "timestamp": chunk.Timestamp.UTC().Format("2006-01-02T15:04:05.000000000Z"),
 			"stream":     strings.ToLower(strings.TrimPrefix(chunk.Stream.String(), "PROCESS_LOG_STREAM_")),
 			"line_start": chunk.LineStart, "line_end": chunk.LineEnd, "line_truncated": chunk.LineTruncated,
 		}
@@ -262,11 +412,141 @@ func (h *controllerHosts) processLogs(ctx context.Context, arguments []any) (any
 	}
 	return map[string]any{
 		"process_id": snapshot.ProcessID, "io_mode": strings.ToLower(strings.TrimPrefix(snapshot.IOMode.String(), "PROCESS_IO_MODE_")),
-		"earliest_offset": int64(snapshot.EarliestOffset), "snapshot_end_offset": int64(snapshot.SnapshotEnd),
-		"resolved_start_offset": int64(snapshot.ResolvedStart), "history_truncated": snapshot.HistoryTruncated,
+		"earliest_offset": offsetValue(snapshot.EarliestOffset), "snapshot_end_offset": offsetValue(snapshot.SnapshotEnd),
+		"resolved_start_offset": offsetValue(snapshot.ResolvedStart), "next_offset": offsetValue(snapshot.NextOffset), "history_truncated": snapshot.HistoryTruncated,
 		"tail_truncated": snapshot.TailTruncated, "bytes_truncated": snapshot.BytesTruncated,
 		"logs_complete": snapshot.LogsComplete, "chunks": chunks,
+	}
+}
+
+func (h *controllerHosts) fileSearch(ctx context.Context, value any) (any, error) {
+	object, ok := value.(map[string]any)
+	if !ok {
+		return nil, errors.New("search options must be an object")
+	}
+	allowed := map[string]bool{
+		"path": true, "glob": true, "query": true, "case_sensitive": true,
+		"max_results": true, "max_bytes": true,
+	}
+	for key := range object {
+		if !allowed[key] {
+			return nil, fmt.Errorf("unknown search option %q", key)
+		}
+	}
+	pathValue, err := stringArgument(object["path"], "path")
+	if err != nil {
+		return nil, err
+	}
+	glob, err := stringArgument(object["glob"], "glob")
+	if err != nil {
+		return nil, err
+	}
+	query, err := stringArgument(object["query"], "query")
+	if err != nil {
+		return nil, err
+	}
+	caseSensitive, err := boolArgument(object["case_sensitive"], "case_sensitive")
+	if err != nil {
+		return nil, err
+	}
+	maxResults, err := intArgument(object["max_results"], "max_results", 1, 1000)
+	if err != nil {
+		return nil, err
+	}
+	maxBytes, err := intArgument(object["max_bytes"], "max_bytes", 1, 64<<20)
+	if err != nil {
+		return nil, err
+	}
+	search, err := h.files.SearchText(ctx, files.SearchOptions{
+		Path: pathValue, Glob: glob, Query: query, CaseSensitive: caseSensitive,
+		MaxResults: int(maxResults), MaxBytes: maxBytes,
+	})
+	if err != nil {
+		return nil, err
+	}
+	matches := make([]any, len(search.Matches))
+	for index, match := range search.Matches {
+		matches[index] = map[string]any{
+			"path": match.Path, "line": int64(match.Line), "column": int64(match.Column),
+			"text": match.Text, "text_truncated": match.TextTruncated,
+		}
+	}
+	return map[string]any{
+		"matches": matches, "files_scanned": int64(search.FilesScanned), "bytes_scanned": search.BytesScanned,
+		"skipped_files": int64(search.SkippedFiles), "result_truncated": search.ResultTruncated, "scan_truncated": search.ScanTruncated,
 	}, nil
+}
+
+func processTemplateSummaryJSON(summary *codev1.ProcessTemplateSummary) any {
+	if summary == nil {
+		return nil
+	}
+	return map[string]any{
+		"name": summary.GetName(), "description": summary.GetDescription(), "revision": summary.GetRevision(),
+		"io_mode":    strings.ToLower(strings.TrimPrefix(summary.GetIoMode().String(), "PROCESS_IO_MODE_")),
+		"input_mode": strings.ToLower(strings.TrimPrefix(summary.GetInputMode().String(), "PROCESS_INPUT_MODE_")),
+	}
+}
+
+func processTemplateJSON(template *codev1.ProcessTemplate) any {
+	if template == nil {
+		return nil
+	}
+	parametersSchema := map[string]any{}
+	if template.GetParametersSchema() != nil {
+		parametersSchema = template.GetParametersSchema().AsMap()
+	}
+	return map[string]any{"summary": processTemplateSummaryJSON(template.GetSummary()), "parameters_schema": parametersSchema}
+}
+
+func startProcessTemplateArgument(value any) (*codev1.StartProcessFromTemplateRequest, error) {
+	object, ok := value.(map[string]any)
+	if !ok {
+		return nil, errors.New("process template options must be an object")
+	}
+	allowed := map[string]bool{
+		"template_name": true, "parameters": true, "process_name": true,
+		"terminal_size": true, "expected_template_revision": true,
+	}
+	for key := range object {
+		if !allowed[key] {
+			return nil, fmt.Errorf("unknown process template option %q", key)
+		}
+	}
+	templateName, err := stringArgument(object["template_name"], "template_name")
+	if err != nil {
+		return nil, err
+	}
+	request := &codev1.StartProcessFromTemplateRequest{TemplateName: templateName}
+	if raw, exists := object["parameters"]; exists {
+		parameters, ok := raw.(map[string]any)
+		if !ok {
+			return nil, errors.New("parameters must be an object")
+		}
+		request.Parameters, err = structpb.NewStruct(parameters)
+		if err != nil {
+			return nil, errors.New("parameters contain an unsupported value")
+		}
+	}
+	if raw, exists := object["process_name"]; exists {
+		request.ProcessName, err = stringArgument(raw, "process_name")
+		if err != nil {
+			return nil, err
+		}
+	}
+	if raw, exists := object["expected_template_revision"]; exists {
+		request.ExpectedTemplateRevision, err = stringArgument(raw, "expected_template_revision")
+		if err != nil {
+			return nil, err
+		}
+	}
+	if raw, exists := object["terminal_size"]; exists {
+		request.TerminalSize, err = terminalSizeArgument(raw)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return request, nil
 }
 
 func fileInfoJSON(file *codev1.FileInfo) any {
@@ -401,26 +681,33 @@ func startProcessArgument(value any) (*codev1.StartProcessRequest, error) {
 		}
 	}
 	if value, exists := object["terminal_size"]; exists {
-		size, ok := value.(map[string]any)
-		if !ok {
-			return nil, errors.New("terminal_size must be an object")
+		request.TerminalSize, err = terminalSizeArgument(value)
+		if err != nil {
+			return nil, err
 		}
-		for key := range size {
-			if key != "rows" && key != "columns" {
-				return nil, fmt.Errorf("unknown terminal_size option %q", key)
-			}
-		}
-		rows, rowErr := intArgument(size["rows"], "terminal_size.rows", 1, 65535)
-		if rowErr != nil {
-			return nil, rowErr
-		}
-		columns, columnErr := intArgument(size["columns"], "terminal_size.columns", 1, 65535)
-		if columnErr != nil {
-			return nil, columnErr
-		}
-		request.TerminalSize = &codev1.TerminalSize{Rows: uint32(rows), Columns: uint32(columns)}
 	}
 	return request, nil
+}
+
+func terminalSizeArgument(value any) (*codev1.TerminalSize, error) {
+	size, ok := value.(map[string]any)
+	if !ok {
+		return nil, errors.New("terminal_size must be an object")
+	}
+	for key := range size {
+		if key != "rows" && key != "columns" {
+			return nil, fmt.Errorf("unknown terminal_size option %q", key)
+		}
+	}
+	rows, err := intArgument(size["rows"], "terminal_size.rows", 1, 65535)
+	if err != nil {
+		return nil, err
+	}
+	columns, err := intArgument(size["columns"], "terminal_size.columns", 1, 65535)
+	if err != nil {
+		return nil, err
+	}
+	return &codev1.TerminalSize{Rows: uint32(rows), Columns: uint32(columns)}, nil
 }
 
 func processReferenceArgument(value any) (*codev1.ProcessReference, error) {

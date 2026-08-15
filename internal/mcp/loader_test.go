@@ -51,6 +51,16 @@ func TestPrepareCompilesStrictDefinition(t *testing.T) {
 	}
 }
 
+func TestValidateConfigRejectsUnusableResponseBudget(t *testing.T) {
+	err := ValidateConfig(Config{
+		Enabled: true, DefinitionFiles: []string{"tools.mcp.yaml"}, Token: "test-token",
+		ListenAddress: "127.0.0.1:9444", MaxResponseBytes: minimumResponseBytes - 1,
+	}, "127.0.0.1:9443")
+	if err == nil || !strings.Contains(err.Error(), "between 16384") {
+		t.Fatalf("ValidateConfig() error = %v", err)
+	}
+}
+
 func TestPrepareRejectsUnsafeOrInconsistentDefinitions(t *testing.T) {
 	workspace := t.TempDir()
 	tests := []struct{ name, contents, want string }{
@@ -117,10 +127,17 @@ func TestCursorRejectsTampering(t *testing.T) {
 }
 
 func TestExampleDefinitionsCompile(t *testing.T) {
-	paths := []string{filepath.Join("..", "..", "configs", "mcp", "file.mcp.yaml"), filepath.Join("..", "..", "configs", "mcp", "process.mcp.yaml")}
+	paths := []string{
+		filepath.Join("..", "..", "configs", "mcp", "controller.mcp.yaml"),
+		filepath.Join("..", "..", "configs", "mcp", "file.mcp.yaml"),
+		filepath.Join("..", "..", "configs", "mcp", "process.mcp.yaml"),
+	}
 	_, err := Prepare(Config{
 		Enabled: true, ListenAddress: "127.0.0.1:9444", Token: "test-token", DefinitionFiles: paths,
-		AllowedHostCapabilities: []string{"files.read", "files.write", "processes.read", "processes.start"},
+		AllowedHostCapabilities: []string{
+			"controller.read", "files.read", "files.write", "processes.read", "processes.start", "processes.signal",
+			"process_templates.read", "process_templates.start",
+		},
 	}, t.TempDir(), "127.0.0.1:9443")
 	if err != nil {
 		t.Fatalf("example definitions do not compile: %v", err)
