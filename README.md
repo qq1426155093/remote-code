@@ -12,6 +12,13 @@ Remote Code 是一个面向远程开发任务的 Code Agent 控制平面。它�
 > 有界文件读取/搜索/补丁、进程快照/偏移日志、进程模板和 binary workspace Resource。
 > Agent 语义仍是后续版本计划。
 
+## 功能与使用文档
+
+- [Controller 功能介绍与使用指南](docs/controller-guide.md)：架构、功能边界、配置、生产部署、
+  进程模板、MCP、持久化恢复、运维和安全清单。
+- [Client 功能介绍与使用指南](docs/client-guide.md)：交互式 CLI、完整命令参考、文件断点续传、
+  PIPE/PTY 进程、attach、典型工作流和公共 Go client 接入。
+
 ## 快速开始
 
 本项目当前要求 Go 1.26。构建并启动本地 controller：
