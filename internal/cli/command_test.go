@@ -98,6 +98,7 @@ ps [-a]
 kill [-s SIGNAL] [-w] PROCESS
 stdin PROCESS
 attach PROCESS
+windows | mux [-n TAIL_LINES] [PROCESS ...] (Ctrl-] ? shows keys)
 forget PROCESS_OR_GLOB [PROCESS_OR_GLOB ...]
 logs [-f] [-n LINES|--offset OFFSET] [--stdout|--stderr] PROCESS_ID (Ctrl-C stops following; process continues)
 clear
@@ -122,6 +123,15 @@ exit | quit
 	}
 	if got := output.String(); got != "usage: quit\n" {
 		t.Fatalf("help quit output = %q", got)
+	}
+
+	output.Reset()
+	if _, err := repl.execute([]string{"help", "mux"}); err != nil {
+		t.Fatal(err)
+	}
+	wantWindows := "usage: mux [-n TAIL_LINES] [PROCESS ...]\nOpen a tiled PTY workspace; closing a window only detaches and does not stop its process\n"
+	if got := output.String(); got != wantWindows {
+		t.Fatalf("help mux output = %q, want %q", got, wantWindows)
 	}
 
 	action, err = repl.execute([]string{"quit"})

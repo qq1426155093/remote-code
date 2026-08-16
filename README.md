@@ -6,7 +6,8 @@ Remote Code 是一个面向远程开发任务的 Code Agent 控制平面。它�
 
 > 项目状态：文件与基础进程控制已可运行，包含带 Tab 补全的交互式 CLI、结构化目录树、
 > gRPC controller、流式上传/下载、PTY/pipe 启动、可回放/跟随的持久化输出日志、进程列表、
-> 信号、历史删除、自动回收、重启历史恢复、可重连的远程 PTY attach，以及由 JSON Schema 和受限
+> 信号、历史删除、自动回收、重启历史恢复、可重连的远程 PTY attach、可同时观察和操作多个 PTY 的
+> Client 多窗口界面，以及由 JSON Schema 和受限
 > Expr 驱动的服务端进程模板。controller 也可从多个
 > `.mcp.yaml` 文件加载 Expr tool，并通过带认证的 Streamable HTTP MCP endpoint 暴露 controller 信息、
 > 有界文件读取/搜索/补丁、进程快照/偏移日志、进程模板和 binary workspace Resource。
@@ -18,6 +19,8 @@ Remote Code 是一个面向远程开发任务的 Code Agent 控制平面。它�
   进程模板、MCP、持久化恢复、运维和安全清单。
 - [Client 功能介绍与使用指南](docs/client-guide.md)：交互式 CLI、完整命令参考、文件断点续传、
   PIPE/PTY 进程、attach、典型工作流和公共 Go client 接入。
+- [Client 多窗口交互详细设计 v1](docs/client-multi-window-design-v1.md)：命令与按键、平铺布局、
+  虚拟终端隔离、attachment 生命周期、并发模型和测试边界。
 
 ## 快速开始
 
@@ -51,6 +54,8 @@ remote-code:/> exec --name interactive --pipe --stdin cat
 remote-code:/> stdin interactive
 remote-code:/> exec --attach --name editor vim test.txt
 # detach 后可再次执行：attach editor
+# 同屏打开多个已运行的 PTY；Ctrl-] ? 查看窗口快捷键
+remote-code:/> windows designer implementer reviewer
 remote-code:/> ps
 remote-code:/> ps -a
 remote-code:/> logs -n 100 --follow 7aa5daab-e886-4889-9ec3-92d461883091
@@ -67,7 +72,8 @@ remote-code:/> exec-template --attach --params-file ./agent-parameters.json code
 [首版需求](docs/requirements-v1.md)、[通用进程需求](docs/process-management-requirements-v1.md)、
 [技术方案](docs/technical-design-v1.md)、[通用进程详细设计](docs/process-management-design-v1.md)、
 [进程日志观测详细设计](docs/process-log-observation-design-v1.md)、
-[进程标准输入详细设计](docs/process-input-design-v1.md)和
+[进程标准输入详细设计](docs/process-input-design-v1.md)、
+[Client 多窗口交互详细设计](docs/client-multi-window-design-v1.md)、
 [进程模板详细设计](docs/process-template-design-v1.md)以及
 [Controller 配置文件](docs/controller-configuration.md)。可配置 MCP Server 的契约与实现依据见
 [MCP Server 需求](docs/mcp-server-requirements-v1.md)和
@@ -262,6 +268,11 @@ detach 或网络断开不会关闭 stdin。PIPE 支持显式关闭输入，PTY �
 `Ctrl-] d` detach，`Ctrl-] Ctrl-]` 向远端发送字面量 Ctrl-]。`exec --attach CMD ...`
 会隐含 PTY 和 MANAGED 输入并在启动后立即连接。
 
+`windows [-n TAIL_LINES] [PROCESS ...]`（别名 `mux`）在同一本地备用屏幕中平铺最多 9 个
+MANAGED PTY。所有窗格持续刷新，键盘只发送到高亮窗格；`Ctrl-] o` 打开窗格、`Ctrl-] x` 关闭窗格、
+`Ctrl-] n/p` 或 `Ctrl-] 1..9` 切换窗格、`Ctrl-] q` 返回 REPL。关闭或退出只 detach，远端进程继续运行。
+每个进程输出先经过独立虚拟终端解析，因此清屏和光标控制不会影响其他窗格。
+
 ## 多 Agent 协作
 
 多个 agent 可以读取同一工作区，但多个写入者直接修改同一份文件会产生覆盖、半成品读取和 Git
@@ -332,6 +343,7 @@ SQLite 或 bbolt 持久化 agent 元数据和事件游标；仍在运行的子�
 - 已实现 CLI context、超时、结构化错误和 TLS/token 认证；
 - 已实现按 offset/tail 回放、stdout/stderr 过滤、退出前持续 follow、分段保留与 CLI `logs`；
 - 已实现可在进程运行后反复 attach/detach 的 PIPE/PTY 输入流、PTY 双向交互、初始窗口尺寸和运行时 resize。
+- 已实现最多 9 个 MANAGED PTY 的 Client 平铺观察、活动窗格输入、运行时打开/关闭/切换和 ANSI 隔离。
 
 ### Milestone 3：Agent 可靠性
 

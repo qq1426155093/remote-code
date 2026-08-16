@@ -376,6 +376,48 @@ func (c *commandCompleter) completeProcessAttach(previous []string, current stri
 	if len(previous) > 0 || strings.HasPrefix(current, "-") {
 		return nil
 	}
+	return c.processAttachCandidates(nil)
+}
+
+func (c *commandCompleter) completeProcessWindows(previous []string, current string) []completionCandidate {
+	usedTailLines := false
+	expectTailLines := false
+	optionsEnded := false
+	usedProcesses := make(map[string]bool)
+	for _, argument := range previous {
+		if expectTailLines {
+			expectTailLines = false
+			continue
+		}
+		switch {
+		case optionsEnded:
+			usedProcesses[argument] = true
+		case argument == "-n" || argument == "--tail-lines":
+			usedTailLines = true
+			expectTailLines = true
+		case argument == "--":
+			optionsEnded = true
+		default:
+			usedProcesses[argument] = true
+		}
+	}
+	if expectTailLines {
+		return nil
+	}
+	candidates := make([]completionCandidate, 0)
+	if !optionsEnded && (current == "" || strings.HasPrefix(current, "-")) && !usedTailLines {
+		candidates = append(candidates,
+			completionCandidate{value: "-n", finish: true},
+			completionCandidate{value: "--tail-lines", finish: true},
+		)
+	}
+	if optionsEnded || current == "" || !strings.HasPrefix(current, "-") {
+		candidates = append(candidates, c.processAttachCandidates(usedProcesses)...)
+	}
+	return candidates
+}
+
+func (c *commandCompleter) processAttachCandidates(excluded map[string]bool) []completionCandidate {
 	processClient, ok := c.client.(completionProcessClient)
 	if !ok {
 		return nil
@@ -391,7 +433,8 @@ func (c *commandCompleter) completeProcessAttach(previous []string, current stri
 		if process != nil && process.GetState() == codev1.ProcessState_PROCESS_STATE_RUNNING &&
 			process.GetIoMode() == codev1.ProcessIOMode_PROCESS_IO_MODE_PTY &&
 			process.GetInputMode() == codev1.ProcessInputMode_PROCESS_INPUT_MODE_MANAGED &&
-			process.GetInputState() != codev1.ProcessInputState_PROCESS_INPUT_STATE_CLOSED {
+			process.GetInputState() != codev1.ProcessInputState_PROCESS_INPUT_STATE_CLOSED &&
+			!excluded[process.GetName()] {
 			candidates = append(candidates, completionCandidate{value: process.GetName(), finish: true})
 		}
 	}

@@ -156,6 +156,13 @@ var defaultCommandRegistry = mustCommandRegistry([]commandSpec{
 	{name: "kill", arguments: "[-s SIGNAL] [-w] PROCESS", handler: (*REPL).signalProcess, complete: (*commandCompleter).completeKill},
 	{name: "stdin", arguments: "PROCESS", handler: (*REPL).writeProcessInput, complete: (*commandCompleter).completeProcessInput},
 	{name: "attach", arguments: "PROCESS", handler: (*REPL).attachProcess, complete: (*commandCompleter).completeProcessAttach},
+	{
+		name: "windows", aliases: []string{"mux"}, arguments: "[-n TAIL_LINES] [PROCESS ...]",
+		listSuffix: "(Ctrl-] ? shows keys)",
+		details:    "Open a tiled PTY workspace; closing a window only detaches and does not stop its process",
+		handler:    (*REPL).processWindows,
+		complete:   (*commandCompleter).completeProcessWindows,
+	},
 	{name: "forget", arguments: "PROCESS_OR_GLOB [PROCESS_OR_GLOB ...]", handler: (*REPL).forgetProcess, complete: (*commandCompleter).completeForget},
 	{
 		name: "logs", arguments: "[-f] [-n LINES|--offset OFFSET] [--stdout|--stderr] PROCESS_ID",
