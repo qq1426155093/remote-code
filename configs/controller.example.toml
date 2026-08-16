@@ -1,5 +1,5 @@
-# remote-code-controller configuration, TOML schema version 4.
-version = 4
+# remote-code-controller configuration, TOML schema version 5.
+version = 5
 
 # All file RPCs and relative process working directories are confined here.
 workspace = "/srv/remote-code/workspace"
@@ -9,6 +9,16 @@ runtime_directory = "/var/run/remote-code-controller"
 max_upload_bytes = 1073741824
 max_processes = 16
 allow_insecure_remote = false
+
+[file_transfers]
+resumable_enabled = true
+upload_session_ttl = "24h"
+completed_session_ttl = "1h"
+max_active_upload_sessions = 64
+max_staging_bytes = 4294967296
+checkpoint_bytes = 4194304
+checkpoint_interval = "1s"
+max_concurrent_downloads = 16
 
 [process_logs]
 # Limits include encoded records and indexes. Oldest sealed segments are

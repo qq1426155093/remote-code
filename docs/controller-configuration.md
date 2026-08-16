@@ -22,16 +22,26 @@ remote-code-controller \
 除 `max_processes` 被命令行覆盖外，其它值仍来自 TOML。布尔值可以显式反向覆盖，例如
 `--allow-insecure-remote=false`。
 
-## TOML schema v1、v2、v3 与 v4
+## TOML schema v1、v2、v3、v4 与 v5
 
 ```toml
-version = 4
+version = 5
 workspace = "/srv/remote-code/workspace"
 listen_address = "127.0.0.1:9443"
 runtime_directory = "/var/run/remote-code-controller"
 max_upload_bytes = 1073741824
 max_processes = 16
 allow_insecure_remote = false
+
+[file_transfers]
+resumable_enabled = true
+upload_session_ttl = "24h"
+completed_session_ttl = "1h"
+max_active_upload_sessions = 64
+max_staging_bytes = 4294967296
+checkpoint_bytes = 4194304
+checkpoint_interval = "1s"
+max_concurrent_downloads = 16
 
 [process_logs]
 max_bytes_per_process = 67108864
@@ -98,6 +108,12 @@ certificate/key 必须同时配置。认证配置只接受 token 文件路径，
 解析采用严格模式：未知字段、错误类型、重复 key、缺失/不支持的 schema version 都会使
 controller 拒绝启动。配置文件最大 1 MiB。
 
+`file_transfers` 从 schema v5 开始可用。上传 session 元数据和下载 revision 密钥保存在
+`<runtime_directory>/file-transfers/`；已经确认的上传 checkpoint 可以跨 controller 进程重启恢复。
+若还要求跨主机重启恢复，`runtime_directory` 必须位于持久磁盘，不能依赖重启时会清空的 `/run`。
+`max_staging_bytes` 必须不小于 `max_upload_bytes`，并按活动 session 的声明大小预留，避免未完成上传
+耗尽磁盘。
+
 ## 字段映射
 
 | TOML | 命令行覆盖参数 | 默认值 |
@@ -106,6 +122,14 @@ controller 拒绝启动。配置文件最大 1 MiB。
 | `listen_address` | `--listen-addr` | `127.0.0.1:9443` |
 | `runtime_directory` | `--runtime-dir` | `/var/run/remote-code-controller` |
 | `max_upload_bytes` | `--max-upload-bytes` | `1073741824` |
+| `file_transfers.resumable_enabled` | `--disable-resumable-transfers`（反向开关） | `true` |
+| `file_transfers.upload_session_ttl` | `--upload-session-ttl` | `24h` |
+| `file_transfers.completed_session_ttl` | `--completed-upload-session-ttl` | `1h` |
+| `file_transfers.max_active_upload_sessions` | `--max-upload-sessions` | `64` |
+| `file_transfers.max_staging_bytes` | `--max-upload-staging-bytes` | `4294967296` |
+| `file_transfers.checkpoint_bytes` | `--upload-checkpoint-bytes` | `4194304` |
+| `file_transfers.checkpoint_interval` | `--upload-checkpoint-interval` | `1s` |
+| `file_transfers.max_concurrent_downloads` | `--max-concurrent-downloads` | `16` |
 | `max_processes` | `--max-processes` | `16` |
 | `allow_insecure_remote` | `--allow-insecure-remote` | `false` |
 | `process_logs.max_bytes_per_process` | `--process-log-max-bytes` | `67108864` |

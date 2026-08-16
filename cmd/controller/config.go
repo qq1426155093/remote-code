@@ -11,6 +11,7 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 	"github.com/qq1426155093/remote-code/internal/auth"
+	fileservice "github.com/qq1426155093/remote-code/internal/files"
 	mcpserver "github.com/qq1426155093/remote-code/internal/mcp"
 	processservice "github.com/qq1426155093/remote-code/internal/process"
 	"github.com/qq1426155093/remote-code/internal/server"
@@ -21,6 +22,7 @@ const (
 	controllerConfigVersionV2 = 2
 	controllerConfigVersionV3 = 3
 	controllerConfigVersionV4 = 4
+	controllerConfigVersionV5 = 5
 	maxControllerConfigBytes  = 1 << 20
 	maxConfiguredProcesses    = 4096
 )
@@ -56,7 +58,19 @@ type controllerFileConfig struct {
 		MaxObservers       *int    `toml:"max_observers_per_process"`
 	} `toml:"process_logs"`
 	ProcessTemplates *processTemplateFileConfig `toml:"process_templates"`
+	FileTransfers    *fileTransferFileConfig    `toml:"file_transfers"`
 	MCP              *mcpFileConfig             `toml:"mcp"`
+}
+
+type fileTransferFileConfig struct {
+	ResumableEnabled       *bool   `toml:"resumable_enabled"`
+	UploadSessionTTL       *string `toml:"upload_session_ttl"`
+	CompletedSessionTTL    *string `toml:"completed_session_ttl"`
+	MaxActiveUploads       *int    `toml:"max_active_upload_sessions"`
+	MaxStagingBytes        *int64  `toml:"max_staging_bytes"`
+	CheckpointBytes        *int64  `toml:"checkpoint_bytes"`
+	CheckpointInterval     *string `toml:"checkpoint_interval"`
+	MaxConcurrentDownloads *int    `toml:"max_concurrent_downloads"`
 }
 
 type processTemplateFileConfig struct {
@@ -94,6 +108,11 @@ func defaultControllerOptions() controllerOptions {
 			RetentionAfterExit: 7 * 24 * time.Hour,
 			MaxObservers:       8,
 		},
+		FileTransfers: fileservice.TransferConfig{
+			UploadSessionTTL: 24 * time.Hour, CompletedSessionTTL: time.Hour,
+			MaxUploadSessions: 64, MaxStagingBytes: 4 << 30,
+			CheckpointBytes: 4 << 20, CheckpointInterval: time.Second, MaxConcurrentDownloads: 16,
+		},
 	}}
 	options.serverConfig.MCP.ApplyDefaults()
 	return options
@@ -124,6 +143,14 @@ func parseControllerOptions(args []string, output io.Writer) (controllerOptions,
 	flags.StringVar(&options.serverConfig.Workspace, "workspace", options.serverConfig.Workspace, "workspace directory (required)")
 	flags.StringVar(&options.serverConfig.ListenAddress, "listen-addr", options.serverConfig.ListenAddress, "gRPC listen address")
 	flags.Int64Var(&options.serverConfig.MaxUploadBytes, "max-upload-bytes", options.serverConfig.MaxUploadBytes, "maximum bytes per uploaded file")
+	flags.BoolVar(&options.serverConfig.FileTransfers.Disabled, "disable-resumable-transfers", options.serverConfig.FileTransfers.Disabled, "disable resumable file transfers")
+	flags.DurationVar(&options.serverConfig.FileTransfers.UploadSessionTTL, "upload-session-ttl", options.serverConfig.FileTransfers.UploadSessionTTL, "inactive resumable upload lifetime")
+	flags.DurationVar(&options.serverConfig.FileTransfers.CompletedSessionTTL, "completed-upload-session-ttl", options.serverConfig.FileTransfers.CompletedSessionTTL, "completed upload result lifetime")
+	flags.IntVar(&options.serverConfig.FileTransfers.MaxUploadSessions, "max-upload-sessions", options.serverConfig.FileTransfers.MaxUploadSessions, "maximum active resumable uploads")
+	flags.Int64Var(&options.serverConfig.FileTransfers.MaxStagingBytes, "max-upload-staging-bytes", options.serverConfig.FileTransfers.MaxStagingBytes, "maximum reserved resumable upload bytes")
+	flags.Int64Var(&options.serverConfig.FileTransfers.CheckpointBytes, "upload-checkpoint-bytes", options.serverConfig.FileTransfers.CheckpointBytes, "bytes between durable upload checkpoints")
+	flags.DurationVar(&options.serverConfig.FileTransfers.CheckpointInterval, "upload-checkpoint-interval", options.serverConfig.FileTransfers.CheckpointInterval, "maximum interval between upload checkpoints")
+	flags.IntVar(&options.serverConfig.FileTransfers.MaxConcurrentDownloads, "max-concurrent-downloads", options.serverConfig.FileTransfers.MaxConcurrentDownloads, "maximum concurrent resumable downloads")
 	flags.StringVar(&options.serverConfig.RuntimeDirectory, "runtime-dir", options.serverConfig.RuntimeDirectory, "persistent process runtime directory")
 	flags.IntVar(&options.serverConfig.MaxProcesses, "max-processes", options.serverConfig.MaxProcesses, "maximum concurrently active managed processes")
 	flags.Int64Var(&options.serverConfig.ProcessLogs.MaxBytesPerProcess, "process-log-max-bytes", options.serverConfig.ProcessLogs.MaxBytesPerProcess, "maximum retained log bytes per process")
@@ -153,6 +180,10 @@ func findConfigFile(args []string) (string, error) {
 		"tls-key": true, "token-file": true, "process-log-max-bytes": true,
 		"process-log-max-total-bytes": true, "process-log-segment-bytes": true,
 		"process-log-retention": true, "process-log-max-observers": true,
+		"upload-session-ttl": true, "completed-upload-session-ttl": true,
+		"max-upload-sessions": true, "max-upload-staging-bytes": true,
+		"upload-checkpoint-bytes": true, "upload-checkpoint-interval": true,
+		"max-concurrent-downloads": true,
 	}
 	var result string
 	for index := 0; index < len(args); index++ {
@@ -226,8 +257,8 @@ func loadControllerConfig(name string) (controllerFileConfig, error) {
 		}
 		return controllerFileConfig{}, fmt.Errorf("decode controller config %q: %s", name, details)
 	}
-	if config.Version != controllerConfigVersionV1 && config.Version != controllerConfigVersionV2 && config.Version != controllerConfigVersionV3 && config.Version != controllerConfigVersionV4 {
-		return controllerFileConfig{}, fmt.Errorf("controller config version must be %d, %d, %d, or %d", controllerConfigVersionV1, controllerConfigVersionV2, controllerConfigVersionV3, controllerConfigVersionV4)
+	if config.Version != controllerConfigVersionV1 && config.Version != controllerConfigVersionV2 && config.Version != controllerConfigVersionV3 && config.Version != controllerConfigVersionV4 && config.Version != controllerConfigVersionV5 {
+		return controllerFileConfig{}, fmt.Errorf("controller config version must be %d, %d, %d, %d, or %d", controllerConfigVersionV1, controllerConfigVersionV2, controllerConfigVersionV3, controllerConfigVersionV4, controllerConfigVersionV5)
 	}
 	if config.Version == controllerConfigVersionV1 && config.MCP != nil {
 		return controllerFileConfig{}, errors.New("controller config version 1 does not support the mcp table")
@@ -237,6 +268,9 @@ func loadControllerConfig(name string) (controllerFileConfig, error) {
 	}
 	if config.Version < controllerConfigVersionV4 && config.ProcessTemplates != nil && config.ProcessTemplates.ExtraParameters != nil {
 		return controllerFileConfig{}, fmt.Errorf("controller config version %d does not support process_templates.extra_parameters", config.Version)
+	}
+	if config.Version < controllerConfigVersionV5 && config.FileTransfers != nil {
+		return controllerFileConfig{}, fmt.Errorf("controller config version %d does not support the file_transfers table", config.Version)
 	}
 	return config, nil
 }
@@ -296,10 +330,55 @@ func applyControllerFileConfig(options *controllerOptions, config controllerFile
 			options.serverConfig.ProcessTemplates.ExtraParameters = *config.ProcessTemplates.ExtraParameters
 		}
 	}
+	if config.FileTransfers != nil {
+		if err := applyFileTransferConfig(&options.serverConfig.FileTransfers, *config.FileTransfers); err != nil {
+			return err
+		}
+	}
 	if config.MCP != nil {
 		if err := applyMCPFileConfig(&options.serverConfig.MCP, *config.MCP); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func applyFileTransferConfig(config *fileservice.TransferConfig, file fileTransferFileConfig) error {
+	if file.ResumableEnabled != nil {
+		config.Disabled = !*file.ResumableEnabled
+	}
+	if file.UploadSessionTTL != nil {
+		value, err := time.ParseDuration(*file.UploadSessionTTL)
+		if err != nil {
+			return fmt.Errorf("invalid file_transfers.upload_session_ttl: %w", err)
+		}
+		config.UploadSessionTTL = value
+	}
+	if file.CompletedSessionTTL != nil {
+		value, err := time.ParseDuration(*file.CompletedSessionTTL)
+		if err != nil {
+			return fmt.Errorf("invalid file_transfers.completed_session_ttl: %w", err)
+		}
+		config.CompletedSessionTTL = value
+	}
+	if file.MaxActiveUploads != nil {
+		config.MaxUploadSessions = *file.MaxActiveUploads
+	}
+	if file.MaxStagingBytes != nil {
+		config.MaxStagingBytes = *file.MaxStagingBytes
+	}
+	if file.CheckpointBytes != nil {
+		config.CheckpointBytes = *file.CheckpointBytes
+	}
+	if file.CheckpointInterval != nil {
+		value, err := time.ParseDuration(*file.CheckpointInterval)
+		if err != nil {
+			return fmt.Errorf("invalid file_transfers.checkpoint_interval: %w", err)
+		}
+		config.CheckpointInterval = value
+	}
+	if file.MaxConcurrentDownloads != nil {
+		config.MaxConcurrentDownloads = *file.MaxConcurrentDownloads
 	}
 	return nil
 }
@@ -371,6 +450,9 @@ func (o controllerOptions) validatedServerConfig() (server.Config, error) {
 	}
 	if config.MaxUploadBytes <= 0 {
 		return server.Config{}, errors.New("max upload bytes must be positive")
+	}
+	if err := fileservice.ValidateTransferConfig(config.FileTransfers, config.MaxUploadBytes); err != nil {
+		return server.Config{}, fmt.Errorf("invalid file transfer configuration: %w", err)
 	}
 	if config.MaxProcesses <= 0 || config.MaxProcesses > maxConfiguredProcesses {
 		return server.Config{}, fmt.Errorf("max processes must be between 1 and %d", maxConfiguredProcesses)

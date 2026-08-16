@@ -37,6 +37,7 @@ type Config struct {
 	MaxProcesses        int
 	ProcessLogs         processservice.LogConfig
 	ProcessTemplates    processservice.TemplateConfig
+	FileTransfers       files.TransferConfig
 	MCP                 mcpserver.Config
 }
 
@@ -111,7 +112,10 @@ func NewPrepared(prepared *Prepared) (*Server, error) {
 	}
 	config := prepared.Config
 
-	fileService, err := files.New(files.Config{Workspace: config.Workspace, MaxUploadBytes: config.MaxUploadBytes})
+	fileService, err := files.New(files.Config{
+		Workspace: config.Workspace, RuntimeDirectory: config.RuntimeDirectory,
+		MaxUploadBytes: config.MaxUploadBytes, Transfers: config.FileTransfers,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -184,6 +188,16 @@ func ValidateConfig(config Config) error {
 	}
 	if config.MCP.Enabled && config.TLSCertificateFile == "" && !config.AllowInsecureRemote && !isLoopbackAddress(config.MCP.ListenAddress) {
 		return errors.New("refusing insecure non-loopback MCP listener; configure TLS or pass --allow-insecure-remote")
+	}
+	maxUploadBytes := config.MaxUploadBytes
+	if maxUploadBytes == 0 {
+		maxUploadBytes = 1 << 30
+	}
+	if maxUploadBytes < 0 {
+		return errors.New("max upload bytes must be positive")
+	}
+	if err := files.ValidateTransferConfig(config.FileTransfers, maxUploadBytes); err != nil {
+		return fmt.Errorf("invalid file transfer configuration: %w", err)
 	}
 	return nil
 }
@@ -264,6 +278,7 @@ func (s *controllerService) GetInfo(context.Context, *codev1.GetInfoRequest) (*c
 		MaxUploadBytes:       s.files.MaxUploadBytes(),
 		MaxProcesses:         uint32(s.processes.MaxProcesses()),
 		ProcessTemplateCount: uint32(s.processes.ProcessTemplateCount()),
+		FileTransfers:        s.files.FileTransferCapabilities(),
 	}, nil
 }
 

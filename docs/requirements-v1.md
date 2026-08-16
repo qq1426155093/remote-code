@@ -42,14 +42,15 @@ remote-code:/docs> exit
 | 命令 | 行为 |
 | --- | --- |
 | `help [command]` | 显示命令帮助 |
+| `info` | 重新查询并显示 controller 版本、API、工作区和容量限制等公开信息 |
 | `pwd` | 显示当前远端虚拟目录 |
 | `cd [REMOTE_DIR]` | 切换 CLI 维护的远端当前目录，默认回到 `/` |
 | `ls [-l] [REMOTE_PATH]` | 列出目录；若参数是文件则显示该文件 |
 | `tree [REMOTE_PATH]` | 递归显示当前目录或指定路径的目录树 |
 | `stat REMOTE_PATH` | 显示类型、大小、权限和修改时间 |
 | `cat REMOTE_FILE` | 将小型远端文件内容输出到当前终端 |
-| `upload LOCAL_FILE [REMOTE_FILE]` | 分块上传本地普通文件；省略目标时使用本地文件名 |
-| `download REMOTE_FILE [LOCAL_FILE]` | 分块下载；省略目标时使用远端文件名 |
+| `upload LOCAL_FILE [REMOTE_FILE]` | 分块上传本地普通文件；网络中断或重新执行命令时从持久化 checkpoint 继续 |
+| `download REMOTE_FILE [LOCAL_FILE]` | 分块下载；以文件 revision 和本地前缀摘要校验后从断点继续 |
 | `mkdir [-p] REMOTE_DIR` | 创建目录，`-p` 同时创建父目录 |
 | `rm [-r] REMOTE_PATH` | 删除文件或空目录；`-r` 递归删除目录 |
 | `mv [-f] SOURCE DESTINATION` | 移动或重命名；`-f` 允许覆盖目标 |
@@ -78,6 +79,14 @@ REPL 内按 `Tab` 可补全内部命令、选项和参数。远端路径候选�
 | `--workspace` | 无 | 必填，允许访问的工作区目录 |
 | `--listen-addr` | `127.0.0.1:9443` | gRPC 监听地址 |
 | `--max-upload-bytes` | `1073741824` | 单个上传文件最大字节数 |
+| `--disable-resumable-transfers` | `false` | 禁用上传、下载断点续传并让新客户端回退旧 RPC |
+| `--upload-session-ttl` | `24h` | 无进展上传 session 的保留时间 |
+| `--completed-upload-session-ttl` | `1h` | 上传终态结果的幂等查询时间 |
+| `--max-upload-sessions` | `64` | 最大活动上传 session 数 |
+| `--max-upload-staging-bytes` | `4294967296` | 活动上传声明大小的总预留上限 |
+| `--upload-checkpoint-bytes` | `4194304` | durable checkpoint 的最大字节间隔 |
+| `--upload-checkpoint-interval` | `1s` | durable checkpoint 的最大时间间隔 |
+| `--max-concurrent-downloads` | `16` | 最大并发可续传下载数 |
 | `--runtime-dir` | `/var/run/remote-code-controller` | 持久化进程元数据、状态和输出日志的根目录 |
 | `--max-processes` | `16` | 最大并发活动进程数 |
 | `--tls-cert` / `--tls-key` | 空 | 同时提供时启用 TLS |
@@ -99,6 +108,7 @@ TOML 配置必须声明 `version = 1`，采用严格字段解析，最大 1 MiB�
 | `--token-file` | 空 | 可选 bearer token 文件 |
 | `--timeout` | `30s` | 单条交互命令的 RPC 超时，`0` 表示不设超时 |
 | `--cat-max-bytes` | `1048576` | `cat` 最多向终端输出的字节数 |
+| `--transfer-state-dir` | 用户缓存目录下的 `remote-code/transfers` | 本地上传 session 与下载 part 状态目录 |
 
 CLI 只有在 `GetInfo` 调用成功后才进入提示符，因此“连接成功”代表网络、TLS、认证和 API 都已验证。
 
@@ -106,10 +116,10 @@ CLI 只有在 `GetInfo` 调用成功后才进入提示符，因此“连接成�
 
 - `ls` 返回直接子项，按名称排序，不递归遍历。
 - `stat` 与 `ls` 能识别普通文件、目录和符号链接；符号链接信息不泄漏工作区外部目标。
-- `cat` 和 `download` 只接受普通文件。下载内容携带 SHA-256 摘要，CLI 在完成时校验。
-- `upload` 只接受本地普通文件。controller 在目标同目录写临时文件，校验声明大小和 SHA-256 后原子发布；失败时清理临时文件。
+- `cat` 和 `download` 只接受普通文件。下载内容携带 SHA-256 摘要，CLI 在完成时校验；`cat` 输出不可 seek，因此不续传。
+- `upload` 只接受本地普通文件。controller 在目标同目录写临时文件，以 durable offset 保存上传 session，校验声明大小和 SHA-256 后原子发布；session 失败、取消或过期时清理临时文件。
 - 上传默认覆盖现有普通文件；不能用文件覆盖目录。上传保留本地的 `0777` 权限位，不传输 owner、group、ACL、扩展属性或特殊权限位。
-- `download` 在本地同目录写临时文件，校验摘要后重命名到最终路径，避免失败留下半文件。默认覆盖已有普通文件。
+- `download` 在本地同目录写 `.part` 临时文件，使用远端 revision 与本地前缀 SHA-256 防止跨版本拼接，完整校验后重命名到最终路径。网络失败保留断点，成功后清理状态；默认覆盖已有普通文件。
 - `rm` 禁止删除工作区虚拟根。没有 `-r` 时不删除非空目录。
 - `mv` 默认不覆盖已存在的目标；`-f` 才允许覆盖。禁止把任何对象移动到工作区之外或移动工作区虚拟根。
 - `chmod` 只接受 `0000` 到 `0777`，不允许设置 setuid、setgid 或 sticky 位。
@@ -140,13 +150,13 @@ CLI 只有在 `GetInfo` 调用成功后才进入提示符，因此“连接成�
 2. CLI 能建立连接并持续处理多条命令，单条错误不会结束会话。
 3. 通过真实 gRPC 连接完成目录创建、上传、列表、查看、下载、移动、修改权限、删除以及进程启动/列表/终止闭环。
 4. 上传与下载对内容执行 SHA-256 校验，并使用临时文件避免暴露半成品。
-5. 自动测试覆盖绝对路径、`..`、符号链接逃逸、根目录删除、上传限制、进程工作目录逃逸、PTY/pipe、并发注册、不同信号、进程组和回收。
+5. 自动测试覆盖绝对路径、`..`、符号链接逃逸、根目录删除、上传限制、传输断线与 controller 重启续传、远端版本变化、进程工作目录逃逸、PTY/pipe、并发注册、不同信号、进程组和回收。
 6. `.proto`、生成代码和可复现的生成命令一并提交；测试不依赖任何 Agent 凭据。
 
 ## 8. 首版不包含
 
 - 跨 controller 重启接管仍存活的进程；当前 PTY attach 和窗口 resize 仅针对本次 controller 运行期间的受管进程。
 - 多租户、细粒度权限、配额持久化和审计数据库。
-- 断点续传、增量同步、目录整体上传下载和文件监控。
+- 并行/乱序分片、增量同步、目录整体上传下载和文件监控。
 - Windows controller 支持承诺；首版验证目标为 Linux。
 - Web UI、非交互批处理输出格式和外层 shell（bash/zsh 等）补全。

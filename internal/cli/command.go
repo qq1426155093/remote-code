@@ -136,6 +136,7 @@ func usageErrorf(format string, arguments ...any) error {
 
 var defaultCommandRegistry = mustCommandRegistry([]commandSpec{
 	{name: "help", arguments: "[command]", handler: (*REPL).help, complete: (*commandCompleter).completeHelp},
+	{name: "info", handler: (*REPL).controllerInfo},
 	{name: "pwd", handler: (*REPL).printWorkingDirectory},
 	{name: "cd", arguments: "[REMOTE_DIR]", handler: (*REPL).changeDirectory, complete: completeFirstRemotePath(completeDirectories)},
 	{name: "ls", arguments: "[-l] [REMOTE_PATH]", handler: (*REPL).list, complete: completeRemotePathWithOption("-l", 1, completeAnyPath)},

@@ -67,7 +67,7 @@ service ControllerService {
 }
 ```
 
-`GetInfoResponse` 返回 controller 版本、API 版本、工作区显示名、最大上传字节数和活动进程上限。它既是能力查询，也是 CLI 进入 REPL 前的连接探测。绝不返回工作区绝对路径。
+`GetInfoResponse` 返回 controller 版本、API 版本、工作区显示名、最大上传字节数、活动进程上限和文件传输能力。它既是能力查询，也是 CLI 进入 REPL 前的连接探测。绝不返回工作区绝对路径。
 
 ### 4.2 FileService
 
@@ -78,6 +78,11 @@ service FileService {
   rpc Tree(TreeRequest) returns (TreeResponse);
   rpc Upload(stream UploadRequest) returns (UploadResponse);
   rpc Download(DownloadRequest) returns (stream DownloadResponse);
+  rpc CreateUploadSession(CreateUploadSessionRequest) returns (CreateUploadSessionResponse);
+  rpc TransferUpload(stream TransferUploadRequest) returns (stream TransferUploadResponse);
+  rpc GetUploadSession(GetUploadSessionRequest) returns (GetUploadSessionResponse);
+  rpc AbortUploadSession(AbortUploadSessionRequest) returns (AbortUploadSessionResponse);
+  rpc DownloadRange(DownloadRangeRequest) returns (stream DownloadRangeResponse);
   rpc Remove(RemoveRequest) returns (RemoveResponse);
   rpc Move(MoveRequest) returns (MoveResponse);
   rpc Chmod(ChmodRequest) returns (ChmodResponse);
@@ -103,7 +108,7 @@ service ProcessService {
 
 `ProcessInfo` 返回 UUID、逻辑名称、OS PID、PTY/pipe 模式、输入模式/状态、具体命令、参数、虚拟工作目录、环境覆盖 key、状态、时间戳以及可选退出码/退出信号。`StartProcessRequest.environment` 是覆盖 map，value 不会出现在响应或磁盘元数据。`ListProcessesRequest.all` 区分活动进程与完整历史。`ProcessReference` 用 oneof 明确区分 UUID、名称与 PID。`SignalProcess.wait=true` 使用 RPC context 作为等待上限；`DeleteProcess` 永久删除单条终态历史，`BatchDeleteProcesses` 从同一快照展开多个精确引用或名称 glob，按 UUID 去重并逐项返回状态。输入流见[进程标准输入详细设计 v1](process-input-design-v1.md)，完整进程设计见[通用进程管理详细设计 v1](process-management-design-v1.md)。
 
-### 4.4 上传流
+### 4.4 兼容上传流
 
 `UploadRequest` 是 oneof 帧：第一帧必须是 `UploadMetadata`，后续帧只能是 `bytes chunk`。
 
@@ -119,11 +124,23 @@ START -> METADATA -> CHUNK* -> CLIENT_EOF -> VERIFY -> PUBLISH -> RESPONSE
 
 元数据缺失、重复或位于 chunk 之后返回 `InvalidArgument`；超过限制返回 `ResourceExhausted`；大小或摘要不一致返回 `DataLoss`。
 
-### 4.5 下载流
+### 4.5 兼容下载流
 
 `DownloadResponse` 是 oneof 帧：先发送 `DownloadMetadata`，再发送多个 chunk，最后发送 `DownloadSummary`。summary 包含实际总字节数和 SHA-256。客户端必须看到 metadata 与 summary，且必须核对计数和摘要后才能发布本地文件。
 
 服务端从安全打开的文件描述符顺序读取 64 KiB 块，避免将整个文件载入内存。目录、设备或其他非普通文件返回 `FailedPrecondition`。
+
+### 4.6 可续传文件传输
+
+新客户端先读取 `GetInfo.file_transfers`；支持时，上传通过持久化 session 和双向 `TransferUpload`
+流协商服务端权威 `committed_offset`，只在临时文件与 session 状态都持久化后发送 checkpoint。
+完成时重新读取临时文件校验完整 SHA-256，再沿用同目录原子发布。断线后客户端查询 session 并从
+checkpoint 继续，最终响应丢失时也能通过 session 终态确认成功。
+
+下载使用无服务端 session 的 `DownloadRange`：首次返回 opaque revision，续传请求携带 offset、revision
+和本地 `[0, offset)` 前缀 SHA-256。服务端验证版本并重读前缀后才发送剩余块，块携带明确 offset 和摘要；
+客户端完整校验 summary 后发布本地 `.part`。完整状态机、落盘顺序和恢复规则见
+[文件断点续传设计 v1](file-transfer-resume-design-v1.md)。
 
 ## 5. 路径安全与文件实现
 
@@ -232,7 +249,7 @@ configuration。
 
 - `os.Root` 防止路径和符号链接逃逸，但不隔离 bind mount、设备文件或工作区内恶意文件系统；部署仍需 OS 级隔离。
 - 通用 `mv` 的“检查后 rename”无法提供跨所有对象类型的强原子 no-replace；Linux 后续可用 `renameat2(RENAME_NOREPLACE)` 增强。
-- 首版传输单文件且不续传；后续可加入 upload session、offset 与分块摘要。
+- 文件传输仍限单个普通文件和顺序 chunk；暂不支持并行分片、目录传输、压缩或增量同步。
 - 首版 CLI 同步执行一条命令；并发任务、进度条和机器可读模式留待后续版本。
 - 已实现独立的 PTY/pipe managed stdin 流、基于日志 follow 的 PTY attach 和窗口 resize；Agent 语义保持为后续 milestone；当前进程 API 已负责启动、
   持久化元数据/输出、按 offset 或 tail 回放并跟随日志、列表、信号和回收。日志 checkpoint

@@ -18,6 +18,11 @@ service FileService {
   rpc Tree(TreeRequest) returns (TreeResponse);
   rpc Upload(stream UploadRequest) returns (UploadResponse);
   rpc Download(DownloadRequest) returns (stream DownloadResponse);
+  rpc CreateUploadSession(CreateUploadSessionRequest) returns (CreateUploadSessionResponse);
+  rpc TransferUpload(stream TransferUploadRequest) returns (stream TransferUploadResponse);
+  rpc GetUploadSession(GetUploadSessionRequest) returns (GetUploadSessionResponse);
+  rpc AbortUploadSession(AbortUploadSessionRequest) returns (AbortUploadSessionResponse);
+  rpc DownloadRange(DownloadRangeRequest) returns (stream DownloadRangeResponse);
   rpc Remove(RemoveRequest) returns (RemoveResponse);
   rpc Move(MoveRequest) returns (MoveResponse);
   rpc Chmod(ChmodRequest) returns (ChmodResponse);
@@ -47,6 +52,15 @@ message GetInfoResponse {
   reserved 5;
   uint32 max_processes = 6;
   uint32 process_template_count = 7;
+  FileTransferCapabilities file_transfers = 8;
+}
+
+message FileTransferCapabilities {
+  bool resumable_upload = 1;
+  bool resumable_download = 2;
+  uint32 preferred_chunk_bytes = 3;
+  uint32 max_chunk_bytes = 4;
+  int64 upload_session_ttl_seconds = 5;
 }
 
 enum FileType {
@@ -138,6 +152,142 @@ message DownloadResponse {
     bytes chunk = 2;
     DownloadSummary summary = 3;
   }
+}
+
+enum UploadSessionState {
+  UPLOAD_SESSION_STATE_UNSPECIFIED = 0;
+  UPLOAD_SESSION_STATE_OPEN = 1;
+  UPLOAD_SESSION_STATE_FINALIZING = 2;
+  UPLOAD_SESSION_STATE_COMPLETE = 3;
+  UPLOAD_SESSION_STATE_ABORTED = 4;
+  UPLOAD_SESSION_STATE_EXPIRED = 5;
+  UPLOAD_SESSION_STATE_FAILED = 6;
+}
+
+message CreateUploadSessionRequest {
+  string request_id = 1;
+  string path = 2;
+  int64 size = 3;
+  bytes sha256 = 4;
+  uint32 mode = 5;
+  bool overwrite = 6;
+}
+
+message UploadSession {
+  string upload_id = 1;
+  UploadSessionState state = 2;
+  int64 committed_offset = 3;
+  int64 size = 4;
+  google.protobuf.Timestamp expires_at = 5;
+  UploadResponse result = 6;
+}
+
+message CreateUploadSessionResponse {
+  UploadSession session = 1;
+}
+
+message TransferUploadOpen {
+  string upload_id = 1;
+  int64 known_offset = 2;
+}
+
+message TransferUploadChunk {
+  int64 offset = 1;
+  bytes data = 2;
+  bytes sha256 = 3;
+}
+
+message TransferUploadFinish {}
+
+message TransferUploadRequest {
+  oneof payload {
+    TransferUploadOpen open = 1;
+    TransferUploadChunk chunk = 2;
+    TransferUploadFinish finish = 3;
+  }
+}
+
+message TransferUploadReady {
+  int64 committed_offset = 1;
+}
+
+message TransferUploadCheckpoint {
+  int64 committed_offset = 1;
+}
+
+message TransferUploadComplete {
+  UploadResponse result = 1;
+}
+
+message TransferUploadResponse {
+  oneof payload {
+    TransferUploadReady ready = 1;
+    TransferUploadCheckpoint checkpoint = 2;
+    TransferUploadComplete complete = 3;
+  }
+}
+
+message GetUploadSessionRequest {
+  string upload_id = 1;
+}
+
+message GetUploadSessionResponse {
+  UploadSession session = 1;
+}
+
+message AbortUploadSessionRequest {
+  string upload_id = 1;
+}
+
+message AbortUploadSessionResponse {
+  UploadSession session = 1;
+}
+
+message DownloadRangeRequest {
+  string path = 1;
+  int64 offset = 2;
+  bytes expected_revision = 3;
+  bytes prefix_sha256 = 4;
+}
+
+message DownloadRangeMetadata {
+  FileInfo file = 1;
+  bytes revision = 2;
+  int64 offset = 3;
+}
+
+message DownloadRangeChunk {
+  int64 offset = 1;
+  bytes data = 2;
+  bytes sha256 = 3;
+}
+
+message DownloadRangeSummary {
+  int64 size = 1;
+  bytes sha256 = 2;
+  bytes revision = 3;
+}
+
+message DownloadRangeResponse {
+  oneof payload {
+    DownloadRangeMetadata metadata = 1;
+    DownloadRangeChunk chunk = 2;
+    DownloadRangeSummary summary = 3;
+  }
+}
+
+enum FileTransferErrorReason {
+  FILE_TRANSFER_ERROR_REASON_UNSPECIFIED = 0;
+  FILE_TRANSFER_ERROR_REASON_OFFSET_MISMATCH = 1;
+  FILE_TRANSFER_ERROR_REASON_FILE_CHANGED = 2;
+  FILE_TRANSFER_ERROR_REASON_PREFIX_MISMATCH = 3;
+  FILE_TRANSFER_ERROR_REASON_SESSION_STATE = 4;
+  FILE_TRANSFER_ERROR_REASON_ACTIVE_TRANSFER = 5;
+}
+
+message FileTransferError {
+  FileTransferErrorReason reason = 1;
+  int64 expected_offset = 2;
 }
 
 message RemoveRequest {

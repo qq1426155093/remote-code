@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+	"time"
 
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
 	"google.golang.org/grpc"
@@ -40,12 +41,15 @@ type Service struct {
 	root           *os.Root
 	workspaceName  string
 	maxUploadBytes int64
+	transfers      *transferStore
 }
 
 // Config controls a file service instance.
 type Config struct {
-	Workspace      string
-	MaxUploadBytes int64
+	Workspace        string
+	RuntimeDirectory string
+	MaxUploadBytes   int64
+	Transfers        TransferConfig
 }
 
 // New opens and pins the configured workspace directory.
@@ -76,15 +80,24 @@ func New(config Config) (*Service, error) {
 		_ = root.Close()
 		return nil, errors.New("max upload bytes must be positive")
 	}
+	transfers, err := newTransferStore(root, abs, config.RuntimeDirectory, maxUploadBytes, config.Transfers)
+	if err != nil {
+		_ = root.Close()
+		return nil, fmt.Errorf("open file transfer store: %w", err)
+	}
 	return &Service{
 		root:           root,
 		workspaceName:  filepath.Base(abs),
 		maxUploadBytes: maxUploadBytes,
+		transfers:      transfers,
 	}, nil
 }
 
 // Close releases the pinned workspace directory handle.
 func (s *Service) Close() error {
+	if s.transfers != nil {
+		s.transfers.close()
+	}
 	return s.root.Close()
 }
 
@@ -98,10 +111,27 @@ func (s *Service) MaxUploadBytes() int64 {
 	return s.maxUploadBytes
 }
 
+// FileTransferCapabilities returns the negotiated resumable-transfer limits.
+func (s *Service) FileTransferCapabilities() *codev1.FileTransferCapabilities {
+	if s.transfers == nil || s.transfers.disabled {
+		return &codev1.FileTransferCapabilities{}
+	}
+	return &codev1.FileTransferCapabilities{
+		ResumableUpload:         true,
+		ResumableDownload:       true,
+		PreferredChunkBytes:     transferChunkSize,
+		MaxChunkBytes:           maxReceivedChunkSize,
+		UploadSessionTtlSeconds: int64(s.transfers.config.UploadSessionTTL / time.Second),
+	}
+}
+
 func (s *Service) Stat(_ context.Context, request *codev1.StatRequest) (*codev1.StatResponse, error) {
 	rel, err := cleanPath(request.GetPath())
 	if err != nil {
 		return nil, err
+	}
+	if s.isTransferTemp(rel) {
+		return nil, status.Error(codes.NotFound, "file was not found")
 	}
 	info, err := s.lstat(rel)
 	if err != nil {
@@ -114,6 +144,9 @@ func (s *Service) List(_ context.Context, request *codev1.ListRequest) (*codev1.
 	rel, err := cleanPath(request.GetPath())
 	if err != nil {
 		return nil, err
+	}
+	if s.isTransferTemp(rel) {
+		return nil, status.Error(codes.NotFound, "file was not found")
 	}
 	info, err := s.root.Lstat(rel)
 	if err != nil {
@@ -140,6 +173,9 @@ func (s *Service) List(_ context.Context, request *codev1.ListRequest) (*codev1.
 	files := make([]*codev1.FileInfo, 0, len(names))
 	for _, name := range names {
 		child := path.Join(rel, name)
+		if s.isTransferTemp(child) {
+			continue
+		}
 		info, err := s.lstat(child)
 		if err != nil {
 			return nil, fileError("list", child, err)
@@ -155,6 +191,9 @@ func (s *Service) Tree(ctx context.Context, request *codev1.TreeRequest) (*codev
 	rel, err := cleanPath(request.GetPath())
 	if err != nil {
 		return nil, err
+	}
+	if s.isTransferTemp(rel) {
+		return nil, status.Error(codes.NotFound, "file was not found")
 	}
 	entryCount := 0
 	root, err := s.buildTree(ctx, rel, 0, &entryCount)
@@ -204,6 +243,9 @@ func (s *Service) buildTree(ctx context.Context, rel string, depth int, entryCou
 	node.Children = make([]*codev1.TreeNode, 0, len(names))
 	for _, name := range names {
 		childPath := path.Join(rel, name)
+		if s.isTransferTemp(childPath) {
+			continue
+		}
 		child, err := s.buildTree(ctx, childPath, depth+1, entryCount)
 		if err != nil {
 			return nil, err
@@ -228,6 +270,9 @@ func (s *Service) Upload(stream grpc.ClientStreamingServer[codev1.UploadRequest,
 	rel, err := cleanMutablePath(metadata.GetPath())
 	if err != nil {
 		return err
+	}
+	if s.transferMutationConflicts(rel) {
+		return transferStatus(codes.FailedPrecondition, "upload target has an active transfer", codev1.FileTransferErrorReason_FILE_TRANSFER_ERROR_REASON_ACTIVE_TRANSFER, 0)
 	}
 	if metadata.GetSize() < 0 {
 		return status.Error(codes.InvalidArgument, "upload size cannot be negative")
@@ -337,6 +382,9 @@ func (s *Service) Download(request *codev1.DownloadRequest, stream grpc.ServerSt
 	if err != nil {
 		return err
 	}
+	if s.isTransferTemp(rel) {
+		return status.Error(codes.NotFound, "file was not found")
+	}
 	file, err := s.root.OpenFile(rel, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return fileError("download", rel, err)
@@ -386,6 +434,9 @@ func (s *Service) Remove(_ context.Context, request *codev1.RemoveRequest) (*cod
 	if err != nil {
 		return nil, err
 	}
+	if s.transferMutationConflicts(rel) {
+		return nil, transferStatus(codes.FailedPrecondition, "path has an active file transfer", codev1.FileTransferErrorReason_FILE_TRANSFER_ERROR_REASON_ACTIVE_TRANSFER, 0)
+	}
 	if _, err := s.root.Lstat(rel); err != nil {
 		return nil, fileError("remove", rel, err)
 	}
@@ -408,6 +459,9 @@ func (s *Service) Move(_ context.Context, request *codev1.MoveRequest) (*codev1.
 	destination, err := cleanMutablePath(request.GetDestination())
 	if err != nil {
 		return nil, err
+	}
+	if s.transferMutationConflicts(source) || s.transferMutationConflicts(destination) {
+		return nil, transferStatus(codes.FailedPrecondition, "path has an active file transfer", codev1.FileTransferErrorReason_FILE_TRANSFER_ERROR_REASON_ACTIVE_TRANSFER, 0)
 	}
 	if source == destination {
 		return nil, status.Error(codes.InvalidArgument, "move source and destination must differ")
@@ -440,6 +494,9 @@ func (s *Service) Chmod(_ context.Context, request *codev1.ChmodRequest) (*codev
 	if err != nil {
 		return nil, err
 	}
+	if s.transferMutationConflicts(rel) {
+		return nil, transferStatus(codes.FailedPrecondition, "path has an active file transfer", codev1.FileTransferErrorReason_FILE_TRANSFER_ERROR_REASON_ACTIVE_TRANSFER, 0)
+	}
 	if err := validateMode(request.GetMode()); err != nil {
 		return nil, err
 	}
@@ -470,6 +527,9 @@ func (s *Service) Mkdir(_ context.Context, request *codev1.MkdirRequest) (*codev
 	if err != nil {
 		return nil, err
 	}
+	if s.transferMutationConflicts(rel) {
+		return nil, transferStatus(codes.FailedPrecondition, "path has an active file transfer", codev1.FileTransferErrorReason_FILE_TRANSFER_ERROR_REASON_ACTIVE_TRANSFER, 0)
+	}
 	if err := validateMode(request.GetMode()); err != nil {
 		return nil, err
 	}
@@ -495,6 +555,14 @@ func (s *Service) lstat(rel string) (*codev1.FileInfo, error) {
 		return nil, err
 	}
 	return s.fileInfo(rel, info)
+}
+
+func (s *Service) isTransferTemp(rel string) bool {
+	return s.transfers != nil && !s.transfers.disabled && s.transfers.isTemp(rel)
+}
+
+func (s *Service) transferMutationConflicts(rel string) bool {
+	return s.transfers != nil && !s.transfers.disabled && s.transfers.mutationConflicts(rel)
 }
 
 func (s *Service) fileInfo(rel string, info os.FileInfo) (*codev1.FileInfo, error) {

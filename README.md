@@ -33,6 +33,7 @@ make build
 连接后可使用文件命令以及 `exec`、`ps`、`kill`、`stdin`、`attach` 进程命令，输入 `help` 查看完整说明。例如：
 
 ```text
+remote-code:/> info
 remote-code:/> mkdir -p docs/input
 remote-code:/> upload ./requirements.md docs/input/requirements.md
 remote-code:/> ls -l docs/input
@@ -194,6 +195,11 @@ service FileService {
   rpc Tree(TreeRequest) returns (TreeResponse);
   rpc Upload(stream UploadRequest) returns (UploadResponse);
   rpc Download(DownloadRequest) returns (stream DownloadResponse);
+  rpc CreateUploadSession(CreateUploadSessionRequest) returns (CreateUploadSessionResponse);
+  rpc TransferUpload(stream TransferUploadRequest) returns (stream TransferUploadResponse);
+  rpc GetUploadSession(GetUploadSessionRequest) returns (GetUploadSessionResponse);
+  rpc AbortUploadSession(AbortUploadSessionRequest) returns (AbortUploadSessionResponse);
+  rpc DownloadRange(DownloadRangeRequest) returns (stream DownloadRangeResponse);
   rpc Remove(RemoveRequest) returns (RemoveResponse);
   rpc Move(MoveRequest) returns (MoveResponse);
   rpc Chmod(ChmodRequest) returns (ChmodResponse);
@@ -215,8 +221,12 @@ service ProcessService {
 ```
 
 `TreeResponse` 使用递归的 `TreeNode` 返回文件元数据和子节点，CLI 只负责把它渲染成类似
-Linux `tree` 的文本。文件上传和下载采用分块流并用 SHA-256 校验完整性。实际 message 与流帧定义见
-[`remote_code.proto`](api/remote/code/v1/remote_code.proto)。交互式 attach 不增加专用 RPC：客户端组合
+Linux `tree` 的文本。新客户端通过 `GetInfo.file_transfers` 协商断点续传：上传使用持久化 session、
+durable offset 和 checkpoint，下载使用 revision、offset 与本地前缀 SHA-256；旧 `Upload`/`Download`
+RPC 继续用于兼容旧客户端和不可 seek 的流。两条路径都在完整大小和 SHA-256 校验后才原子发布。
+实际 message 与流帧定义见
+[`remote_code.proto`](api/remote/code/v1/remote_code.proto)，落盘顺序与故障恢复规则见
+[文件断点续传设计 v1](docs/file-transfer-resume-design-v1.md)。交互式 attach 不增加专用 RPC：客户端组合
 `StreamProcessInput` 与 `ObserveProcessLogs(follow=true)`，输入流同时承载有序的终端 resize 和 detach。
 
 `StartProcess` 接受具体命令、参数、工作区内 cwd、PIPE/PTY 模式、输入模式和环境覆盖；它不经 shell
