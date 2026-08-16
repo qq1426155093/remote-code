@@ -78,6 +78,7 @@ func TestDefaultCommandHelpAndExitBehavior(t *testing.T) {
 		t.Fatalf("execute(help) = %v, %v", action, err)
 	}
 	wantHelp := `help [command]
+info
 pwd
 cd [REMOTE_DIR]
 ls [-l] [REMOTE_PATH]
@@ -132,5 +133,8 @@ exit | quit
 	}
 	if _, err := repl.execute([]string{"unknown"}); err == nil || err.Error() != `unknown command "unknown"; type 'help' for available commands` {
 		t.Fatalf("execute(unknown) error = %v", err)
+	}
+	if _, err := repl.execute([]string{"info", "extra"}); err == nil || err.Error() != "usage: info" {
+		t.Fatalf("execute(info extra) error = %v", err)
 	}
 }

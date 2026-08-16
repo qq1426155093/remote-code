@@ -79,7 +79,10 @@ func TestParseControllerOptionsUsesDefaultsWithoutConfig(t *testing.T) {
 	if config.Workspace != "/srv/project" || config.ListenAddress != "127.0.0.1:9443" ||
 		config.RuntimeDirectory != "/var/run/remote-code-controller" || config.MaxUploadBytes != 1<<30 || config.MaxProcesses != 16 ||
 		config.ProcessLogs.MaxBytesPerProcess != 64<<20 || config.ProcessLogs.MaxTotalBytes != 4<<30 ||
-		config.ProcessLogs.SegmentBytes != 4<<20 || config.ProcessLogs.RetentionAfterExit != 7*24*time.Hour || config.ProcessLogs.MaxObservers != 8 {
+		config.ProcessLogs.SegmentBytes != 4<<20 || config.ProcessLogs.RetentionAfterExit != 7*24*time.Hour || config.ProcessLogs.MaxObservers != 8 ||
+		config.FileTransfers.Disabled || config.FileTransfers.UploadSessionTTL != 24*time.Hour || config.FileTransfers.CompletedSessionTTL != time.Hour ||
+		config.FileTransfers.MaxUploadSessions != 64 || config.FileTransfers.MaxStagingBytes != 4<<30 || config.FileTransfers.CheckpointBytes != 4<<20 ||
+		config.FileTransfers.CheckpointInterval != time.Second || config.FileTransfers.MaxConcurrentDownloads != 16 {
 		t.Fatalf("defaults = %+v", config)
 	}
 }
@@ -91,7 +94,7 @@ func TestLoadControllerConfigRejectsInvalidFiles(t *testing.T) {
 		want     string
 	}{
 		{name: "missing version", contents: `workspace = "/work"`, want: "version must be 1"},
-		{name: "future version", contents: "version = 5\n", want: "version must be 1, 2, 3, or 4"},
+		{name: "future version", contents: "version = 6\n", want: "version must be 1, 2, 3, 4, or 5"},
 		{name: "unknown field", contents: "version = 1\nmax_proceses = 2\n", want: "unknown field"},
 		{name: "wrong type", contents: "version = 1\nmax_processes = \"many\"\n", want: "cannot decode"},
 		{name: "duplicate key", contents: "version = 1\nmax_processes = 2\nmax_processes = 3\n", want: "already defined"},
@@ -230,6 +233,42 @@ default_model = "fast"
 	}
 }
 
+func TestLoadControllerConfigV5FileTransfers(t *testing.T) {
+	configFile := writeControllerConfig(t, `
+version = 5
+workspace = "/work"
+
+[file_transfers]
+resumable_enabled = true
+upload_session_ttl = "12h"
+completed_session_ttl = "30m"
+max_active_upload_sessions = 7
+max_staging_bytes = 8589934592
+checkpoint_bytes = 2097152
+checkpoint_interval = "2s"
+max_concurrent_downloads = 5
+`)
+	file, err := loadControllerConfig(configFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := defaultControllerOptions()
+	if err := applyControllerFileConfig(&options, file); err != nil {
+		t.Fatal(err)
+	}
+	got := options.serverConfig.FileTransfers
+	if got.Disabled || got.UploadSessionTTL != 12*time.Hour || got.CompletedSessionTTL != 30*time.Minute ||
+		got.MaxUploadSessions != 7 || got.MaxStagingBytes != 8<<30 || got.CheckpointBytes != 2<<20 ||
+		got.CheckpointInterval != 2*time.Second || got.MaxConcurrentDownloads != 5 {
+		t.Fatalf("file transfer config = %+v", got)
+	}
+
+	v4WithTransfers := writeControllerConfig(t, "version = 4\n[file_transfers]\nresumable_enabled = true\n")
+	if _, err := loadControllerConfig(v4WithTransfers); err == nil || !strings.Contains(err.Error(), "does not support the file_transfers table") {
+		t.Fatalf("v4 file_transfers error = %v", err)
+	}
+}
+
 func TestFindConfigFile(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -267,6 +306,8 @@ func TestValidatedServerConfigRejectsInvalidValues(t *testing.T) {
 		{name: "listen", mutate: func(o *controllerOptions) { o.serverConfig.ListenAddress = "" }, want: "listen address is required"},
 		{name: "runtime", mutate: func(o *controllerOptions) { o.serverConfig.RuntimeDirectory = "" }, want: "runtime directory is required"},
 		{name: "upload", mutate: func(o *controllerOptions) { o.serverConfig.MaxUploadBytes = 0 }, want: "max upload bytes must be positive"},
+		{name: "upload sessions", mutate: func(o *controllerOptions) { o.serverConfig.FileTransfers.MaxUploadSessions = -1 }, want: "maximum upload sessions"},
+		{name: "upload staging", mutate: func(o *controllerOptions) { o.serverConfig.FileTransfers.MaxStagingBytes = 1 }, want: "maximum staging bytes"},
 		{name: "processes", mutate: func(o *controllerOptions) { o.serverConfig.MaxProcesses = 4097 }, want: "max processes must be between"},
 		{name: "process log total", mutate: func(o *controllerOptions) { o.serverConfig.ProcessLogs.MaxTotalBytes = 1 }, want: "total max bytes"},
 		{name: "process log observers", mutate: func(o *controllerOptions) { o.serverConfig.ProcessLogs.MaxObservers = -1 }, want: "max observers"},

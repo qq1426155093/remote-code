@@ -2,9 +2,11 @@ package files
 
 import (
 	"context"
+	"crypto/sha256"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
 	"google.golang.org/grpc/codes"
@@ -219,10 +221,142 @@ func TestServiceRejectsInvalidConfigurationAndMode(t *testing.T) {
 	if _, err := New(Config{Workspace: t.TempDir(), MaxUploadBytes: -1}); err == nil {
 		t.Fatal("New() with negative upload limit succeeded")
 	}
+	if _, err := New(Config{Workspace: t.TempDir(), Transfers: TransferConfig{MaxUploadSessions: -1}}); err == nil {
+		t.Fatal("New() with an invalid upload session limit succeeded")
+	}
 	service := newTestService(t, t.TempDir(), 0)
 	_, err := service.Mkdir(context.Background(), &codev1.MkdirRequest{Path: "bad", Mode: 0o1777})
 	if got := status.Code(err); got != codes.InvalidArgument {
 		t.Fatalf("Mkdir(invalid mode) code = %s, want InvalidArgument", got)
+	}
+}
+
+func TestTransferStateDirectoryRejectsConcurrentControllers(t *testing.T) {
+	workspace := t.TempDir()
+	runtimeDirectory := t.TempDir()
+	first, err := New(Config{Workspace: workspace, RuntimeDirectory: runtimeDirectory})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	if second, err := New(Config{Workspace: workspace, RuntimeDirectory: runtimeDirectory}); err == nil {
+		_ = second.Close()
+		t.Fatal("second service acquired the same transfer state directory")
+	}
+}
+
+func TestResumableTransfersCanBeDisabled(t *testing.T) {
+	service, err := New(Config{Workspace: t.TempDir(), Transfers: TransferConfig{Disabled: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close()
+	if capabilities := service.FileTransferCapabilities(); capabilities.GetResumableUpload() || capabilities.GetResumableDownload() {
+		t.Fatalf("disabled capabilities = %+v", capabilities)
+	}
+	if _, err := service.CreateUploadSession(context.Background(), &codev1.CreateUploadSessionRequest{}); status.Code(err) != codes.Unimplemented {
+		t.Fatalf("disabled CreateUploadSession() code = %s, want Unimplemented", status.Code(err))
+	}
+}
+
+func TestUploadSessionQuotaAndAbortReleaseReservation(t *testing.T) {
+	workspace := t.TempDir()
+	service, err := New(Config{
+		Workspace: workspace, RuntimeDirectory: t.TempDir(), MaxUploadBytes: 8,
+		Transfers: TransferConfig{MaxUploadSessions: 1, MaxStagingBytes: 8},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close()
+	content := []byte("first")
+	digest := sha256.Sum256(content)
+	first, err := service.CreateUploadSession(context.Background(), &codev1.CreateUploadSessionRequest{
+		RequestId: "first", Path: "first.bin", Size: int64(len(content)), Sha256: digest[:], Mode: 0o600,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstSession, ok := service.transfers.get(first.GetSession().GetUploadId())
+	if !ok {
+		t.Fatal("first upload session was not found")
+	}
+	firstSession.mu.Lock()
+	firstTempPath := firstSession.record.TempPath
+	firstSession.mu.Unlock()
+	if _, err := service.CreateUploadSession(context.Background(), &codev1.CreateUploadSessionRequest{
+		RequestId: "staging-target", Path: firstTempPath, Size: int64(len(content)), Sha256: digest[:], Mode: 0o600, Overwrite: true,
+	}); status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("CreateUploadSession(active staging target) code = %s, want FailedPrecondition", status.Code(err))
+	}
+	if _, err := service.CreateUploadSession(context.Background(), &codev1.CreateUploadSessionRequest{
+		RequestId: "second", Path: "second.bin", Size: int64(len(content)), Sha256: digest[:], Mode: 0o600,
+	}); status.Code(err) != codes.ResourceExhausted {
+		t.Fatalf("second active session code = %s, want ResourceExhausted", status.Code(err))
+	}
+	if _, err := service.Remove(context.Background(), &codev1.RemoveRequest{Path: "first.bin"}); status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("Remove(active target) code = %s, want FailedPrecondition", status.Code(err))
+	}
+	if _, err := service.AbortUploadSession(context.Background(), &codev1.AbortUploadSessionRequest{UploadId: first.GetSession().GetUploadId()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.CreateUploadSession(context.Background(), &codev1.CreateUploadSessionRequest{
+		RequestId: "second", Path: "second.bin", Size: int64(len(content)), Sha256: digest[:], Mode: 0o600,
+	}); err != nil {
+		t.Fatalf("CreateUploadSession() after abort error = %v", err)
+	}
+}
+
+func TestExpiredFinalizingUploadReconcilesPublishedTarget(t *testing.T) {
+	service, err := New(Config{
+		Workspace: t.TempDir(), RuntimeDirectory: t.TempDir(), MaxUploadBytes: 8,
+		Transfers: TransferConfig{UploadSessionTTL: time.Second, CompletedSessionTTL: time.Minute, MaxStagingBytes: 32},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close()
+	digest := sha256.Sum256(nil)
+	created, err := service.CreateUploadSession(context.Background(), &codev1.CreateUploadSessionRequest{
+		RequestId: "finalizing", Path: "published.bin", Sha256: digest[:], Mode: 0o600,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, ok := service.transfers.get(created.GetSession().GetUploadId())
+	if !ok {
+		t.Fatal("created upload session was not found")
+	}
+	session.mu.Lock()
+	record := session.record
+	session.record.State = codev1.UploadSessionState_UPLOAD_SESSION_STATE_FINALIZING
+	session.record.ExpiresAt = time.Now().Add(-time.Second)
+	if err := service.transfers.persistRecord(session.record); err != nil {
+		session.mu.Unlock()
+		t.Fatal(err)
+	}
+	session.mu.Unlock()
+	if err := service.root.Link(record.TempPath, record.TargetPath); err != nil {
+		t.Fatal(err)
+	}
+
+	service.transfers.cleanupExpired(time.Now())
+	response, err := service.GetUploadSession(context.Background(), &codev1.GetUploadSessionRequest{UploadId: record.UploadID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.GetSession().GetState() != codev1.UploadSessionState_UPLOAD_SESSION_STATE_COMPLETE {
+		t.Fatalf("reconciled session state = %s, want COMPLETE", response.GetSession().GetState())
+	}
+	if _, err := service.root.Lstat(record.TempPath); !os.IsNotExist(err) {
+		t.Fatalf("published staging link still exists: %v", err)
+	}
+	service.transfers.mu.Lock()
+	activeUploads := service.transfers.activeUploads
+	reservedBytes := service.transfers.reservedBytes
+	service.transfers.mu.Unlock()
+	if activeUploads != 0 || reservedBytes != 0 {
+		t.Fatalf("reconciled reservation = (%d uploads, %d bytes), want zero", activeUploads, reservedBytes)
 	}
 }
 

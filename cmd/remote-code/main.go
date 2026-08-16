@@ -32,6 +32,7 @@ func run() error {
 	flag.StringVar(&config.Address, "controller-addr", "127.0.0.1:9443", "controller host:port")
 	flag.StringVar(&config.TLSCAFile, "tls-ca", "", "controller CA or certificate PEM file")
 	flag.StringVar(&config.TLSServerName, "tls-server-name", "", "TLS server name override")
+	flag.StringVar(&config.TransferStateDirectory, "transfer-state-dir", "", "local resumable transfer state directory")
 	flag.StringVar(&tokenFile, "token-file", "", "optional bearer token file")
 	flag.DurationVar(&commandTimeout, "timeout", 30*time.Second, "timeout for each RPC; 0 disables timeouts")
 	flag.Int64Var(&catMaxBytes, "cat-max-bytes", 1<<20, "maximum bytes printed by cat")

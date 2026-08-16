@@ -121,15 +121,20 @@ var ControllerService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	FileService_Stat_FullMethodName     = "/remote.code.v1.FileService/Stat"
-	FileService_List_FullMethodName     = "/remote.code.v1.FileService/List"
-	FileService_Tree_FullMethodName     = "/remote.code.v1.FileService/Tree"
-	FileService_Upload_FullMethodName   = "/remote.code.v1.FileService/Upload"
-	FileService_Download_FullMethodName = "/remote.code.v1.FileService/Download"
-	FileService_Remove_FullMethodName   = "/remote.code.v1.FileService/Remove"
-	FileService_Move_FullMethodName     = "/remote.code.v1.FileService/Move"
-	FileService_Chmod_FullMethodName    = "/remote.code.v1.FileService/Chmod"
-	FileService_Mkdir_FullMethodName    = "/remote.code.v1.FileService/Mkdir"
+	FileService_Stat_FullMethodName                = "/remote.code.v1.FileService/Stat"
+	FileService_List_FullMethodName                = "/remote.code.v1.FileService/List"
+	FileService_Tree_FullMethodName                = "/remote.code.v1.FileService/Tree"
+	FileService_Upload_FullMethodName              = "/remote.code.v1.FileService/Upload"
+	FileService_Download_FullMethodName            = "/remote.code.v1.FileService/Download"
+	FileService_CreateUploadSession_FullMethodName = "/remote.code.v1.FileService/CreateUploadSession"
+	FileService_TransferUpload_FullMethodName      = "/remote.code.v1.FileService/TransferUpload"
+	FileService_GetUploadSession_FullMethodName    = "/remote.code.v1.FileService/GetUploadSession"
+	FileService_AbortUploadSession_FullMethodName  = "/remote.code.v1.FileService/AbortUploadSession"
+	FileService_DownloadRange_FullMethodName       = "/remote.code.v1.FileService/DownloadRange"
+	FileService_Remove_FullMethodName              = "/remote.code.v1.FileService/Remove"
+	FileService_Move_FullMethodName                = "/remote.code.v1.FileService/Move"
+	FileService_Chmod_FullMethodName               = "/remote.code.v1.FileService/Chmod"
+	FileService_Mkdir_FullMethodName               = "/remote.code.v1.FileService/Mkdir"
 )
 
 // FileServiceClient is the client API for FileService service.
@@ -141,6 +146,11 @@ type FileServiceClient interface {
 	Tree(ctx context.Context, in *TreeRequest, opts ...grpc.CallOption) (*TreeResponse, error)
 	Upload(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[UploadRequest, UploadResponse], error)
 	Download(ctx context.Context, in *DownloadRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DownloadResponse], error)
+	CreateUploadSession(ctx context.Context, in *CreateUploadSessionRequest, opts ...grpc.CallOption) (*CreateUploadSessionResponse, error)
+	TransferUpload(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[TransferUploadRequest, TransferUploadResponse], error)
+	GetUploadSession(ctx context.Context, in *GetUploadSessionRequest, opts ...grpc.CallOption) (*GetUploadSessionResponse, error)
+	AbortUploadSession(ctx context.Context, in *AbortUploadSessionRequest, opts ...grpc.CallOption) (*AbortUploadSessionResponse, error)
+	DownloadRange(ctx context.Context, in *DownloadRangeRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DownloadRangeResponse], error)
 	Remove(ctx context.Context, in *RemoveRequest, opts ...grpc.CallOption) (*RemoveResponse, error)
 	Move(ctx context.Context, in *MoveRequest, opts ...grpc.CallOption) (*MoveResponse, error)
 	Chmod(ctx context.Context, in *ChmodRequest, opts ...grpc.CallOption) (*ChmodResponse, error)
@@ -217,6 +227,68 @@ func (c *fileServiceClient) Download(ctx context.Context, in *DownloadRequest, o
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type FileService_DownloadClient = grpc.ServerStreamingClient[DownloadResponse]
 
+func (c *fileServiceClient) CreateUploadSession(ctx context.Context, in *CreateUploadSessionRequest, opts ...grpc.CallOption) (*CreateUploadSessionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateUploadSessionResponse)
+	err := c.cc.Invoke(ctx, FileService_CreateUploadSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *fileServiceClient) TransferUpload(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[TransferUploadRequest, TransferUploadResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &FileService_ServiceDesc.Streams[2], FileService_TransferUpload_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[TransferUploadRequest, TransferUploadResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type FileService_TransferUploadClient = grpc.BidiStreamingClient[TransferUploadRequest, TransferUploadResponse]
+
+func (c *fileServiceClient) GetUploadSession(ctx context.Context, in *GetUploadSessionRequest, opts ...grpc.CallOption) (*GetUploadSessionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetUploadSessionResponse)
+	err := c.cc.Invoke(ctx, FileService_GetUploadSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *fileServiceClient) AbortUploadSession(ctx context.Context, in *AbortUploadSessionRequest, opts ...grpc.CallOption) (*AbortUploadSessionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AbortUploadSessionResponse)
+	err := c.cc.Invoke(ctx, FileService_AbortUploadSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *fileServiceClient) DownloadRange(ctx context.Context, in *DownloadRangeRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DownloadRangeResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &FileService_ServiceDesc.Streams[3], FileService_DownloadRange_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[DownloadRangeRequest, DownloadRangeResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type FileService_DownloadRangeClient = grpc.ServerStreamingClient[DownloadRangeResponse]
+
 func (c *fileServiceClient) Remove(ctx context.Context, in *RemoveRequest, opts ...grpc.CallOption) (*RemoveResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(RemoveResponse)
@@ -266,6 +338,11 @@ type FileServiceServer interface {
 	Tree(context.Context, *TreeRequest) (*TreeResponse, error)
 	Upload(grpc.ClientStreamingServer[UploadRequest, UploadResponse]) error
 	Download(*DownloadRequest, grpc.ServerStreamingServer[DownloadResponse]) error
+	CreateUploadSession(context.Context, *CreateUploadSessionRequest) (*CreateUploadSessionResponse, error)
+	TransferUpload(grpc.BidiStreamingServer[TransferUploadRequest, TransferUploadResponse]) error
+	GetUploadSession(context.Context, *GetUploadSessionRequest) (*GetUploadSessionResponse, error)
+	AbortUploadSession(context.Context, *AbortUploadSessionRequest) (*AbortUploadSessionResponse, error)
+	DownloadRange(*DownloadRangeRequest, grpc.ServerStreamingServer[DownloadRangeResponse]) error
 	Remove(context.Context, *RemoveRequest) (*RemoveResponse, error)
 	Move(context.Context, *MoveRequest) (*MoveResponse, error)
 	Chmod(context.Context, *ChmodRequest) (*ChmodResponse, error)
@@ -294,6 +371,21 @@ func (UnimplementedFileServiceServer) Upload(grpc.ClientStreamingServer[UploadRe
 }
 func (UnimplementedFileServiceServer) Download(*DownloadRequest, grpc.ServerStreamingServer[DownloadResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method Download not implemented")
+}
+func (UnimplementedFileServiceServer) CreateUploadSession(context.Context, *CreateUploadSessionRequest) (*CreateUploadSessionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateUploadSession not implemented")
+}
+func (UnimplementedFileServiceServer) TransferUpload(grpc.BidiStreamingServer[TransferUploadRequest, TransferUploadResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method TransferUpload not implemented")
+}
+func (UnimplementedFileServiceServer) GetUploadSession(context.Context, *GetUploadSessionRequest) (*GetUploadSessionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetUploadSession not implemented")
+}
+func (UnimplementedFileServiceServer) AbortUploadSession(context.Context, *AbortUploadSessionRequest) (*AbortUploadSessionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AbortUploadSession not implemented")
+}
+func (UnimplementedFileServiceServer) DownloadRange(*DownloadRangeRequest, grpc.ServerStreamingServer[DownloadRangeResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method DownloadRange not implemented")
 }
 func (UnimplementedFileServiceServer) Remove(context.Context, *RemoveRequest) (*RemoveResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Remove not implemented")
@@ -400,6 +492,78 @@ func _FileService_Download_Handler(srv interface{}, stream grpc.ServerStream) er
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type FileService_DownloadServer = grpc.ServerStreamingServer[DownloadResponse]
 
+func _FileService_CreateUploadSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateUploadSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FileServiceServer).CreateUploadSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FileService_CreateUploadSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FileServiceServer).CreateUploadSession(ctx, req.(*CreateUploadSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _FileService_TransferUpload_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(FileServiceServer).TransferUpload(&grpc.GenericServerStream[TransferUploadRequest, TransferUploadResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type FileService_TransferUploadServer = grpc.BidiStreamingServer[TransferUploadRequest, TransferUploadResponse]
+
+func _FileService_GetUploadSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetUploadSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FileServiceServer).GetUploadSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FileService_GetUploadSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FileServiceServer).GetUploadSession(ctx, req.(*GetUploadSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _FileService_AbortUploadSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AbortUploadSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FileServiceServer).AbortUploadSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FileService_AbortUploadSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FileServiceServer).AbortUploadSession(ctx, req.(*AbortUploadSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _FileService_DownloadRange_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(DownloadRangeRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(FileServiceServer).DownloadRange(m, &grpc.GenericServerStream[DownloadRangeRequest, DownloadRangeResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type FileService_DownloadRangeServer = grpc.ServerStreamingServer[DownloadRangeResponse]
+
 func _FileService_Remove_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RemoveRequest)
 	if err := dec(in); err != nil {
@@ -492,6 +656,18 @@ var FileService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _FileService_Tree_Handler,
 		},
 		{
+			MethodName: "CreateUploadSession",
+			Handler:    _FileService_CreateUploadSession_Handler,
+		},
+		{
+			MethodName: "GetUploadSession",
+			Handler:    _FileService_GetUploadSession_Handler,
+		},
+		{
+			MethodName: "AbortUploadSession",
+			Handler:    _FileService_AbortUploadSession_Handler,
+		},
+		{
 			MethodName: "Remove",
 			Handler:    _FileService_Remove_Handler,
 		},
@@ -517,6 +693,17 @@ var FileService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "Download",
 			Handler:       _FileService_Download_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "TransferUpload",
+			Handler:       _FileService_TransferUpload_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "DownloadRange",
+			Handler:       _FileService_DownloadRange_Handler,
 			ServerStreams: true,
 		},
 	},

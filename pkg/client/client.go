@@ -29,19 +29,22 @@ const (
 
 // Config controls transport security and authentication.
 type Config struct {
-	Address       string
-	TLSCAFile     string
-	TLSServerName string
-	Token         string
+	Address                string
+	TLSCAFile              string
+	TLSServerName          string
+	Token                  string
+	TransferStateDirectory string
 }
 
 // Client is a reusable typed remote-code connection.
 type Client struct {
-	connection *grpc.ClientConn
-	controller codev1.ControllerServiceClient
-	files      codev1.FileServiceClient
-	processes  codev1.ProcessServiceClient
-	info       *codev1.GetInfoResponse
+	connection             *grpc.ClientConn
+	controller             codev1.ControllerServiceClient
+	files                  codev1.FileServiceClient
+	processes              codev1.ProcessServiceClient
+	info                   *codev1.GetInfoResponse
+	address                string
+	transferStateDirectory string
 }
 
 // DownloadResult describes a verified download.
@@ -96,12 +99,14 @@ func New(ctx context.Context, config Config) (*Client, error) {
 		return nil, fmt.Errorf("create gRPC client: %w", err)
 	}
 	result := &Client{
-		connection: connection,
-		controller: codev1.NewControllerServiceClient(connection),
-		files:      codev1.NewFileServiceClient(connection),
-		processes:  codev1.NewProcessServiceClient(connection),
+		connection:             connection,
+		controller:             codev1.NewControllerServiceClient(connection),
+		files:                  codev1.NewFileServiceClient(connection),
+		processes:              codev1.NewProcessServiceClient(connection),
+		address:                config.Address,
+		transferStateDirectory: config.TransferStateDirectory,
 	}
-	info, err := result.controller.GetInfo(ctx, &codev1.GetInfoRequest{})
+	info, err := result.GetInfo(ctx)
 	if err != nil {
 		_ = connection.Close()
 		return nil, fmt.Errorf("connect to controller: %w", err)
@@ -118,6 +123,18 @@ func (c *Client) Close() error {
 // Info returns the immutable connection-time controller information.
 func (c *Client) Info() *codev1.GetInfoResponse {
 	return c.info
+}
+
+// GetInfo fetches the controller's current public information.
+func (c *Client) GetInfo(ctx context.Context) (*codev1.GetInfoResponse, error) {
+	response, err := c.controller.GetInfo(ctx, &codev1.GetInfoRequest{})
+	if err != nil {
+		return nil, err
+	}
+	if response == nil {
+		return nil, status.Error(codes.DataLoss, "get info response is empty")
+	}
+	return response, nil
 }
 
 func (c *Client) Stat(ctx context.Context, remotePath string) (*codev1.FileInfo, error) {
@@ -322,6 +339,13 @@ func (c *Client) Mkdir(ctx context.Context, remotePath string, mode fs.FileMode,
 
 // UploadFile hashes and streams one local regular file.
 func (c *Client) UploadFile(ctx context.Context, localPath, remotePath string, overwrite bool) (*codev1.UploadResponse, error) {
+	if capabilities := c.info.GetFileTransfers(); capabilities.GetResumableUpload() {
+		return c.uploadFileResumable(ctx, localPath, remotePath, overwrite)
+	}
+	return c.uploadFileLegacy(ctx, localPath, remotePath, overwrite)
+}
+
+func (c *Client) uploadFileLegacy(ctx context.Context, localPath, remotePath string, overwrite bool) (*codev1.UploadResponse, error) {
 	file, err := os.Open(localPath)
 	if err != nil {
 		return nil, fmt.Errorf("open local upload: %w", err)
@@ -445,6 +469,13 @@ func (c *Client) Download(ctx context.Context, remotePath string, writer io.Writ
 
 // DownloadFile downloads to a same-directory temporary file and atomically publishes it.
 func (c *Client) DownloadFile(ctx context.Context, remotePath, localPath string) (*DownloadResult, error) {
+	if capabilities := c.info.GetFileTransfers(); capabilities.GetResumableDownload() {
+		return c.downloadFileResumable(ctx, remotePath, localPath)
+	}
+	return c.downloadFileLegacy(ctx, remotePath, localPath)
+}
+
+func (c *Client) downloadFileLegacy(ctx context.Context, remotePath, localPath string) (*DownloadResult, error) {
 	directory := filepath.Dir(localPath)
 	temp, err := os.CreateTemp(directory, ".remote-code-download-*")
 	if err != nil {

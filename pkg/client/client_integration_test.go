@@ -33,6 +33,16 @@ func TestClientFileLifecycleOverGRPC(t *testing.T) {
 	if info := remote.Info(); info.GetApiVersion() != "remote.code.v1" || info.GetMaxUploadBytes() != 1024 {
 		t.Fatalf("Info() = %+v, want API remote.code.v1 and limit 1024", info)
 	}
+	if capabilities := remote.Info().GetFileTransfers(); !capabilities.GetResumableUpload() || !capabilities.GetResumableDownload() || capabilities.GetPreferredChunkBytes() == 0 {
+		t.Fatalf("Info().FileTransfers = %+v, want resumable upload and download", capabilities)
+	}
+	info, err := remote.GetInfo(ctx)
+	if err != nil {
+		t.Fatalf("GetInfo() error = %v", err)
+	}
+	if info.GetApiVersion() != "remote.code.v1" || info.GetMaxUploadBytes() != 1024 {
+		t.Fatalf("GetInfo() = %+v, want API remote.code.v1 and limit 1024", info)
+	}
 	if _, err := remote.Mkdir(ctx, "docs", 0o755, false); err != nil {
 		t.Fatalf("Mkdir() error = %v", err)
 	}
@@ -860,7 +870,7 @@ func connectClient(t *testing.T, address, token string) *client.Client {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	remote, err := client.New(ctx, client.Config{Address: address, Token: token})
+	remote, err := client.New(ctx, client.Config{Address: address, Token: token, TransferStateDirectory: t.TempDir()})
 	if err != nil {
 		t.Fatalf("client.New() error = %v", err)
 	}
