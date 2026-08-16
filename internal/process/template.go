@@ -40,9 +40,11 @@ const (
 
 var templateRevisionPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
-// TemplateConfig identifies operator-controlled process template definitions.
+// TemplateConfig identifies operator-controlled process template definitions
+// and non-secret shared render parameters.
 type TemplateConfig struct {
 	DefinitionFiles []string
+	ExtraParameters map[string]any
 }
 
 // TemplateRegistry is an immutable collection of compiled process templates.
@@ -58,6 +60,7 @@ type compiledProcessTemplate struct {
 	validator        *jsonschema.Schema
 	program          *vm.Program
 	command          string
+	extraParameters  map[string]any
 }
 
 type processTemplateDocument struct {
@@ -77,13 +80,18 @@ type processTemplateDefinition struct {
 }
 
 type templateEnvironment struct {
-	Parameters map[string]any `expr:"parameters"`
+	Parameters      map[string]any `expr:"parameters"`
+	ExtraParameters map[string]any `expr:"extra_parameters"`
 }
 
 // PrepareTemplates safely loads and compiles all configured definitions. It
 // performs no process start and does not bind a listener.
 func PrepareTemplates(config TemplateConfig, workspace string) (*TemplateRegistry, error) {
 	registry := &TemplateRegistry{byName: make(map[string]*compiledProcessTemplate)}
+	extraParameters, canonicalExtraParameters, err := prepareTemplateExtraParameters(config.ExtraParameters)
+	if err != nil {
+		return nil, err
+	}
 	if len(config.DefinitionFiles) == 0 {
 		return registry, nil
 	}
@@ -106,7 +114,7 @@ func PrepareTemplates(config TemplateConfig, workspace string) (*TemplateRegistr
 			return nil, fmt.Errorf("process template definition %q must contain between 1 and %d templates", definitionFile, maxTemplatesPerDocument)
 		}
 		for templateIndex, definition := range document.Templates {
-			compiled, compileErr := compileProcessTemplate(definition)
+			compiled, compileErr := compileProcessTemplate(definition, extraParameters, canonicalExtraParameters)
 			if compileErr != nil {
 				return nil, fmt.Errorf("process template definition %q template %d: %w", definitionFile, templateIndex, compileErr)
 			}
@@ -127,7 +135,114 @@ func PrepareTemplates(config TemplateConfig, workspace string) (*TemplateRegistr
 	return registry, nil
 }
 
-func compileProcessTemplate(definition processTemplateDefinition) (*compiledProcessTemplate, error) {
+func prepareTemplateExtraParameters(configured map[string]any) (map[string]any, []byte, error) {
+	if configured == nil {
+		configured = map[string]any{}
+	}
+	if err := validateProcessTemplateValue(configured); err != nil {
+		return nil, nil, fmt.Errorf("process template extra_parameters are unsupported or exceed their size limit: %w", err)
+	}
+	cloned, err := cloneTemplateExtraParameterValue(configured, "")
+	if err != nil {
+		return nil, nil, err
+	}
+	extraParameters := cloned.(map[string]any)
+	canonical, err := json.Marshal([]any{extraParameters, templateExtraParameterTypeShape(extraParameters)})
+	if err != nil {
+		return nil, nil, errors.New("process template extra_parameters could not be normalized")
+	}
+	return extraParameters, canonical, nil
+}
+
+func templateExtraParameterTypeShape(value any) any {
+	switch typed := value.(type) {
+	case []any:
+		result := make([]any, len(typed))
+		for index, child := range typed {
+			result[index] = templateExtraParameterTypeShape(child)
+		}
+		return result
+	case map[string]any:
+		result := make(map[string]any, len(typed))
+		for key, child := range typed {
+			result[key] = templateExtraParameterTypeShape(child)
+		}
+		return result
+	case nil:
+		return "nil"
+	default:
+		return fmt.Sprintf("%T", value)
+	}
+}
+
+func cloneTemplateExtraParameterValue(value any, pointer string) (any, error) {
+	switch typed := value.(type) {
+	case nil, bool, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64, json.Number:
+		return typed, nil
+	case string:
+		if !utf8.ValidString(typed) || strings.ContainsRune(typed, '\x00') {
+			return nil, fmt.Errorf("process template extra_parameter at %s must be valid UTF-8 without NUL", templateExtraParameterPointer(pointer))
+		}
+		return typed, nil
+	case []string:
+		result := make([]any, len(typed))
+		for index, child := range typed {
+			cloned, err := cloneTemplateExtraParameterValue(child, fmt.Sprintf("%s/%d", pointer, index))
+			if err != nil {
+				return nil, err
+			}
+			result[index] = cloned
+		}
+		return result, nil
+	case []any:
+		result := make([]any, len(typed))
+		for index, child := range typed {
+			cloned, err := cloneTemplateExtraParameterValue(child, fmt.Sprintf("%s/%d", pointer, index))
+			if err != nil {
+				return nil, err
+			}
+			result[index] = cloned
+		}
+		return result, nil
+	case map[string]string:
+		result := make(map[string]any, len(typed))
+		for key, child := range typed {
+			if !utf8.ValidString(key) || strings.ContainsRune(key, '\x00') {
+				return nil, errors.New("process template extra_parameters contain an invalid key")
+			}
+			cloned, err := cloneTemplateExtraParameterValue(child, pointer+"/"+escapeProcessTemplateJSONPointer(key))
+			if err != nil {
+				return nil, err
+			}
+			result[key] = cloned
+		}
+		return result, nil
+	case map[string]any:
+		result := make(map[string]any, len(typed))
+		for key, child := range typed {
+			if !utf8.ValidString(key) || strings.ContainsRune(key, '\x00') {
+				return nil, errors.New("process template extra_parameters contain an invalid key")
+			}
+			cloned, err := cloneTemplateExtraParameterValue(child, pointer+"/"+escapeProcessTemplateJSONPointer(key))
+			if err != nil {
+				return nil, err
+			}
+			result[key] = cloned
+		}
+		return result, nil
+	default:
+		return nil, fmt.Errorf("process template extra_parameter at %s has unsupported type %T", templateExtraParameterPointer(pointer), value)
+	}
+}
+
+func templateExtraParameterPointer(pointer string) string {
+	if pointer == "" {
+		return "/"
+	}
+	return pointer
+}
+
+func compileProcessTemplate(definition processTemplateDefinition, extraParameters map[string]any, canonicalExtraParameters []byte) (*compiledProcessTemplate, error) {
 	if !identifierPattern.MatchString(definition.Name) {
 		return nil, fmt.Errorf("template name must match %s", identifierPattern)
 	}
@@ -155,7 +270,7 @@ func compileProcessTemplate(definition processTemplateDefinition) (*compiledProc
 	if err != nil {
 		return nil, fmt.Errorf("parameters_schema: %w", err)
 	}
-	program, err := compileProcessTemplateExpr(definition.Render)
+	program, err := compileProcessTemplateExpr(definition.Render, extraParameters)
 	if err != nil {
 		return nil, err
 	}
@@ -163,10 +278,14 @@ func compileProcessTemplate(definition processTemplateDefinition) (*compiledProc
 	if err != nil {
 		return nil, fmt.Errorf("normalize parameters schema: %w", err)
 	}
-	digestInput, err := json.Marshal([]any{
+	digestFields := []any{
 		definition.Name, definition.Description, json.RawMessage(canonicalSchema), definition.Command,
 		definition.IOMode, definition.InputMode, definition.Render,
-	})
+	}
+	if len(extraParameters) > 0 {
+		digestFields = append(digestFields, json.RawMessage(canonicalExtraParameters))
+	}
+	digestInput, err := json.Marshal(digestFields)
 	if err != nil {
 		return nil, fmt.Errorf("calculate template revision: %w", err)
 	}
@@ -180,6 +299,7 @@ func compileProcessTemplate(definition processTemplateDefinition) (*compiledProc
 		validator:        validator,
 		program:          program,
 		command:          definition.Command,
+		extraParameters:  extraParameters,
 	}, nil
 }
 
@@ -205,7 +325,7 @@ func parseTemplateInputMode(value string) (codev1.ProcessInputMode, error) {
 	}
 }
 
-func compileProcessTemplateExpr(source string) (*vm.Program, error) {
+func compileProcessTemplateExpr(source string, extraParameters map[string]any) (*vm.Program, error) {
 	if source == "" {
 		return nil, errors.New("render expression is required")
 	}
@@ -216,7 +336,7 @@ func compileProcessTemplateExpr(source string) (*vm.Program, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse Expr render expression: %w", err)
 	}
-	analysis := templateExprAnalysis{}
+	analysis := templateExprAnalysis{extraParameters: extraParameters}
 	analysis.walk(tree.Node, 0, 0)
 	if analysis.err != nil {
 		return nil, analysis.err
@@ -227,7 +347,7 @@ func compileProcessTemplateExpr(source string) (*vm.Program, error) {
 	if analysis.collectionCalls > 32 {
 		return nil, errors.New("render expression may contain at most 32 collection call sites")
 	}
-	environment := templateEnvironment{Parameters: map[string]any{}}
+	environment := templateEnvironment{Parameters: map[string]any{}, ExtraParameters: map[string]any{}}
 	program, err := expr.Compile(source,
 		expr.Env(environment),
 		expr.AsAny(),
@@ -247,6 +367,7 @@ func compileProcessTemplateExpr(source string) (*vm.Program, error) {
 type templateExprAnalysis struct {
 	nodes           int
 	collectionCalls int
+	extraParameters map[string]any
 	err             error
 }
 
@@ -260,6 +381,15 @@ func (s *templateExprAnalysis) walk(node ast.Node, depth, predicateDepth int) {
 		return
 	}
 	switch n := node.(type) {
+	case *ast.IdentifierNode:
+		switch n.Value {
+		case "extra_parameters":
+			s.err = errors.New("extra_parameters must be accessed with a literal top-level key")
+		case "$env":
+			if len(s.extraParameters) > 0 {
+				s.err = errors.New("Expr $env is not allowed when process template extra_parameters are configured")
+			}
+		}
 	case *ast.UnaryNode:
 		s.walk(n.Node, depth+1, predicateDepth)
 	case *ast.BinaryNode:
@@ -272,7 +402,37 @@ func (s *templateExprAnalysis) walk(node ast.Node, depth, predicateDepth int) {
 	case *ast.ChainNode:
 		s.walk(n.Node, depth+1, predicateDepth)
 	case *ast.MemberNode:
-		s.walk(n.Node, depth+1, predicateDepth)
+		identifier, directEnvironmentAccess := n.Node.(*ast.IdentifierNode)
+		switch {
+		case directEnvironmentAccess && identifier.Value == "extra_parameters":
+			if !s.countTemplateExprChild(depth + 1) {
+				return
+			}
+			property, literal := n.Property.(*ast.StringNode)
+			if !literal {
+				s.err = errors.New("extra_parameters must be accessed with a literal top-level key")
+				return
+			}
+			if _, exists := s.extraParameters[property.Value]; !exists {
+				s.err = fmt.Errorf("render expression references undefined extra parameter %q", property.Value)
+				return
+			}
+		case directEnvironmentAccess && identifier.Value == "$env" && len(s.extraParameters) > 0:
+			if !s.countTemplateExprChild(depth + 1) {
+				return
+			}
+			property, literal := n.Property.(*ast.StringNode)
+			if !literal {
+				s.err = errors.New("Expr $env must use a literal field when process template extra_parameters are configured")
+				return
+			}
+			if property.Value == "extra_parameters" {
+				s.err = errors.New("process template extra_parameters must not be accessed through Expr $env")
+				return
+			}
+		default:
+			s.walk(n.Node, depth+1, predicateDepth)
+		}
 		s.walk(n.Property, depth+1, predicateDepth)
 	case *ast.SliceNode:
 		s.walk(n.Node, depth+1, predicateDepth)
@@ -307,6 +467,10 @@ func (s *templateExprAnalysis) walk(node ast.Node, depth, predicateDepth int) {
 		}
 		s.walk(n.Node, depth+1, predicateDepth+1)
 	case *ast.VariableDeclaratorNode:
+		if n.Name == "extra_parameters" {
+			s.err = errors.New("extra_parameters is reserved in process templates")
+			return
+		}
 		s.walk(n.Value, depth+1, predicateDepth)
 		s.walk(n.Expr, depth+1, predicateDepth)
 	case *ast.SequenceNode:
@@ -329,6 +493,15 @@ func (s *templateExprAnalysis) walk(node ast.Node, depth, predicateDepth int) {
 		s.walk(n.Key, depth+1, predicateDepth)
 		s.walk(n.Value, depth+1, predicateDepth)
 	}
+}
+
+func (s *templateExprAnalysis) countTemplateExprChild(depth int) bool {
+	s.nodes++
+	if depth > maxTemplateValueDepth {
+		s.err = fmt.Errorf("render expression exceeds maximum depth %d", maxTemplateValueDepth)
+		return false
+	}
+	return true
 }
 
 // Count returns the number of configured templates.
@@ -379,7 +552,7 @@ func (t *compiledProcessTemplate) render(ctx context.Context, parameters *struct
 	if err := t.validator.Validate(parameterMap); err != nil {
 		return nil, status.Error(codes.InvalidArgument, safeProcessTemplateSchemaError(err))
 	}
-	output, err := expr.Run(t.program, templateEnvironment{Parameters: parameterMap})
+	output, err := expr.Run(t.program, templateEnvironment{Parameters: parameterMap, ExtraParameters: t.extraParameters})
 	if err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "process template %q could not render a valid process specification", t.summary.GetName())
 	}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -90,7 +91,7 @@ func TestLoadControllerConfigRejectsInvalidFiles(t *testing.T) {
 		want     string
 	}{
 		{name: "missing version", contents: `workspace = "/work"`, want: "version must be 1"},
-		{name: "future version", contents: "version = 4\n", want: "version must be 1, 2, or 3"},
+		{name: "future version", contents: "version = 5\n", want: "version must be 1, 2, 3, or 4"},
 		{name: "unknown field", contents: "version = 1\nmax_proceses = 2\n", want: "unknown field"},
 		{name: "wrong type", contents: "version = 1\nmax_processes = \"many\"\n", want: "cannot decode"},
 		{name: "duplicate key", contents: "version = 1\nmax_processes = 2\nmax_processes = 3\n", want: "already defined"},
@@ -111,6 +112,12 @@ func TestLoadControllerConfigRejectsInvalidFiles(t *testing.T) {
 	}
 	if _, err := loadControllerConfig(empty); err == nil {
 		t.Fatal("loadControllerConfig(empty) succeeded")
+	}
+}
+
+func TestExampleControllerConfigParses(t *testing.T) {
+	if _, err := loadControllerConfig(filepath.Join("..", "..", "configs", "controller.example.toml")); err != nil {
+		t.Fatalf("loadControllerConfig(example) error = %v", err)
 	}
 }
 
@@ -173,6 +180,53 @@ definition_files = ["`+definition+`"]
 		if _, err := loadControllerConfig(name); err == nil || !strings.Contains(err.Error(), "does not support the process_templates table") {
 			t.Fatalf("loadControllerConfig(version %d with templates) error = %v", version, err)
 		}
+	}
+}
+
+func TestLoadControllerConfigV4ProcessTemplateExtraParameters(t *testing.T) {
+	definition := filepath.Join(t.TempDir(), "agents.process-template.yaml")
+	configFile := writeControllerConfig(t, `
+version = 4
+workspace = "/work"
+
+[process_templates]
+definition_files = ["`+definition+`"]
+
+[process_templates.extra_parameters]
+default_model = "fast"
+common_arguments = ["--safe", "true"]
+debug = true
+retries = 2
+environment = { AGENT_MODE = "shared" }
+`)
+	file, err := loadControllerConfig(configFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := defaultControllerOptions()
+	if err := applyControllerFileConfig(&options, file); err != nil {
+		t.Fatal(err)
+	}
+	got := options.serverConfig.ProcessTemplates
+	if len(got.DefinitionFiles) != 1 || got.DefinitionFiles[0] != definition ||
+		got.ExtraParameters["default_model"] != "fast" || got.ExtraParameters["debug"] != true ||
+		got.ExtraParameters["retries"] != int64(2) ||
+		!reflect.DeepEqual(got.ExtraParameters["common_arguments"], []any{"--safe", "true"}) ||
+		!reflect.DeepEqual(got.ExtraParameters["environment"], map[string]any{"AGENT_MODE": "shared"}) {
+		t.Fatalf("process template config = %#v", got)
+	}
+
+	v3WithExtraParameters := writeControllerConfig(t, `
+version = 3
+[process_templates.extra_parameters]
+default_model = "fast"
+`)
+	if _, err := loadControllerConfig(v3WithExtraParameters); err == nil || !strings.Contains(err.Error(), "does not support process_templates.extra_parameters") {
+		t.Fatalf("v3 extra_parameters error = %v", err)
+	}
+	v3WithEmptyExtraParameters := writeControllerConfig(t, "version = 3\n[process_templates.extra_parameters]\n")
+	if _, err := loadControllerConfig(v3WithEmptyExtraParameters); err == nil || !strings.Contains(err.Error(), "does not support process_templates.extra_parameters") {
+		t.Fatalf("v3 empty extra_parameters error = %v", err)
 	}
 }
 
@@ -343,17 +397,19 @@ templates:
     io_mode: pipe
     input_mode: disabled
     render: |-
-      {"arguments": [], "working_directory": parameters.cwd, "environment": {}}
+      {"arguments": [extra_parameters.shared_argument], "working_directory": parameters.cwd, "environment": {}}
 `
 	if err := os.WriteFile(definition, []byte(strings.TrimSpace(definitionYAML)+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	configFile := writeControllerConfig(t, `
-version = 3
+version = 4
 workspace = "`+workspace+`"
 runtime_directory = "`+t.TempDir()+`"
 [process_templates]
 definition_files = ["`+definition+`"]
+[process_templates.extra_parameters]
+shared_argument = "--checked"
 `)
 	var stdout bytes.Buffer
 	if err := runController([]string{"--config", configFile, "--check-config"}, &stdout, &bytes.Buffer{}); err != nil {

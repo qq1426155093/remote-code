@@ -1,5 +1,5 @@
-# remote-code-controller configuration, TOML schema version 3.
-version = 3
+# remote-code-controller configuration, TOML schema version 4.
+version = 4
 
 # All file RPCs and relative process working directories are confined here.
 workspace = "/srv/remote-code/workspace"
@@ -35,6 +35,13 @@ definition_files = []
 # definition_files = [
 #   "/etc/remote-code/process-templates/code-agents.process-template.yaml",
 # ]
+
+# Non-secret deployment constants available to Expr render expressions as
+# extra_parameters.<key>. Keep credentials in separately protected files.
+[process_templates.extra_parameters]
+# default_model = "gpt-5"
+# common_arguments = ["--approval-mode", "never"]
+# environment = { HTTP_PROXY = "http://proxy.example" }
 
 # MCP is disabled by default. Enabling it requires auth.token_file and at
 # least one definition file outside the workspace. It reuses the global TLS.

@@ -92,15 +92,17 @@ internal/server/
 
 ## 5. 配置模型
 
-### 5.1 Controller schema v2/v3
+### 5.1 Controller schema v2–v4
 
-`cmd/controller/config.go` 当前接受 1、2 和 3：v2 引入 MCP，v3 引入 process template：
+`cmd/controller/config.go` 当前接受 1–4：v2 引入 MCP，v3 引入 process template，v4 增加 template
+extra parameters：
 
 ```go
 const (
 	controllerConfigVersionV1 = 1
 	controllerConfigVersionV2 = 2
 	controllerConfigVersionV3 = 3
+	controllerConfigVersionV4 = 4
 )
 
 type controllerFileConfig struct {
@@ -114,9 +116,9 @@ type controllerFileConfig struct {
 
 - v1 出现 `[mcp]` 是 strict decode/版本错误；
 - v1 读取后规范化为当前 runtime model，MCP disabled；
-- v2/v3 允许省略 `[mcp]`，仍表示 disabled；
-- v2/v3 `mcp.enabled=true` 时所有必填项和 token requirement 生效；
-- 只有 v3 接受 `[process_templates]`；
+- v2–v4 允许省略 `[mcp]`，仍表示 disabled；
+- v2–v4 `mcp.enabled=true` 时所有必填项和 token requirement 生效；
+- v3 及以后接受 `[process_templates]`；
 - MCP 配置首版不提供 CLI override，避免 slice 的替换/追加语义不清楚。
 
 runtime config：

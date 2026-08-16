@@ -22,10 +22,10 @@ remote-code-controller \
 除 `max_processes` 被命令行覆盖外，其它值仍来自 TOML。布尔值可以显式反向覆盖，例如
 `--allow-insecure-remote=false`。
 
-## TOML schema v1、v2 与 v3
+## TOML schema v1、v2、v3 与 v4
 
 ```toml
-version = 3
+version = 4
 workspace = "/srv/remote-code/workspace"
 listen_address = "127.0.0.1:9443"
 runtime_directory = "/var/run/remote-code-controller"
@@ -51,6 +51,11 @@ token_file = "/etc/remote-code/controller.token"
 definition_files = [
   "/etc/remote-code/process-templates/code-agents.process-template.yaml",
 ]
+
+[process_templates.extra_parameters]
+default_model = "gpt-5"
+common_arguments = ["--approval-mode", "never"]
+environment = { HTTP_PROXY = "http://proxy.example" }
 
 [mcp]
 enabled = true
@@ -83,7 +88,9 @@ tool_list_page_size = 100
 ```
 
 `version` 必须存在。schema v1 继续兼容，但不允许 `[mcp]`；schema v2 增加 MCP；schema v3 增加
-`[process_templates]`。v3 可省略该 table 或配置空 `definition_files`，此时没有进程模板。TLS
+`[process_templates]`；schema v4 增加 `process_templates.extra_parameters`。v3、v4 均可省略
+`[process_templates]` 或配置空 `definition_files`，此时没有进程模板；v3 不接受
+`extra_parameters`。TLS
 certificate/key 必须同时配置。认证配置只接受 token 文件路径，
 不允许直接把 token 放进 TOML。所有相对路径按 controller 进程的当前工作目录解释；生产
 配置建议使用绝对路径。
@@ -109,12 +116,28 @@ controller 拒绝启动。配置文件最大 1 MiB。
 | `tls.certificate_file` | `--tls-cert` | 空 |
 | `tls.key_file` | `--tls-key` | 空 |
 | `auth.token_file` | `--token-file` | 空 |
+| `process_templates.definition_files` | 无 | `[]` |
+| `process_templates.extra_parameters` | 无 | `{}` |
 
-`process_templates.definition_files` 首版不提供命令行覆盖。每个文件必须以
+`process_templates` 字段不提供命令行覆盖。每个 definition file 必须以
 `.process-template.yaml` 结尾，是 workspace 外的普通文件，且最终路径不能是符号链接。模板文件使用
 严格 YAML、JSON Schema Draft 2020-12 和纯 Expr 渲染；完整字段、安全边界和示例见
 [进程模板详细设计](process-template-design-v1.md)以及
 [`code-agents.process-template.yaml`](../configs/process-templates/code-agents.process-template.yaml)。
+
+`extra_parameters` 是所有进程模板共享的、operator 控制的只读部署常量。Expr 通过
+`extra_parameters.<key>` 或 `extra_parameters["key"]` 引用；顶层 key 必须是字面量并在 controller
+启动时存在。它与 RPC 的 `parameters` 使用独立命名空间，不接受调用方覆盖，也不会加入公开的模板
+Schema。它只对 `render` 表达式可见，不能改写静态 `command`、I/O 模式或输入模式。
+
+值可使用 TOML string、integer、有限 float、boolean、array 和 table；日期/时间、`NaN`、`Inf`、NUL
+及非法 UTF-8 会使准备失败。规范化值最多 4096 个节点、32 层，单个 collection 最多 4096 项，字符串
+和 map key 总计最多 256 KiB。controller 在启动期深拷贝配置，之后所有并发渲染共享不可变副本。
+
+任一非空 `extra_parameters` map 都会以规范化形式计入每个模板 revision；因此其中任意值变化都会更新
+所有模板 revision，即使某个模板没有引用该 key。空 map 不改变旧模板 revision。值不会通过模板发现 API
+返回，也不应写入日志或进程元数据。该字段不应保存 token 等凭据；当前若需要秘密，仍应使用受保护的
+文件，而不是把明文写进 controller TOML。
 
 MCP 字段首版不提供命令行覆盖，以免列表字段产生不明确的替换/追加语义。默认值如下：
 

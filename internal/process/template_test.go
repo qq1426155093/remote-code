@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
 	"google.golang.org/grpc/codes"
@@ -60,6 +62,137 @@ func TestPrepareTemplatesCompilesAndRendersPureExpr(t *testing.T) {
 	}
 }
 
+func TestPrepareTemplatesRendersAndFreezesExtraParameters(t *testing.T) {
+	definitionSource := strings.Replace(validProcessTemplateDefinition("agent-command"), `      {
+        "arguments": concat(["--model", parameters.model], parameters.prompt == "" ? [] : ["--prompt", parameters.prompt], parameters.debug ? ["--debug"] : []),
+        "working_directory": parameters.working_directory,
+        "environment": {"AGENT_MODEL": parameters.model}
+      }`, `      {
+        "arguments": concat(extra_parameters.common_arguments, ["--model", extra_parameters["default_model"]], parameters.prompt == "" ? [] : ["--prompt", parameters.prompt], parameters.debug ? ["--debug"] : []),
+        "working_directory": parameters.working_directory,
+        "environment": extra_parameters.environment
+      }`, 1)
+	definition := writeProcessTemplateDefinition(t, definitionSource)
+	commonArguments := []any{"--profile", "shared"}
+	environment := map[string]any{"AGENT_MODEL": "shared-model", "AGENT_MODE": "safe"}
+	extraParameters := map[string]any{
+		"default_model":    "shared-model",
+		"common_arguments": commonArguments,
+		"environment":      environment,
+	}
+	registry, err := PrepareTemplates(TemplateConfig{
+		DefinitionFiles: []string{definition},
+		ExtraParameters: extraParameters,
+	}, t.TempDir())
+	if err != nil {
+		t.Fatalf("PrepareTemplates() error = %v", err)
+	}
+
+	commonArguments[1] = "mutated"
+	environment["AGENT_MODEL"] = "mutated"
+	extraParameters["default_model"] = "mutated"
+
+	template, _ := registry.lookup("agent")
+	parameters, _ := structpb.NewStruct(map[string]any{
+		"model": "request-model", "prompt": "fix tests", "working_directory": "work", "debug": true,
+	})
+	request, err := template.render(context.Background(), parameters)
+	if err != nil {
+		t.Fatalf("render() error = %v", err)
+	}
+	if !reflect.DeepEqual(request.GetArguments(), []string{"--profile", "shared", "--model", "shared-model", "--prompt", "fix tests", "--debug"}) ||
+		!reflect.DeepEqual(request.GetEnvironment(), map[string]string{"AGENT_MODEL": "shared-model", "AGENT_MODE": "safe"}) {
+		t.Fatalf("render() = %+v", request)
+	}
+}
+
+func TestPrepareTemplatesValidatesExtraParameterReferences(t *testing.T) {
+	tests := []struct {
+		name       string
+		expression string
+		want       string
+	}{
+		{name: "missing", expression: "extra_parameters.missing", want: `undefined extra parameter "missing"`},
+		{name: "dynamic", expression: "extra_parameters[parameters.model]", want: "literal top-level key"},
+		{name: "aggregate environment", expression: "$env.extra_parameters.known", want: "must not be accessed through Expr $env"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			definition := strings.Replace(validProcessTemplateDefinition("agent-command"), "parameters.model", test.expression, 1)
+			_, err := PrepareTemplates(TemplateConfig{
+				DefinitionFiles: []string{writeProcessTemplateDefinition(t, definition)},
+				ExtraParameters: map[string]any{"known": "value", "fast": "value"},
+			}, t.TempDir())
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("PrepareTemplates() error = %v, want containing %q", err, test.want)
+			}
+		})
+	}
+
+	compatibleDefinition := strings.Replace(validProcessTemplateDefinition("agent-command"), "parameters.model", "$env.parameters.model", 1)
+	if _, err := PrepareTemplates(TemplateConfig{
+		DefinitionFiles: []string{writeProcessTemplateDefinition(t, compatibleDefinition)},
+	}, t.TempDir()); err != nil {
+		t.Fatalf("PrepareTemplates(existing $env expression) error = %v", err)
+	}
+	if _, err := PrepareTemplates(TemplateConfig{
+		DefinitionFiles: []string{writeProcessTemplateDefinition(t, compatibleDefinition)},
+		ExtraParameters: map[string]any{"known": "value"},
+	}, t.TempDir()); err != nil {
+		t.Fatalf("PrepareTemplates($env.parameters with extra_parameters) error = %v", err)
+	}
+}
+
+func TestTemplateRevisionIncludesCanonicalExtraParameters(t *testing.T) {
+	definition := writeProcessTemplateDefinition(t, validProcessTemplateDefinition("agent-command"))
+	workspace := t.TempDir()
+	revision := func(extraParameters map[string]any) string {
+		t.Helper()
+		registry, err := PrepareTemplates(TemplateConfig{DefinitionFiles: []string{definition}, ExtraParameters: extraParameters}, workspace)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return registry.summaries()[0].GetRevision()
+	}
+
+	base := revision(nil)
+	if empty := revision(map[string]any{}); empty != base {
+		t.Fatalf("empty extra_parameters revision = %q, want existing revision %q", empty, base)
+	}
+	first := revision(map[string]any{"alpha": "one", "beta": []any{"two", int64(3)}})
+	second := revision(map[string]any{"beta": []any{"two", int64(3)}, "alpha": "one"})
+	if first == base || second != first {
+		t.Fatalf("revisions base=%q first=%q second=%q", base, first, second)
+	}
+	if changed := revision(map[string]any{"alpha": "changed", "beta": []any{"two", int64(3)}}); changed == first {
+		t.Fatalf("changed extra_parameters kept revision %q", changed)
+	}
+	if integer, floating := revision(map[string]any{"number": int64(2)}), revision(map[string]any{"number": float64(2)}); integer == floating {
+		t.Fatalf("integer and float extra_parameters shared revision %q", integer)
+	}
+}
+
+func TestPrepareTemplatesRejectsUnsupportedExtraParameters(t *testing.T) {
+	tests := []struct {
+		name  string
+		value any
+		want  string
+	}{
+		{name: "date", value: time.Now(), want: "unsupported value type"},
+		{name: "non-finite", value: math.Inf(1), want: "non-finite number"},
+		{name: "oversized", value: strings.Repeat("x", maxTemplateValueBytes+1), want: "exceeds"},
+		{name: "nul", value: "private-value\x00", want: "without NUL"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := PrepareTemplates(TemplateConfig{ExtraParameters: map[string]any{"value": test.value}}, t.TempDir())
+			if err == nil || !strings.Contains(err.Error(), test.want) || strings.Contains(err.Error(), "private-value") {
+				t.Fatalf("PrepareTemplates() error = %v, want containing %q without values", err, test.want)
+			}
+		})
+	}
+}
+
 func TestExampleProcessTemplateCompiles(t *testing.T) {
 	definition := filepath.Join("..", "..", "configs", "process-templates", "code-agents.process-template.yaml")
 	registry, err := PrepareTemplates(TemplateConfig{DefinitionFiles: []string{definition}}, t.TempDir())
@@ -106,9 +239,10 @@ func TestTemplateRenderRejectsParametersAndResultTypeWithoutLeakingValues(t *tes
 }
 
 func TestTemplateRenderIsConcurrent(t *testing.T) {
+	definition := strings.ReplaceAll(validProcessTemplateDefinition("agent-command"), "parameters.model", "extra_parameters.model")
 	registry, err := PrepareTemplates(TemplateConfig{DefinitionFiles: []string{
-		writeProcessTemplateDefinition(t, validProcessTemplateDefinition("agent-command")),
-	}}, t.TempDir())
+		writeProcessTemplateDefinition(t, definition),
+	}, ExtraParameters: map[string]any{"model": "fast"}}, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}

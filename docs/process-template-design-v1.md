@@ -53,16 +53,28 @@ existing process start core
 
 ## 3. Controller 配置
 
-Controller TOML schema 增加 version 3。version 1、2 继续保持原语义；只有 version 3 可以包含：
+Controller TOML schema version 3 首次增加进程模板；version 4 继续兼容该配置，并增加共享的
+`extra_parameters`：
 
 ```toml
 [process_templates]
 definition_files = [
   "/etc/remote-code/process-templates/code-agents.process-template.yaml",
 ]
+
+[process_templates.extra_parameters]
+default_model = "gpt-5"
+common_arguments = ["--approval-mode", "never"]
+environment = { HTTP_PROXY = "http://proxy.example" }
 ```
 
-模板首版不提供命令行覆盖，避免列表字段的追加/替换歧义。省略 table 或使用空列表表示没有模板。
+version 3 的原配置保持有效，但不接受 `extra_parameters`。进程模板配置不提供命令行覆盖，避免列表和
+object 字段产生不明确的追加/替换语义。省略 table 或使用空列表表示没有模板。
+
+`extra_parameters` 是 operator 配置、所有模板共享的只读部署常量；调用方提交的动态 `parameters` 不能
+覆盖它。其值只允许 TOML string、integer、有限 float、boolean、array 和 table，并受模板 value 的
+节点数、深度、collection 大小和 byte 上限约束。日期/时间、非有限浮点、NUL 和非法 UTF-8 会使
+controller 准备失败。配置在启动期完成深拷贝，此后不会从原始 map 读取可变状态。
 
 每个 definition file：
 
@@ -85,12 +97,9 @@ templates:
     parameters_schema:
       $schema: https://json-schema.org/draft/2020-12/schema
       type: object
-      required: [model, prompt, working_directory]
+      required: [prompt, working_directory]
       additionalProperties: false
       properties:
-        model:
-          type: string
-          description: Model name passed to the agent.
         prompt:
           type: string
           description: Initial task prompt; never persisted by controller.
@@ -102,13 +111,14 @@ templates:
     input_mode: managed
     render: |-
       {
-        "arguments": ["--model", parameters.model, "--prompt", parameters.prompt],
+        "arguments": concat(extra_parameters.common_arguments, ["--model", extra_parameters.default_model, "--prompt", parameters.prompt]),
         "working_directory": parameters.working_directory,
-        "environment": {}
+        "environment": extra_parameters.environment
       }
 ```
 
-`command`、`io_mode` 和 `input_mode` 是静态字段。把 executable 固定在 operator 配置中，避免一个模板
+`command`、`io_mode` 和 `input_mode` 是静态字段。`extra_parameters` 只在 `render` 中可用，不能用于
+替换这些静态字段。把 executable 固定在 operator 配置中，避免一个模板
 退化为任意命令代理。`render` 必须返回 object，只允许以下字段：
 
 | 字段 | 类型 | 缺省值 |
@@ -142,7 +152,10 @@ IEEE-754 安全整数范围的模板不属于首版能力；命令行数值应�
 
 模板使用仓库已经固定版本的 `expr-lang/expr`，但使用独立的 pure render profile：
 
-- 唯一环境变量为 `parameters: map<string, any>`；
+- 环境只包含调用方输入 `parameters: map<string, any>` 和 operator 配置
+  `extra_parameters: map<string, any>`；
+- `extra_parameters` 的顶层 key 必须通过字面量访问并在启动期存在；禁止动态选择顶层 key 和 `$env`
+  聚合访问；
 - 不提供 context、call metadata、自定义函数或 host dispatcher；
 - 禁用 `now`；禁止 range operator 和 `repeat`；
 - 限制脚本 byte、AST depth/node、collection call site；
@@ -177,7 +190,8 @@ rpc StartProcessFromTemplate(StartProcessFromTemplateRequest) returns (StartProc
 - `expected_template_revision`：可选的完整 SHA-256 revision；不匹配返回 `FAILED_PRECONDITION`。
 
 revision 是模板规范化内容的 SHA-256 小写十六进制值，至少覆盖名称、说明、Schema、command、I/O 模式、
-输入模式和 Expr source。即使首版不热更新，revision 仍用于进程历史、部署比较和未来兼容。
+输入模式、Expr source 和非空的规范化 `extra_parameters`。任一共享值变化都会更新全部模板 revision；
+空 map 保持旧 revision 不变。即使首版不热更新，revision 仍用于进程历史、部署比较和未来兼容。
 
 错误码：
 
@@ -205,7 +219,7 @@ revision 是模板规范化内容的 SHA-256 小写十六进制值，至少覆�
 - `ProcessInfo.arguments` 和 `metadata.json.arguments` 保存空数组；
 - `arguments_redacted` 为 true；
 - command、工作目录、环境 key、模板名称和 revision 正常保存；
-- parameters、环境 value、Expr 输出和完整 argv 不写日志或磁盘；
+- parameters、extra parameters、环境 value、Expr 输出和完整 argv 不写日志或磁盘；
 - 启动失败所保留的 FAILED record 同样只包含脱敏信息。
 
 进程 record schema 升级为 2，并继续读取 schema 1。schema 1 记录按直接启动历史解释。controller 不会
@@ -222,6 +236,10 @@ revision 是模板规范化内容的 SHA-256 小写十六进制值，至少覆�
 
 即使没有 shell，目标 executable 仍可能把某些 argv 当作代码、配置文件或子命令执行。模板 operator
 必须限制高风险参数，避免无约束 `extra_args`、`sh -c`、动态 executable、动态 loader 环境变量等入口。
+
+模板定义和 controller 的 `extra_parameters` 都属于 operator trusted code，但不能包含 credential、
+private key 或长期 token。当前秘密仍应保存在独立的受保护文件中，不能因为模板启动结果会脱敏，就把
+明文凭据写入 controller TOML。
 
 工作区限制仍不是 sandbox。面向不可信 parameters 或 Agent 时，继续要求独立系统用户、容器/VM、文件
 权限、网络策略和 CPU/内存限制。
@@ -243,7 +261,8 @@ CLI 不打印 parameters 或渲染后的 argv。
 
 ## 10. 启动、并发与配置更新
 
-`server.Prepare` 在绑定 listener 或创建进程 runtime 前构造 immutable template registry。
+`server.Prepare` 在绑定 listener 或创建进程 runtime 前规范化并冻结 extra parameters，再构造 immutable
+template registry。
 `--check-config` 执行相同准备过程。任一文件、模板、Schema 或 Expr 错误都拒绝整个 registry，不做部分发布。
 
 多个 RPC 可以并发运行同一个 immutable Expr program；每次调用拥有独立 parameters 和结果对象。最终启动
@@ -259,7 +278,8 @@ revision，不随 registry 改变。
 - YAML unknown/duplicate/alias/tag/multi-document、文件大小、后缀、symlink、workspace 内文件和重复 inode；
 - 模板名称、重复名称、静态 command、模式和 description；
 - Schema dialect、root type、additionalProperties、external ref、深度和非法参数；
-- Expr 编译、未定义值、`now`、range/repeat、AST/输入/输出限制；
+- Expr 编译、未定义值、extra parameter 缺失/动态顶层访问、`now`、range/repeat、AST/输入/输出限制；
+- extra parameter 类型/大小、不可变副本、规范化 revision 和并发读取；
 - arguments/cwd/environment 正常渲染、条件参数和严格类型错误；
 - unknown template、revision mismatch、context cancellation；
 - 模板启动复用 cwd symlink 防护、进程限额、PTY/input 和 shutdown 语义；
