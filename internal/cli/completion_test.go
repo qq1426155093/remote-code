@@ -67,6 +67,7 @@ func TestCompleterSuggestsCommandsOptionsAndArguments(t *testing.T) {
 		{name: "finished process", line: "forget fin", want: []string{"ished "}, wantOffset: 3},
 		{name: "second forget process", line: "forget finished fa", want: []string{"iled "}, wantOffset: 2},
 		{name: "log options", line: "logs --o", want: []string{"ffset "}, wantOffset: 3},
+		{name: "controller log options", line: "controller-logs --t", want: []string{"ail "}, wantOffset: 3},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

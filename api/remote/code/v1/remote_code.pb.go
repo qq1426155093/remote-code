@@ -24,6 +24,113 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type ControllerLogLevel int32
+
+const (
+	ControllerLogLevel_CONTROLLER_LOG_LEVEL_UNSPECIFIED ControllerLogLevel = 0
+	ControllerLogLevel_CONTROLLER_LOG_LEVEL_DEBUG       ControllerLogLevel = 1
+	ControllerLogLevel_CONTROLLER_LOG_LEVEL_INFO        ControllerLogLevel = 2
+	ControllerLogLevel_CONTROLLER_LOG_LEVEL_WARN        ControllerLogLevel = 3
+	ControllerLogLevel_CONTROLLER_LOG_LEVEL_ERROR       ControllerLogLevel = 4
+)
+
+// Enum value maps for ControllerLogLevel.
+var (
+	ControllerLogLevel_name = map[int32]string{
+		0: "CONTROLLER_LOG_LEVEL_UNSPECIFIED",
+		1: "CONTROLLER_LOG_LEVEL_DEBUG",
+		2: "CONTROLLER_LOG_LEVEL_INFO",
+		3: "CONTROLLER_LOG_LEVEL_WARN",
+		4: "CONTROLLER_LOG_LEVEL_ERROR",
+	}
+	ControllerLogLevel_value = map[string]int32{
+		"CONTROLLER_LOG_LEVEL_UNSPECIFIED": 0,
+		"CONTROLLER_LOG_LEVEL_DEBUG":       1,
+		"CONTROLLER_LOG_LEVEL_INFO":        2,
+		"CONTROLLER_LOG_LEVEL_WARN":        3,
+		"CONTROLLER_LOG_LEVEL_ERROR":       4,
+	}
+)
+
+func (x ControllerLogLevel) Enum() *ControllerLogLevel {
+	p := new(ControllerLogLevel)
+	*p = x
+	return p
+}
+
+func (x ControllerLogLevel) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ControllerLogLevel) Descriptor() protoreflect.EnumDescriptor {
+	return file_remote_code_v1_remote_code_proto_enumTypes[0].Descriptor()
+}
+
+func (ControllerLogLevel) Type() protoreflect.EnumType {
+	return &file_remote_code_v1_remote_code_proto_enumTypes[0]
+}
+
+func (x ControllerLogLevel) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ControllerLogLevel.Descriptor instead.
+func (ControllerLogLevel) EnumDescriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{0}
+}
+
+type ControllerLogEndReason int32
+
+const (
+	ControllerLogEndReason_CONTROLLER_LOG_END_REASON_UNSPECIFIED         ControllerLogEndReason = 0
+	ControllerLogEndReason_CONTROLLER_LOG_END_REASON_SNAPSHOT_COMPLETE   ControllerLogEndReason = 1
+	ControllerLogEndReason_CONTROLLER_LOG_END_REASON_CONTROLLER_SHUTDOWN ControllerLogEndReason = 2
+	ControllerLogEndReason_CONTROLLER_LOG_END_REASON_LOG_UNAVAILABLE     ControllerLogEndReason = 3
+)
+
+// Enum value maps for ControllerLogEndReason.
+var (
+	ControllerLogEndReason_name = map[int32]string{
+		0: "CONTROLLER_LOG_END_REASON_UNSPECIFIED",
+		1: "CONTROLLER_LOG_END_REASON_SNAPSHOT_COMPLETE",
+		2: "CONTROLLER_LOG_END_REASON_CONTROLLER_SHUTDOWN",
+		3: "CONTROLLER_LOG_END_REASON_LOG_UNAVAILABLE",
+	}
+	ControllerLogEndReason_value = map[string]int32{
+		"CONTROLLER_LOG_END_REASON_UNSPECIFIED":         0,
+		"CONTROLLER_LOG_END_REASON_SNAPSHOT_COMPLETE":   1,
+		"CONTROLLER_LOG_END_REASON_CONTROLLER_SHUTDOWN": 2,
+		"CONTROLLER_LOG_END_REASON_LOG_UNAVAILABLE":     3,
+	}
+)
+
+func (x ControllerLogEndReason) Enum() *ControllerLogEndReason {
+	p := new(ControllerLogEndReason)
+	*p = x
+	return p
+}
+
+func (x ControllerLogEndReason) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ControllerLogEndReason) Descriptor() protoreflect.EnumDescriptor {
+	return file_remote_code_v1_remote_code_proto_enumTypes[1].Descriptor()
+}
+
+func (ControllerLogEndReason) Type() protoreflect.EnumType {
+	return &file_remote_code_v1_remote_code_proto_enumTypes[1]
+}
+
+func (x ControllerLogEndReason) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ControllerLogEndReason.Descriptor instead.
+func (ControllerLogEndReason) EnumDescriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{1}
+}
+
 type FileType int32
 
 const (
@@ -63,11 +170,11 @@ func (x FileType) String() string {
 }
 
 func (FileType) Descriptor() protoreflect.EnumDescriptor {
-	return file_remote_code_v1_remote_code_proto_enumTypes[0].Descriptor()
+	return file_remote_code_v1_remote_code_proto_enumTypes[2].Descriptor()
 }
 
 func (FileType) Type() protoreflect.EnumType {
-	return &file_remote_code_v1_remote_code_proto_enumTypes[0]
+	return &file_remote_code_v1_remote_code_proto_enumTypes[2]
 }
 
 func (x FileType) Number() protoreflect.EnumNumber {
@@ -76,7 +183,7 @@ func (x FileType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use FileType.Descriptor instead.
 func (FileType) EnumDescriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{0}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{2}
 }
 
 type UploadSessionState int32
@@ -124,11 +231,11 @@ func (x UploadSessionState) String() string {
 }
 
 func (UploadSessionState) Descriptor() protoreflect.EnumDescriptor {
-	return file_remote_code_v1_remote_code_proto_enumTypes[1].Descriptor()
+	return file_remote_code_v1_remote_code_proto_enumTypes[3].Descriptor()
 }
 
 func (UploadSessionState) Type() protoreflect.EnumType {
-	return &file_remote_code_v1_remote_code_proto_enumTypes[1]
+	return &file_remote_code_v1_remote_code_proto_enumTypes[3]
 }
 
 func (x UploadSessionState) Number() protoreflect.EnumNumber {
@@ -137,7 +244,7 @@ func (x UploadSessionState) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use UploadSessionState.Descriptor instead.
 func (UploadSessionState) EnumDescriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{1}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{3}
 }
 
 type FileTransferErrorReason int32
@@ -182,11 +289,11 @@ func (x FileTransferErrorReason) String() string {
 }
 
 func (FileTransferErrorReason) Descriptor() protoreflect.EnumDescriptor {
-	return file_remote_code_v1_remote_code_proto_enumTypes[2].Descriptor()
+	return file_remote_code_v1_remote_code_proto_enumTypes[4].Descriptor()
 }
 
 func (FileTransferErrorReason) Type() protoreflect.EnumType {
-	return &file_remote_code_v1_remote_code_proto_enumTypes[2]
+	return &file_remote_code_v1_remote_code_proto_enumTypes[4]
 }
 
 func (x FileTransferErrorReason) Number() protoreflect.EnumNumber {
@@ -195,7 +302,7 @@ func (x FileTransferErrorReason) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use FileTransferErrorReason.Descriptor instead.
 func (FileTransferErrorReason) EnumDescriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{2}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{4}
 }
 
 type ProcessIOMode int32
@@ -231,11 +338,11 @@ func (x ProcessIOMode) String() string {
 }
 
 func (ProcessIOMode) Descriptor() protoreflect.EnumDescriptor {
-	return file_remote_code_v1_remote_code_proto_enumTypes[3].Descriptor()
+	return file_remote_code_v1_remote_code_proto_enumTypes[5].Descriptor()
 }
 
 func (ProcessIOMode) Type() protoreflect.EnumType {
-	return &file_remote_code_v1_remote_code_proto_enumTypes[3]
+	return &file_remote_code_v1_remote_code_proto_enumTypes[5]
 }
 
 func (x ProcessIOMode) Number() protoreflect.EnumNumber {
@@ -244,7 +351,7 @@ func (x ProcessIOMode) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ProcessIOMode.Descriptor instead.
 func (ProcessIOMode) EnumDescriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{3}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{5}
 }
 
 type ProcessState int32
@@ -291,11 +398,11 @@ func (x ProcessState) String() string {
 }
 
 func (ProcessState) Descriptor() protoreflect.EnumDescriptor {
-	return file_remote_code_v1_remote_code_proto_enumTypes[4].Descriptor()
+	return file_remote_code_v1_remote_code_proto_enumTypes[6].Descriptor()
 }
 
 func (ProcessState) Type() protoreflect.EnumType {
-	return &file_remote_code_v1_remote_code_proto_enumTypes[4]
+	return &file_remote_code_v1_remote_code_proto_enumTypes[6]
 }
 
 func (x ProcessState) Number() protoreflect.EnumNumber {
@@ -304,7 +411,7 @@ func (x ProcessState) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ProcessState.Descriptor instead.
 func (ProcessState) EnumDescriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{4}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{6}
 }
 
 type ProcessSignal int32
@@ -361,11 +468,11 @@ func (x ProcessSignal) String() string {
 }
 
 func (ProcessSignal) Descriptor() protoreflect.EnumDescriptor {
-	return file_remote_code_v1_remote_code_proto_enumTypes[5].Descriptor()
+	return file_remote_code_v1_remote_code_proto_enumTypes[7].Descriptor()
 }
 
 func (ProcessSignal) Type() protoreflect.EnumType {
-	return &file_remote_code_v1_remote_code_proto_enumTypes[5]
+	return &file_remote_code_v1_remote_code_proto_enumTypes[7]
 }
 
 func (x ProcessSignal) Number() protoreflect.EnumNumber {
@@ -374,7 +481,7 @@ func (x ProcessSignal) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ProcessSignal.Descriptor instead.
 func (ProcessSignal) EnumDescriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{5}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{7}
 }
 
 type ProcessLogStream int32
@@ -410,11 +517,11 @@ func (x ProcessLogStream) String() string {
 }
 
 func (ProcessLogStream) Descriptor() protoreflect.EnumDescriptor {
-	return file_remote_code_v1_remote_code_proto_enumTypes[6].Descriptor()
+	return file_remote_code_v1_remote_code_proto_enumTypes[8].Descriptor()
 }
 
 func (ProcessLogStream) Type() protoreflect.EnumType {
-	return &file_remote_code_v1_remote_code_proto_enumTypes[6]
+	return &file_remote_code_v1_remote_code_proto_enumTypes[8]
 }
 
 func (x ProcessLogStream) Number() protoreflect.EnumNumber {
@@ -423,7 +530,7 @@ func (x ProcessLogStream) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ProcessLogStream.Descriptor instead.
 func (ProcessLogStream) EnumDescriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{6}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{8}
 }
 
 type ProcessLogEndReason int32
@@ -459,11 +566,11 @@ func (x ProcessLogEndReason) String() string {
 }
 
 func (ProcessLogEndReason) Descriptor() protoreflect.EnumDescriptor {
-	return file_remote_code_v1_remote_code_proto_enumTypes[7].Descriptor()
+	return file_remote_code_v1_remote_code_proto_enumTypes[9].Descriptor()
 }
 
 func (ProcessLogEndReason) Type() protoreflect.EnumType {
-	return &file_remote_code_v1_remote_code_proto_enumTypes[7]
+	return &file_remote_code_v1_remote_code_proto_enumTypes[9]
 }
 
 func (x ProcessLogEndReason) Number() protoreflect.EnumNumber {
@@ -472,7 +579,7 @@ func (x ProcessLogEndReason) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ProcessLogEndReason.Descriptor instead.
 func (ProcessLogEndReason) EnumDescriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{7}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{9}
 }
 
 type ProcessInputMode int32
@@ -511,11 +618,11 @@ func (x ProcessInputMode) String() string {
 }
 
 func (ProcessInputMode) Descriptor() protoreflect.EnumDescriptor {
-	return file_remote_code_v1_remote_code_proto_enumTypes[8].Descriptor()
+	return file_remote_code_v1_remote_code_proto_enumTypes[10].Descriptor()
 }
 
 func (ProcessInputMode) Type() protoreflect.EnumType {
-	return &file_remote_code_v1_remote_code_proto_enumTypes[8]
+	return &file_remote_code_v1_remote_code_proto_enumTypes[10]
 }
 
 func (x ProcessInputMode) Number() protoreflect.EnumNumber {
@@ -524,7 +631,7 @@ func (x ProcessInputMode) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ProcessInputMode.Descriptor instead.
 func (ProcessInputMode) EnumDescriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{8}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{10}
 }
 
 type ProcessInputState int32
@@ -566,11 +673,11 @@ func (x ProcessInputState) String() string {
 }
 
 func (ProcessInputState) Descriptor() protoreflect.EnumDescriptor {
-	return file_remote_code_v1_remote_code_proto_enumTypes[9].Descriptor()
+	return file_remote_code_v1_remote_code_proto_enumTypes[11].Descriptor()
 }
 
 func (ProcessInputState) Type() protoreflect.EnumType {
-	return &file_remote_code_v1_remote_code_proto_enumTypes[9]
+	return &file_remote_code_v1_remote_code_proto_enumTypes[11]
 }
 
 func (x ProcessInputState) Number() protoreflect.EnumNumber {
@@ -579,7 +686,7 @@ func (x ProcessInputState) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ProcessInputState.Descriptor instead.
 func (ProcessInputState) EnumDescriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{9}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{11}
 }
 
 type ProcessInputEndReason int32
@@ -618,11 +725,11 @@ func (x ProcessInputEndReason) String() string {
 }
 
 func (ProcessInputEndReason) Descriptor() protoreflect.EnumDescriptor {
-	return file_remote_code_v1_remote_code_proto_enumTypes[10].Descriptor()
+	return file_remote_code_v1_remote_code_proto_enumTypes[12].Descriptor()
 }
 
 func (ProcessInputEndReason) Type() protoreflect.EnumType {
-	return &file_remote_code_v1_remote_code_proto_enumTypes[10]
+	return &file_remote_code_v1_remote_code_proto_enumTypes[12]
 }
 
 func (x ProcessInputEndReason) Number() protoreflect.EnumNumber {
@@ -631,7 +738,7 @@ func (x ProcessInputEndReason) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ProcessInputEndReason.Descriptor instead.
 func (ProcessInputEndReason) EnumDescriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{10}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{12}
 }
 
 type GetInfoRequest struct {
@@ -671,14 +778,15 @@ func (*GetInfoRequest) Descriptor() ([]byte, []int) {
 }
 
 type GetInfoResponse struct {
-	state                protoimpl.MessageState    `protogen:"open.v1"`
-	ControllerVersion    string                    `protobuf:"bytes,1,opt,name=controller_version,json=controllerVersion,proto3" json:"controller_version,omitempty"`
-	ApiVersion           string                    `protobuf:"bytes,2,opt,name=api_version,json=apiVersion,proto3" json:"api_version,omitempty"`
-	WorkspaceName        string                    `protobuf:"bytes,3,opt,name=workspace_name,json=workspaceName,proto3" json:"workspace_name,omitempty"`
-	MaxUploadBytes       int64                     `protobuf:"varint,4,opt,name=max_upload_bytes,json=maxUploadBytes,proto3" json:"max_upload_bytes,omitempty"`
-	MaxProcesses         uint32                    `protobuf:"varint,6,opt,name=max_processes,json=maxProcesses,proto3" json:"max_processes,omitempty"`
-	ProcessTemplateCount uint32                    `protobuf:"varint,7,opt,name=process_template_count,json=processTemplateCount,proto3" json:"process_template_count,omitempty"`
-	FileTransfers        *FileTransferCapabilities `protobuf:"bytes,8,opt,name=file_transfers,json=fileTransfers,proto3" json:"file_transfers,omitempty"`
+	state                protoimpl.MessageState     `protogen:"open.v1"`
+	ControllerVersion    string                     `protobuf:"bytes,1,opt,name=controller_version,json=controllerVersion,proto3" json:"controller_version,omitempty"`
+	ApiVersion           string                     `protobuf:"bytes,2,opt,name=api_version,json=apiVersion,proto3" json:"api_version,omitempty"`
+	WorkspaceName        string                     `protobuf:"bytes,3,opt,name=workspace_name,json=workspaceName,proto3" json:"workspace_name,omitempty"`
+	MaxUploadBytes       int64                      `protobuf:"varint,4,opt,name=max_upload_bytes,json=maxUploadBytes,proto3" json:"max_upload_bytes,omitempty"`
+	MaxProcesses         uint32                     `protobuf:"varint,6,opt,name=max_processes,json=maxProcesses,proto3" json:"max_processes,omitempty"`
+	ProcessTemplateCount uint32                     `protobuf:"varint,7,opt,name=process_template_count,json=processTemplateCount,proto3" json:"process_template_count,omitempty"`
+	FileTransfers        *FileTransferCapabilities  `protobuf:"bytes,8,opt,name=file_transfers,json=fileTransfers,proto3" json:"file_transfers,omitempty"`
+	ControllerLogs       *ControllerLogCapabilities `protobuf:"bytes,9,opt,name=controller_logs,json=controllerLogs,proto3" json:"controller_logs,omitempty"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -762,6 +870,613 @@ func (x *GetInfoResponse) GetFileTransfers() *FileTransferCapabilities {
 	return nil
 }
 
+func (x *GetInfoResponse) GetControllerLogs() *ControllerLogCapabilities {
+	if x != nil {
+		return x.ControllerLogs
+	}
+	return nil
+}
+
+type ControllerLogCapabilities struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Available     bool                   `protobuf:"varint,1,opt,name=available,proto3" json:"available,omitempty"`
+	FormatVersion uint32                 `protobuf:"varint,2,opt,name=format_version,json=formatVersion,proto3" json:"format_version,omitempty"`
+	MaxTailLines  uint64                 `protobuf:"varint,3,opt,name=max_tail_lines,json=maxTailLines,proto3" json:"max_tail_lines,omitempty"`
+	MaxObservers  uint32                 `protobuf:"varint,4,opt,name=max_observers,json=maxObservers,proto3" json:"max_observers,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ControllerLogCapabilities) Reset() {
+	*x = ControllerLogCapabilities{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ControllerLogCapabilities) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ControllerLogCapabilities) ProtoMessage() {}
+
+func (x *ControllerLogCapabilities) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ControllerLogCapabilities.ProtoReflect.Descriptor instead.
+func (*ControllerLogCapabilities) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *ControllerLogCapabilities) GetAvailable() bool {
+	if x != nil {
+		return x.Available
+	}
+	return false
+}
+
+func (x *ControllerLogCapabilities) GetFormatVersion() uint32 {
+	if x != nil {
+		return x.FormatVersion
+	}
+	return 0
+}
+
+func (x *ControllerLogCapabilities) GetMaxTailLines() uint64 {
+	if x != nil {
+		return x.MaxTailLines
+	}
+	return 0
+}
+
+func (x *ControllerLogCapabilities) GetMaxObservers() uint32 {
+	if x != nil {
+		return x.MaxObservers
+	}
+	return 0
+}
+
+type ObserveControllerLogsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Start:
+	//
+	//	*ObserveControllerLogsRequest_Offset
+	//	*ObserveControllerLogsRequest_TailLines
+	Start         isObserveControllerLogsRequest_Start `protobuf_oneof:"start"`
+	Follow        bool                                 `protobuf:"varint,3,opt,name=follow,proto3" json:"follow,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ObserveControllerLogsRequest) Reset() {
+	*x = ObserveControllerLogsRequest{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ObserveControllerLogsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ObserveControllerLogsRequest) ProtoMessage() {}
+
+func (x *ObserveControllerLogsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ObserveControllerLogsRequest.ProtoReflect.Descriptor instead.
+func (*ObserveControllerLogsRequest) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ObserveControllerLogsRequest) GetStart() isObserveControllerLogsRequest_Start {
+	if x != nil {
+		return x.Start
+	}
+	return nil
+}
+
+func (x *ObserveControllerLogsRequest) GetOffset() uint64 {
+	if x != nil {
+		if x, ok := x.Start.(*ObserveControllerLogsRequest_Offset); ok {
+			return x.Offset
+		}
+	}
+	return 0
+}
+
+func (x *ObserveControllerLogsRequest) GetTailLines() uint64 {
+	if x != nil {
+		if x, ok := x.Start.(*ObserveControllerLogsRequest_TailLines); ok {
+			return x.TailLines
+		}
+	}
+	return 0
+}
+
+func (x *ObserveControllerLogsRequest) GetFollow() bool {
+	if x != nil {
+		return x.Follow
+	}
+	return false
+}
+
+type isObserveControllerLogsRequest_Start interface {
+	isObserveControllerLogsRequest_Start()
+}
+
+type ObserveControllerLogsRequest_Offset struct {
+	Offset uint64 `protobuf:"varint,1,opt,name=offset,proto3,oneof"`
+}
+
+type ObserveControllerLogsRequest_TailLines struct {
+	TailLines uint64 `protobuf:"varint,2,opt,name=tail_lines,json=tailLines,proto3,oneof"`
+}
+
+func (*ObserveControllerLogsRequest_Offset) isObserveControllerLogsRequest_Start() {}
+
+func (*ObserveControllerLogsRequest_TailLines) isObserveControllerLogsRequest_Start() {}
+
+type ControllerLogHeader struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	BootId              string                 `protobuf:"bytes,1,opt,name=boot_id,json=bootId,proto3" json:"boot_id,omitempty"`
+	EarliestOffset      uint64                 `protobuf:"varint,2,opt,name=earliest_offset,json=earliestOffset,proto3" json:"earliest_offset,omitempty"`
+	SnapshotEndOffset   uint64                 `protobuf:"varint,3,opt,name=snapshot_end_offset,json=snapshotEndOffset,proto3" json:"snapshot_end_offset,omitempty"`
+	ResolvedStartOffset uint64                 `protobuf:"varint,4,opt,name=resolved_start_offset,json=resolvedStartOffset,proto3" json:"resolved_start_offset,omitempty"`
+	HistoryTruncated    bool                   `protobuf:"varint,5,opt,name=history_truncated,json=historyTruncated,proto3" json:"history_truncated,omitempty"`
+	TailTruncated       bool                   `protobuf:"varint,6,opt,name=tail_truncated,json=tailTruncated,proto3" json:"tail_truncated,omitempty"`
+	Follow              bool                   `protobuf:"varint,7,opt,name=follow,proto3" json:"follow,omitempty"`
+	FormatVersion       uint32                 `protobuf:"varint,8,opt,name=format_version,json=formatVersion,proto3" json:"format_version,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *ControllerLogHeader) Reset() {
+	*x = ControllerLogHeader{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ControllerLogHeader) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ControllerLogHeader) ProtoMessage() {}
+
+func (x *ControllerLogHeader) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ControllerLogHeader.ProtoReflect.Descriptor instead.
+func (*ControllerLogHeader) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ControllerLogHeader) GetBootId() string {
+	if x != nil {
+		return x.BootId
+	}
+	return ""
+}
+
+func (x *ControllerLogHeader) GetEarliestOffset() uint64 {
+	if x != nil {
+		return x.EarliestOffset
+	}
+	return 0
+}
+
+func (x *ControllerLogHeader) GetSnapshotEndOffset() uint64 {
+	if x != nil {
+		return x.SnapshotEndOffset
+	}
+	return 0
+}
+
+func (x *ControllerLogHeader) GetResolvedStartOffset() uint64 {
+	if x != nil {
+		return x.ResolvedStartOffset
+	}
+	return 0
+}
+
+func (x *ControllerLogHeader) GetHistoryTruncated() bool {
+	if x != nil {
+		return x.HistoryTruncated
+	}
+	return false
+}
+
+func (x *ControllerLogHeader) GetTailTruncated() bool {
+	if x != nil {
+		return x.TailTruncated
+	}
+	return false
+}
+
+func (x *ControllerLogHeader) GetFollow() bool {
+	if x != nil {
+		return x.Follow
+	}
+	return false
+}
+
+func (x *ControllerLogHeader) GetFormatVersion() uint32 {
+	if x != nil {
+		return x.FormatVersion
+	}
+	return 0
+}
+
+type ControllerLogEntry struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Offset        uint64                 `protobuf:"varint,1,opt,name=offset,proto3" json:"offset,omitempty"`
+	Timestamp     *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	Level         ControllerLogLevel     `protobuf:"varint,3,opt,name=level,proto3,enum=remote.code.v1.ControllerLogLevel" json:"level,omitempty"`
+	Component     string                 `protobuf:"bytes,4,opt,name=component,proto3" json:"component,omitempty"`
+	Event         string                 `protobuf:"bytes,5,opt,name=event,proto3" json:"event,omitempty"`
+	Message       string                 `protobuf:"bytes,6,opt,name=message,proto3" json:"message,omitempty"`
+	Fields        map[string]string      `protobuf:"bytes,7,rep,name=fields,proto3" json:"fields,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	LineTruncated bool                   `protobuf:"varint,8,opt,name=line_truncated,json=lineTruncated,proto3" json:"line_truncated,omitempty"`
+	BootId        string                 `protobuf:"bytes,9,opt,name=boot_id,json=bootId,proto3" json:"boot_id,omitempty"`
+	NextOffset    uint64                 `protobuf:"varint,10,opt,name=next_offset,json=nextOffset,proto3" json:"next_offset,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ControllerLogEntry) Reset() {
+	*x = ControllerLogEntry{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ControllerLogEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ControllerLogEntry) ProtoMessage() {}
+
+func (x *ControllerLogEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ControllerLogEntry.ProtoReflect.Descriptor instead.
+func (*ControllerLogEntry) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ControllerLogEntry) GetOffset() uint64 {
+	if x != nil {
+		return x.Offset
+	}
+	return 0
+}
+
+func (x *ControllerLogEntry) GetTimestamp() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Timestamp
+	}
+	return nil
+}
+
+func (x *ControllerLogEntry) GetLevel() ControllerLogLevel {
+	if x != nil {
+		return x.Level
+	}
+	return ControllerLogLevel_CONTROLLER_LOG_LEVEL_UNSPECIFIED
+}
+
+func (x *ControllerLogEntry) GetComponent() string {
+	if x != nil {
+		return x.Component
+	}
+	return ""
+}
+
+func (x *ControllerLogEntry) GetEvent() string {
+	if x != nil {
+		return x.Event
+	}
+	return ""
+}
+
+func (x *ControllerLogEntry) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *ControllerLogEntry) GetFields() map[string]string {
+	if x != nil {
+		return x.Fields
+	}
+	return nil
+}
+
+func (x *ControllerLogEntry) GetLineTruncated() bool {
+	if x != nil {
+		return x.LineTruncated
+	}
+	return false
+}
+
+func (x *ControllerLogEntry) GetBootId() string {
+	if x != nil {
+		return x.BootId
+	}
+	return ""
+}
+
+func (x *ControllerLogEntry) GetNextOffset() uint64 {
+	if x != nil {
+		return x.NextOffset
+	}
+	return 0
+}
+
+type ControllerLogCheckpoint struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	NextOffset     uint64                 `protobuf:"varint,1,opt,name=next_offset,json=nextOffset,proto3" json:"next_offset,omitempty"`
+	ReplayComplete bool                   `protobuf:"varint,2,opt,name=replay_complete,json=replayComplete,proto3" json:"replay_complete,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ControllerLogCheckpoint) Reset() {
+	*x = ControllerLogCheckpoint{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ControllerLogCheckpoint) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ControllerLogCheckpoint) ProtoMessage() {}
+
+func (x *ControllerLogCheckpoint) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ControllerLogCheckpoint.ProtoReflect.Descriptor instead.
+func (*ControllerLogCheckpoint) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *ControllerLogCheckpoint) GetNextOffset() uint64 {
+	if x != nil {
+		return x.NextOffset
+	}
+	return 0
+}
+
+func (x *ControllerLogCheckpoint) GetReplayComplete() bool {
+	if x != nil {
+		return x.ReplayComplete
+	}
+	return false
+}
+
+type ControllerLogEnd struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NextOffset    uint64                 `protobuf:"varint,1,opt,name=next_offset,json=nextOffset,proto3" json:"next_offset,omitempty"`
+	Reason        ControllerLogEndReason `protobuf:"varint,2,opt,name=reason,proto3,enum=remote.code.v1.ControllerLogEndReason" json:"reason,omitempty"`
+	LogsComplete  bool                   `protobuf:"varint,3,opt,name=logs_complete,json=logsComplete,proto3" json:"logs_complete,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ControllerLogEnd) Reset() {
+	*x = ControllerLogEnd{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ControllerLogEnd) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ControllerLogEnd) ProtoMessage() {}
+
+func (x *ControllerLogEnd) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ControllerLogEnd.ProtoReflect.Descriptor instead.
+func (*ControllerLogEnd) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *ControllerLogEnd) GetNextOffset() uint64 {
+	if x != nil {
+		return x.NextOffset
+	}
+	return 0
+}
+
+func (x *ControllerLogEnd) GetReason() ControllerLogEndReason {
+	if x != nil {
+		return x.Reason
+	}
+	return ControllerLogEndReason_CONTROLLER_LOG_END_REASON_UNSPECIFIED
+}
+
+func (x *ControllerLogEnd) GetLogsComplete() bool {
+	if x != nil {
+		return x.LogsComplete
+	}
+	return false
+}
+
+type ObserveControllerLogsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Payload:
+	//
+	//	*ObserveControllerLogsResponse_Header
+	//	*ObserveControllerLogsResponse_Entry
+	//	*ObserveControllerLogsResponse_Checkpoint
+	//	*ObserveControllerLogsResponse_End
+	Payload       isObserveControllerLogsResponse_Payload `protobuf_oneof:"payload"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ObserveControllerLogsResponse) Reset() {
+	*x = ObserveControllerLogsResponse{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ObserveControllerLogsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ObserveControllerLogsResponse) ProtoMessage() {}
+
+func (x *ObserveControllerLogsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ObserveControllerLogsResponse.ProtoReflect.Descriptor instead.
+func (*ObserveControllerLogsResponse) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *ObserveControllerLogsResponse) GetPayload() isObserveControllerLogsResponse_Payload {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
+func (x *ObserveControllerLogsResponse) GetHeader() *ControllerLogHeader {
+	if x != nil {
+		if x, ok := x.Payload.(*ObserveControllerLogsResponse_Header); ok {
+			return x.Header
+		}
+	}
+	return nil
+}
+
+func (x *ObserveControllerLogsResponse) GetEntry() *ControllerLogEntry {
+	if x != nil {
+		if x, ok := x.Payload.(*ObserveControllerLogsResponse_Entry); ok {
+			return x.Entry
+		}
+	}
+	return nil
+}
+
+func (x *ObserveControllerLogsResponse) GetCheckpoint() *ControllerLogCheckpoint {
+	if x != nil {
+		if x, ok := x.Payload.(*ObserveControllerLogsResponse_Checkpoint); ok {
+			return x.Checkpoint
+		}
+	}
+	return nil
+}
+
+func (x *ObserveControllerLogsResponse) GetEnd() *ControllerLogEnd {
+	if x != nil {
+		if x, ok := x.Payload.(*ObserveControllerLogsResponse_End); ok {
+			return x.End
+		}
+	}
+	return nil
+}
+
+type isObserveControllerLogsResponse_Payload interface {
+	isObserveControllerLogsResponse_Payload()
+}
+
+type ObserveControllerLogsResponse_Header struct {
+	Header *ControllerLogHeader `protobuf:"bytes,1,opt,name=header,proto3,oneof"`
+}
+
+type ObserveControllerLogsResponse_Entry struct {
+	Entry *ControllerLogEntry `protobuf:"bytes,2,opt,name=entry,proto3,oneof"`
+}
+
+type ObserveControllerLogsResponse_Checkpoint struct {
+	Checkpoint *ControllerLogCheckpoint `protobuf:"bytes,3,opt,name=checkpoint,proto3,oneof"`
+}
+
+type ObserveControllerLogsResponse_End struct {
+	End *ControllerLogEnd `protobuf:"bytes,4,opt,name=end,proto3,oneof"`
+}
+
+func (*ObserveControllerLogsResponse_Header) isObserveControllerLogsResponse_Payload() {}
+
+func (*ObserveControllerLogsResponse_Entry) isObserveControllerLogsResponse_Payload() {}
+
+func (*ObserveControllerLogsResponse_Checkpoint) isObserveControllerLogsResponse_Payload() {}
+
+func (*ObserveControllerLogsResponse_End) isObserveControllerLogsResponse_Payload() {}
+
 type FileTransferCapabilities struct {
 	state                   protoimpl.MessageState `protogen:"open.v1"`
 	ResumableUpload         bool                   `protobuf:"varint,1,opt,name=resumable_upload,json=resumableUpload,proto3" json:"resumable_upload,omitempty"`
@@ -775,7 +1490,7 @@ type FileTransferCapabilities struct {
 
 func (x *FileTransferCapabilities) Reset() {
 	*x = FileTransferCapabilities{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[2]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -787,7 +1502,7 @@ func (x *FileTransferCapabilities) String() string {
 func (*FileTransferCapabilities) ProtoMessage() {}
 
 func (x *FileTransferCapabilities) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[2]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -800,7 +1515,7 @@ func (x *FileTransferCapabilities) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileTransferCapabilities.ProtoReflect.Descriptor instead.
 func (*FileTransferCapabilities) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{2}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *FileTransferCapabilities) GetResumableUpload() bool {
@@ -853,7 +1568,7 @@ type FileInfo struct {
 
 func (x *FileInfo) Reset() {
 	*x = FileInfo{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[3]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -865,7 +1580,7 @@ func (x *FileInfo) String() string {
 func (*FileInfo) ProtoMessage() {}
 
 func (x *FileInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[3]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -878,7 +1593,7 @@ func (x *FileInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileInfo.ProtoReflect.Descriptor instead.
 func (*FileInfo) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{3}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *FileInfo) GetPath() string {
@@ -939,7 +1654,7 @@ type StatRequest struct {
 
 func (x *StatRequest) Reset() {
 	*x = StatRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[4]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -951,7 +1666,7 @@ func (x *StatRequest) String() string {
 func (*StatRequest) ProtoMessage() {}
 
 func (x *StatRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[4]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -964,7 +1679,7 @@ func (x *StatRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StatRequest.ProtoReflect.Descriptor instead.
 func (*StatRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{4}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *StatRequest) GetPath() string {
@@ -983,7 +1698,7 @@ type StatResponse struct {
 
 func (x *StatResponse) Reset() {
 	*x = StatResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[5]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -995,7 +1710,7 @@ func (x *StatResponse) String() string {
 func (*StatResponse) ProtoMessage() {}
 
 func (x *StatResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[5]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1008,7 +1723,7 @@ func (x *StatResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StatResponse.ProtoReflect.Descriptor instead.
 func (*StatResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{5}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *StatResponse) GetFile() *FileInfo {
@@ -1027,7 +1742,7 @@ type ListRequest struct {
 
 func (x *ListRequest) Reset() {
 	*x = ListRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[6]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1039,7 +1754,7 @@ func (x *ListRequest) String() string {
 func (*ListRequest) ProtoMessage() {}
 
 func (x *ListRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[6]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1052,7 +1767,7 @@ func (x *ListRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRequest.ProtoReflect.Descriptor instead.
 func (*ListRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{6}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ListRequest) GetPath() string {
@@ -1071,7 +1786,7 @@ type ListResponse struct {
 
 func (x *ListResponse) Reset() {
 	*x = ListResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[7]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1083,7 +1798,7 @@ func (x *ListResponse) String() string {
 func (*ListResponse) ProtoMessage() {}
 
 func (x *ListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[7]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1096,7 +1811,7 @@ func (x *ListResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListResponse.ProtoReflect.Descriptor instead.
 func (*ListResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{7}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ListResponse) GetFiles() []*FileInfo {
@@ -1118,7 +1833,7 @@ type TreeNode struct {
 
 func (x *TreeNode) Reset() {
 	*x = TreeNode{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[8]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1130,7 +1845,7 @@ func (x *TreeNode) String() string {
 func (*TreeNode) ProtoMessage() {}
 
 func (x *TreeNode) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[8]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1143,7 +1858,7 @@ func (x *TreeNode) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TreeNode.ProtoReflect.Descriptor instead.
 func (*TreeNode) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{8}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *TreeNode) GetFile() *FileInfo {
@@ -1169,7 +1884,7 @@ type TreeRequest struct {
 
 func (x *TreeRequest) Reset() {
 	*x = TreeRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[9]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1181,7 +1896,7 @@ func (x *TreeRequest) String() string {
 func (*TreeRequest) ProtoMessage() {}
 
 func (x *TreeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[9]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1194,7 +1909,7 @@ func (x *TreeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TreeRequest.ProtoReflect.Descriptor instead.
 func (*TreeRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{9}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *TreeRequest) GetPath() string {
@@ -1213,7 +1928,7 @@ type TreeResponse struct {
 
 func (x *TreeResponse) Reset() {
 	*x = TreeResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[10]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1225,7 +1940,7 @@ func (x *TreeResponse) String() string {
 func (*TreeResponse) ProtoMessage() {}
 
 func (x *TreeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[10]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1238,7 +1953,7 @@ func (x *TreeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TreeResponse.ProtoReflect.Descriptor instead.
 func (*TreeResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{10}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *TreeResponse) GetRoot() *TreeNode {
@@ -1261,7 +1976,7 @@ type UploadMetadata struct {
 
 func (x *UploadMetadata) Reset() {
 	*x = UploadMetadata{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[11]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1273,7 +1988,7 @@ func (x *UploadMetadata) String() string {
 func (*UploadMetadata) ProtoMessage() {}
 
 func (x *UploadMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[11]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1286,7 +2001,7 @@ func (x *UploadMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadMetadata.ProtoReflect.Descriptor instead.
 func (*UploadMetadata) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{11}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *UploadMetadata) GetPath() string {
@@ -1337,7 +2052,7 @@ type UploadRequest struct {
 
 func (x *UploadRequest) Reset() {
 	*x = UploadRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[12]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1349,7 +2064,7 @@ func (x *UploadRequest) String() string {
 func (*UploadRequest) ProtoMessage() {}
 
 func (x *UploadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[12]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1362,7 +2077,7 @@ func (x *UploadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadRequest.ProtoReflect.Descriptor instead.
 func (*UploadRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{12}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *UploadRequest) GetPayload() isUploadRequest_Payload {
@@ -1417,7 +2132,7 @@ type UploadResponse struct {
 
 func (x *UploadResponse) Reset() {
 	*x = UploadResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[13]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1429,7 +2144,7 @@ func (x *UploadResponse) String() string {
 func (*UploadResponse) ProtoMessage() {}
 
 func (x *UploadResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[13]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1442,7 +2157,7 @@ func (x *UploadResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadResponse.ProtoReflect.Descriptor instead.
 func (*UploadResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{13}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *UploadResponse) GetFile() *FileInfo {
@@ -1475,7 +2190,7 @@ type DownloadRequest struct {
 
 func (x *DownloadRequest) Reset() {
 	*x = DownloadRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[14]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1487,7 +2202,7 @@ func (x *DownloadRequest) String() string {
 func (*DownloadRequest) ProtoMessage() {}
 
 func (x *DownloadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[14]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1500,7 +2215,7 @@ func (x *DownloadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DownloadRequest.ProtoReflect.Descriptor instead.
 func (*DownloadRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{14}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *DownloadRequest) GetPath() string {
@@ -1519,7 +2234,7 @@ type DownloadMetadata struct {
 
 func (x *DownloadMetadata) Reset() {
 	*x = DownloadMetadata{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[15]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1531,7 +2246,7 @@ func (x *DownloadMetadata) String() string {
 func (*DownloadMetadata) ProtoMessage() {}
 
 func (x *DownloadMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[15]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1544,7 +2259,7 @@ func (x *DownloadMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DownloadMetadata.ProtoReflect.Descriptor instead.
 func (*DownloadMetadata) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{15}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *DownloadMetadata) GetFile() *FileInfo {
@@ -1564,7 +2279,7 @@ type DownloadSummary struct {
 
 func (x *DownloadSummary) Reset() {
 	*x = DownloadSummary{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[16]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1576,7 +2291,7 @@ func (x *DownloadSummary) String() string {
 func (*DownloadSummary) ProtoMessage() {}
 
 func (x *DownloadSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[16]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1589,7 +2304,7 @@ func (x *DownloadSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DownloadSummary.ProtoReflect.Descriptor instead.
 func (*DownloadSummary) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{16}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *DownloadSummary) GetSize() int64 {
@@ -1620,7 +2335,7 @@ type DownloadResponse struct {
 
 func (x *DownloadResponse) Reset() {
 	*x = DownloadResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[17]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1632,7 +2347,7 @@ func (x *DownloadResponse) String() string {
 func (*DownloadResponse) ProtoMessage() {}
 
 func (x *DownloadResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[17]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1645,7 +2360,7 @@ func (x *DownloadResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DownloadResponse.ProtoReflect.Descriptor instead.
 func (*DownloadResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{17}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *DownloadResponse) GetPayload() isDownloadResponse_Payload {
@@ -1718,7 +2433,7 @@ type CreateUploadSessionRequest struct {
 
 func (x *CreateUploadSessionRequest) Reset() {
 	*x = CreateUploadSessionRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[18]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1730,7 +2445,7 @@ func (x *CreateUploadSessionRequest) String() string {
 func (*CreateUploadSessionRequest) ProtoMessage() {}
 
 func (x *CreateUploadSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[18]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1743,7 +2458,7 @@ func (x *CreateUploadSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateUploadSessionRequest.ProtoReflect.Descriptor instead.
 func (*CreateUploadSessionRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{18}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *CreateUploadSessionRequest) GetRequestId() string {
@@ -1802,7 +2517,7 @@ type UploadSession struct {
 
 func (x *UploadSession) Reset() {
 	*x = UploadSession{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[19]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1814,7 +2529,7 @@ func (x *UploadSession) String() string {
 func (*UploadSession) ProtoMessage() {}
 
 func (x *UploadSession) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[19]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1827,7 +2542,7 @@ func (x *UploadSession) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadSession.ProtoReflect.Descriptor instead.
 func (*UploadSession) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{19}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *UploadSession) GetUploadId() string {
@@ -1881,7 +2596,7 @@ type CreateUploadSessionResponse struct {
 
 func (x *CreateUploadSessionResponse) Reset() {
 	*x = CreateUploadSessionResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[20]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1893,7 +2608,7 @@ func (x *CreateUploadSessionResponse) String() string {
 func (*CreateUploadSessionResponse) ProtoMessage() {}
 
 func (x *CreateUploadSessionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[20]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1906,7 +2621,7 @@ func (x *CreateUploadSessionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateUploadSessionResponse.ProtoReflect.Descriptor instead.
 func (*CreateUploadSessionResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{20}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *CreateUploadSessionResponse) GetSession() *UploadSession {
@@ -1926,7 +2641,7 @@ type TransferUploadOpen struct {
 
 func (x *TransferUploadOpen) Reset() {
 	*x = TransferUploadOpen{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[21]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1938,7 +2653,7 @@ func (x *TransferUploadOpen) String() string {
 func (*TransferUploadOpen) ProtoMessage() {}
 
 func (x *TransferUploadOpen) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[21]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1951,7 +2666,7 @@ func (x *TransferUploadOpen) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TransferUploadOpen.ProtoReflect.Descriptor instead.
 func (*TransferUploadOpen) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{21}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *TransferUploadOpen) GetUploadId() string {
@@ -1979,7 +2694,7 @@ type TransferUploadChunk struct {
 
 func (x *TransferUploadChunk) Reset() {
 	*x = TransferUploadChunk{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[22]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1991,7 +2706,7 @@ func (x *TransferUploadChunk) String() string {
 func (*TransferUploadChunk) ProtoMessage() {}
 
 func (x *TransferUploadChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[22]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2004,7 +2719,7 @@ func (x *TransferUploadChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TransferUploadChunk.ProtoReflect.Descriptor instead.
 func (*TransferUploadChunk) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{22}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *TransferUploadChunk) GetOffset() int64 {
@@ -2036,7 +2751,7 @@ type TransferUploadFinish struct {
 
 func (x *TransferUploadFinish) Reset() {
 	*x = TransferUploadFinish{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[23]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2048,7 +2763,7 @@ func (x *TransferUploadFinish) String() string {
 func (*TransferUploadFinish) ProtoMessage() {}
 
 func (x *TransferUploadFinish) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[23]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2061,7 +2776,7 @@ func (x *TransferUploadFinish) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TransferUploadFinish.ProtoReflect.Descriptor instead.
 func (*TransferUploadFinish) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{23}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{30}
 }
 
 type TransferUploadRequest struct {
@@ -2078,7 +2793,7 @@ type TransferUploadRequest struct {
 
 func (x *TransferUploadRequest) Reset() {
 	*x = TransferUploadRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[24]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2090,7 +2805,7 @@ func (x *TransferUploadRequest) String() string {
 func (*TransferUploadRequest) ProtoMessage() {}
 
 func (x *TransferUploadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[24]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2103,7 +2818,7 @@ func (x *TransferUploadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TransferUploadRequest.ProtoReflect.Descriptor instead.
 func (*TransferUploadRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{24}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *TransferUploadRequest) GetPayload() isTransferUploadRequest_Payload {
@@ -2171,7 +2886,7 @@ type TransferUploadReady struct {
 
 func (x *TransferUploadReady) Reset() {
 	*x = TransferUploadReady{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[25]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2183,7 +2898,7 @@ func (x *TransferUploadReady) String() string {
 func (*TransferUploadReady) ProtoMessage() {}
 
 func (x *TransferUploadReady) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[25]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2196,7 +2911,7 @@ func (x *TransferUploadReady) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TransferUploadReady.ProtoReflect.Descriptor instead.
 func (*TransferUploadReady) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{25}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *TransferUploadReady) GetCommittedOffset() int64 {
@@ -2215,7 +2930,7 @@ type TransferUploadCheckpoint struct {
 
 func (x *TransferUploadCheckpoint) Reset() {
 	*x = TransferUploadCheckpoint{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[26]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2227,7 +2942,7 @@ func (x *TransferUploadCheckpoint) String() string {
 func (*TransferUploadCheckpoint) ProtoMessage() {}
 
 func (x *TransferUploadCheckpoint) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[26]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2240,7 +2955,7 @@ func (x *TransferUploadCheckpoint) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TransferUploadCheckpoint.ProtoReflect.Descriptor instead.
 func (*TransferUploadCheckpoint) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{26}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *TransferUploadCheckpoint) GetCommittedOffset() int64 {
@@ -2259,7 +2974,7 @@ type TransferUploadComplete struct {
 
 func (x *TransferUploadComplete) Reset() {
 	*x = TransferUploadComplete{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[27]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2271,7 +2986,7 @@ func (x *TransferUploadComplete) String() string {
 func (*TransferUploadComplete) ProtoMessage() {}
 
 func (x *TransferUploadComplete) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[27]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2284,7 +2999,7 @@ func (x *TransferUploadComplete) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TransferUploadComplete.ProtoReflect.Descriptor instead.
 func (*TransferUploadComplete) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{27}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *TransferUploadComplete) GetResult() *UploadResponse {
@@ -2308,7 +3023,7 @@ type TransferUploadResponse struct {
 
 func (x *TransferUploadResponse) Reset() {
 	*x = TransferUploadResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[28]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2320,7 +3035,7 @@ func (x *TransferUploadResponse) String() string {
 func (*TransferUploadResponse) ProtoMessage() {}
 
 func (x *TransferUploadResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[28]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2333,7 +3048,7 @@ func (x *TransferUploadResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TransferUploadResponse.ProtoReflect.Descriptor instead.
 func (*TransferUploadResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{28}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *TransferUploadResponse) GetPayload() isTransferUploadResponse_Payload {
@@ -2401,7 +3116,7 @@ type GetUploadSessionRequest struct {
 
 func (x *GetUploadSessionRequest) Reset() {
 	*x = GetUploadSessionRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[29]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2413,7 +3128,7 @@ func (x *GetUploadSessionRequest) String() string {
 func (*GetUploadSessionRequest) ProtoMessage() {}
 
 func (x *GetUploadSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[29]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2426,7 +3141,7 @@ func (x *GetUploadSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetUploadSessionRequest.ProtoReflect.Descriptor instead.
 func (*GetUploadSessionRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{29}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *GetUploadSessionRequest) GetUploadId() string {
@@ -2445,7 +3160,7 @@ type GetUploadSessionResponse struct {
 
 func (x *GetUploadSessionResponse) Reset() {
 	*x = GetUploadSessionResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[30]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2457,7 +3172,7 @@ func (x *GetUploadSessionResponse) String() string {
 func (*GetUploadSessionResponse) ProtoMessage() {}
 
 func (x *GetUploadSessionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[30]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2470,7 +3185,7 @@ func (x *GetUploadSessionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetUploadSessionResponse.ProtoReflect.Descriptor instead.
 func (*GetUploadSessionResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{30}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *GetUploadSessionResponse) GetSession() *UploadSession {
@@ -2489,7 +3204,7 @@ type AbortUploadSessionRequest struct {
 
 func (x *AbortUploadSessionRequest) Reset() {
 	*x = AbortUploadSessionRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[31]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2501,7 +3216,7 @@ func (x *AbortUploadSessionRequest) String() string {
 func (*AbortUploadSessionRequest) ProtoMessage() {}
 
 func (x *AbortUploadSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[31]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2514,7 +3229,7 @@ func (x *AbortUploadSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AbortUploadSessionRequest.ProtoReflect.Descriptor instead.
 func (*AbortUploadSessionRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{31}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *AbortUploadSessionRequest) GetUploadId() string {
@@ -2533,7 +3248,7 @@ type AbortUploadSessionResponse struct {
 
 func (x *AbortUploadSessionResponse) Reset() {
 	*x = AbortUploadSessionResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[32]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2545,7 +3260,7 @@ func (x *AbortUploadSessionResponse) String() string {
 func (*AbortUploadSessionResponse) ProtoMessage() {}
 
 func (x *AbortUploadSessionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[32]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2558,7 +3273,7 @@ func (x *AbortUploadSessionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AbortUploadSessionResponse.ProtoReflect.Descriptor instead.
 func (*AbortUploadSessionResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{32}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *AbortUploadSessionResponse) GetSession() *UploadSession {
@@ -2580,7 +3295,7 @@ type DownloadRangeRequest struct {
 
 func (x *DownloadRangeRequest) Reset() {
 	*x = DownloadRangeRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[33]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2592,7 +3307,7 @@ func (x *DownloadRangeRequest) String() string {
 func (*DownloadRangeRequest) ProtoMessage() {}
 
 func (x *DownloadRangeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[33]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2605,7 +3320,7 @@ func (x *DownloadRangeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DownloadRangeRequest.ProtoReflect.Descriptor instead.
 func (*DownloadRangeRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{33}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *DownloadRangeRequest) GetPath() string {
@@ -2647,7 +3362,7 @@ type DownloadRangeMetadata struct {
 
 func (x *DownloadRangeMetadata) Reset() {
 	*x = DownloadRangeMetadata{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[34]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2659,7 +3374,7 @@ func (x *DownloadRangeMetadata) String() string {
 func (*DownloadRangeMetadata) ProtoMessage() {}
 
 func (x *DownloadRangeMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[34]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2672,7 +3387,7 @@ func (x *DownloadRangeMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DownloadRangeMetadata.ProtoReflect.Descriptor instead.
 func (*DownloadRangeMetadata) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{34}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *DownloadRangeMetadata) GetFile() *FileInfo {
@@ -2707,7 +3422,7 @@ type DownloadRangeChunk struct {
 
 func (x *DownloadRangeChunk) Reset() {
 	*x = DownloadRangeChunk{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[35]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2719,7 +3434,7 @@ func (x *DownloadRangeChunk) String() string {
 func (*DownloadRangeChunk) ProtoMessage() {}
 
 func (x *DownloadRangeChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[35]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2732,7 +3447,7 @@ func (x *DownloadRangeChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DownloadRangeChunk.ProtoReflect.Descriptor instead.
 func (*DownloadRangeChunk) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{35}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *DownloadRangeChunk) GetOffset() int64 {
@@ -2767,7 +3482,7 @@ type DownloadRangeSummary struct {
 
 func (x *DownloadRangeSummary) Reset() {
 	*x = DownloadRangeSummary{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[36]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2779,7 +3494,7 @@ func (x *DownloadRangeSummary) String() string {
 func (*DownloadRangeSummary) ProtoMessage() {}
 
 func (x *DownloadRangeSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[36]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2792,7 +3507,7 @@ func (x *DownloadRangeSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DownloadRangeSummary.ProtoReflect.Descriptor instead.
 func (*DownloadRangeSummary) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{36}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *DownloadRangeSummary) GetSize() int64 {
@@ -2830,7 +3545,7 @@ type DownloadRangeResponse struct {
 
 func (x *DownloadRangeResponse) Reset() {
 	*x = DownloadRangeResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[37]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2842,7 +3557,7 @@ func (x *DownloadRangeResponse) String() string {
 func (*DownloadRangeResponse) ProtoMessage() {}
 
 func (x *DownloadRangeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[37]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2855,7 +3570,7 @@ func (x *DownloadRangeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DownloadRangeResponse.ProtoReflect.Descriptor instead.
 func (*DownloadRangeResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{37}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *DownloadRangeResponse) GetPayload() isDownloadRangeResponse_Payload {
@@ -2924,7 +3639,7 @@ type FileTransferError struct {
 
 func (x *FileTransferError) Reset() {
 	*x = FileTransferError{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[38]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2936,7 +3651,7 @@ func (x *FileTransferError) String() string {
 func (*FileTransferError) ProtoMessage() {}
 
 func (x *FileTransferError) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[38]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2949,7 +3664,7 @@ func (x *FileTransferError) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileTransferError.ProtoReflect.Descriptor instead.
 func (*FileTransferError) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{38}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *FileTransferError) GetReason() FileTransferErrorReason {
@@ -2976,7 +3691,7 @@ type RemoveRequest struct {
 
 func (x *RemoveRequest) Reset() {
 	*x = RemoveRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[39]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2988,7 +3703,7 @@ func (x *RemoveRequest) String() string {
 func (*RemoveRequest) ProtoMessage() {}
 
 func (x *RemoveRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[39]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3001,7 +3716,7 @@ func (x *RemoveRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveRequest.ProtoReflect.Descriptor instead.
 func (*RemoveRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{39}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *RemoveRequest) GetPath() string {
@@ -3027,7 +3742,7 @@ type RemoveResponse struct {
 
 func (x *RemoveResponse) Reset() {
 	*x = RemoveResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[40]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3039,7 +3754,7 @@ func (x *RemoveResponse) String() string {
 func (*RemoveResponse) ProtoMessage() {}
 
 func (x *RemoveResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[40]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3052,7 +3767,7 @@ func (x *RemoveResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveResponse.ProtoReflect.Descriptor instead.
 func (*RemoveResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{40}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *RemoveResponse) GetPath() string {
@@ -3073,7 +3788,7 @@ type MoveRequest struct {
 
 func (x *MoveRequest) Reset() {
 	*x = MoveRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[41]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3085,7 +3800,7 @@ func (x *MoveRequest) String() string {
 func (*MoveRequest) ProtoMessage() {}
 
 func (x *MoveRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[41]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3098,7 +3813,7 @@ func (x *MoveRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MoveRequest.ProtoReflect.Descriptor instead.
 func (*MoveRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{41}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *MoveRequest) GetSource() string {
@@ -3131,7 +3846,7 @@ type MoveResponse struct {
 
 func (x *MoveResponse) Reset() {
 	*x = MoveResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[42]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3143,7 +3858,7 @@ func (x *MoveResponse) String() string {
 func (*MoveResponse) ProtoMessage() {}
 
 func (x *MoveResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[42]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3156,7 +3871,7 @@ func (x *MoveResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MoveResponse.ProtoReflect.Descriptor instead.
 func (*MoveResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{42}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *MoveResponse) GetFile() *FileInfo {
@@ -3176,7 +3891,7 @@ type ChmodRequest struct {
 
 func (x *ChmodRequest) Reset() {
 	*x = ChmodRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[43]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3188,7 +3903,7 @@ func (x *ChmodRequest) String() string {
 func (*ChmodRequest) ProtoMessage() {}
 
 func (x *ChmodRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[43]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3201,7 +3916,7 @@ func (x *ChmodRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChmodRequest.ProtoReflect.Descriptor instead.
 func (*ChmodRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{43}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *ChmodRequest) GetPath() string {
@@ -3227,7 +3942,7 @@ type ChmodResponse struct {
 
 func (x *ChmodResponse) Reset() {
 	*x = ChmodResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[44]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3239,7 +3954,7 @@ func (x *ChmodResponse) String() string {
 func (*ChmodResponse) ProtoMessage() {}
 
 func (x *ChmodResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[44]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3252,7 +3967,7 @@ func (x *ChmodResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChmodResponse.ProtoReflect.Descriptor instead.
 func (*ChmodResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{44}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *ChmodResponse) GetFile() *FileInfo {
@@ -3273,7 +3988,7 @@ type MkdirRequest struct {
 
 func (x *MkdirRequest) Reset() {
 	*x = MkdirRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[45]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3285,7 +4000,7 @@ func (x *MkdirRequest) String() string {
 func (*MkdirRequest) ProtoMessage() {}
 
 func (x *MkdirRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[45]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3298,7 +4013,7 @@ func (x *MkdirRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MkdirRequest.ProtoReflect.Descriptor instead.
 func (*MkdirRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{45}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *MkdirRequest) GetPath() string {
@@ -3331,7 +4046,7 @@ type MkdirResponse struct {
 
 func (x *MkdirResponse) Reset() {
 	*x = MkdirResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[46]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3343,7 +4058,7 @@ func (x *MkdirResponse) String() string {
 func (*MkdirResponse) ProtoMessage() {}
 
 func (x *MkdirResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[46]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3356,7 +4071,7 @@ func (x *MkdirResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MkdirResponse.ProtoReflect.Descriptor instead.
 func (*MkdirResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{46}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *MkdirResponse) GetFile() *FileInfo {
@@ -3399,7 +4114,7 @@ type ProcessInfo struct {
 
 func (x *ProcessInfo) Reset() {
 	*x = ProcessInfo{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[47]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3411,7 +4126,7 @@ func (x *ProcessInfo) String() string {
 func (*ProcessInfo) ProtoMessage() {}
 
 func (x *ProcessInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[47]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3424,7 +4139,7 @@ func (x *ProcessInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessInfo.ProtoReflect.Descriptor instead.
 func (*ProcessInfo) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{47}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *ProcessInfo) GetId() string {
@@ -3574,7 +4289,7 @@ type ProcessReference struct {
 
 func (x *ProcessReference) Reset() {
 	*x = ProcessReference{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[48]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3586,7 +4301,7 @@ func (x *ProcessReference) String() string {
 func (*ProcessReference) ProtoMessage() {}
 
 func (x *ProcessReference) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[48]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3599,7 +4314,7 @@ func (x *ProcessReference) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessReference.ProtoReflect.Descriptor instead.
 func (*ProcessReference) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{48}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *ProcessReference) GetValue() isProcessReference_Value {
@@ -3679,7 +4394,7 @@ type StartProcessRequest struct {
 
 func (x *StartProcessRequest) Reset() {
 	*x = StartProcessRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[49]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3691,7 +4406,7 @@ func (x *StartProcessRequest) String() string {
 func (*StartProcessRequest) ProtoMessage() {}
 
 func (x *StartProcessRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[49]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3704,7 +4419,7 @@ func (x *StartProcessRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartProcessRequest.ProtoReflect.Descriptor instead.
 func (*StartProcessRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{49}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *StartProcessRequest) GetName() string {
@@ -3772,7 +4487,7 @@ type StartProcessResponse struct {
 
 func (x *StartProcessResponse) Reset() {
 	*x = StartProcessResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[50]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3784,7 +4499,7 @@ func (x *StartProcessResponse) String() string {
 func (*StartProcessResponse) ProtoMessage() {}
 
 func (x *StartProcessResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[50]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3797,7 +4512,7 @@ func (x *StartProcessResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartProcessResponse.ProtoReflect.Descriptor instead.
 func (*StartProcessResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{50}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *StartProcessResponse) GetProcess() *ProcessInfo {
@@ -3820,7 +4535,7 @@ type ProcessTemplateSummary struct {
 
 func (x *ProcessTemplateSummary) Reset() {
 	*x = ProcessTemplateSummary{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[51]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3832,7 +4547,7 @@ func (x *ProcessTemplateSummary) String() string {
 func (*ProcessTemplateSummary) ProtoMessage() {}
 
 func (x *ProcessTemplateSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[51]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3845,7 +4560,7 @@ func (x *ProcessTemplateSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessTemplateSummary.ProtoReflect.Descriptor instead.
 func (*ProcessTemplateSummary) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{51}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *ProcessTemplateSummary) GetName() string {
@@ -3894,7 +4609,7 @@ type ProcessTemplate struct {
 
 func (x *ProcessTemplate) Reset() {
 	*x = ProcessTemplate{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[52]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3906,7 +4621,7 @@ func (x *ProcessTemplate) String() string {
 func (*ProcessTemplate) ProtoMessage() {}
 
 func (x *ProcessTemplate) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[52]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3919,7 +4634,7 @@ func (x *ProcessTemplate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessTemplate.ProtoReflect.Descriptor instead.
 func (*ProcessTemplate) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{52}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *ProcessTemplate) GetSummary() *ProcessTemplateSummary {
@@ -3944,7 +4659,7 @@ type ListProcessTemplatesRequest struct {
 
 func (x *ListProcessTemplatesRequest) Reset() {
 	*x = ListProcessTemplatesRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[53]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3956,7 +4671,7 @@ func (x *ListProcessTemplatesRequest) String() string {
 func (*ListProcessTemplatesRequest) ProtoMessage() {}
 
 func (x *ListProcessTemplatesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[53]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3969,7 +4684,7 @@ func (x *ListProcessTemplatesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProcessTemplatesRequest.ProtoReflect.Descriptor instead.
 func (*ListProcessTemplatesRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{53}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{60}
 }
 
 type ListProcessTemplatesResponse struct {
@@ -3981,7 +4696,7 @@ type ListProcessTemplatesResponse struct {
 
 func (x *ListProcessTemplatesResponse) Reset() {
 	*x = ListProcessTemplatesResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[54]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3993,7 +4708,7 @@ func (x *ListProcessTemplatesResponse) String() string {
 func (*ListProcessTemplatesResponse) ProtoMessage() {}
 
 func (x *ListProcessTemplatesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[54]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4006,7 +4721,7 @@ func (x *ListProcessTemplatesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProcessTemplatesResponse.ProtoReflect.Descriptor instead.
 func (*ListProcessTemplatesResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{54}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *ListProcessTemplatesResponse) GetTemplates() []*ProcessTemplateSummary {
@@ -4025,7 +4740,7 @@ type GetProcessTemplateRequest struct {
 
 func (x *GetProcessTemplateRequest) Reset() {
 	*x = GetProcessTemplateRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[55]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4037,7 +4752,7 @@ func (x *GetProcessTemplateRequest) String() string {
 func (*GetProcessTemplateRequest) ProtoMessage() {}
 
 func (x *GetProcessTemplateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[55]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4050,7 +4765,7 @@ func (x *GetProcessTemplateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetProcessTemplateRequest.ProtoReflect.Descriptor instead.
 func (*GetProcessTemplateRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{55}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *GetProcessTemplateRequest) GetName() string {
@@ -4069,7 +4784,7 @@ type GetProcessTemplateResponse struct {
 
 func (x *GetProcessTemplateResponse) Reset() {
 	*x = GetProcessTemplateResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[56]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4081,7 +4796,7 @@ func (x *GetProcessTemplateResponse) String() string {
 func (*GetProcessTemplateResponse) ProtoMessage() {}
 
 func (x *GetProcessTemplateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[56]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4094,7 +4809,7 @@ func (x *GetProcessTemplateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetProcessTemplateResponse.ProtoReflect.Descriptor instead.
 func (*GetProcessTemplateResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{56}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *GetProcessTemplateResponse) GetTemplate() *ProcessTemplate {
@@ -4120,7 +4835,7 @@ type StartProcessFromTemplateRequest struct {
 
 func (x *StartProcessFromTemplateRequest) Reset() {
 	*x = StartProcessFromTemplateRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[57]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4132,7 +4847,7 @@ func (x *StartProcessFromTemplateRequest) String() string {
 func (*StartProcessFromTemplateRequest) ProtoMessage() {}
 
 func (x *StartProcessFromTemplateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[57]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4145,7 +4860,7 @@ func (x *StartProcessFromTemplateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartProcessFromTemplateRequest.ProtoReflect.Descriptor instead.
 func (*StartProcessFromTemplateRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{57}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *StartProcessFromTemplateRequest) GetTemplateName() string {
@@ -4192,7 +4907,7 @@ type StartProcessFromTemplateResponse struct {
 
 func (x *StartProcessFromTemplateResponse) Reset() {
 	*x = StartProcessFromTemplateResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[58]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4204,7 +4919,7 @@ func (x *StartProcessFromTemplateResponse) String() string {
 func (*StartProcessFromTemplateResponse) ProtoMessage() {}
 
 func (x *StartProcessFromTemplateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[58]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4217,7 +4932,7 @@ func (x *StartProcessFromTemplateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartProcessFromTemplateResponse.ProtoReflect.Descriptor instead.
 func (*StartProcessFromTemplateResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{58}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *StartProcessFromTemplateResponse) GetProcess() *ProcessInfo {
@@ -4237,7 +4952,7 @@ type ListProcessesRequest struct {
 
 func (x *ListProcessesRequest) Reset() {
 	*x = ListProcessesRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[59]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4249,7 +4964,7 @@ func (x *ListProcessesRequest) String() string {
 func (*ListProcessesRequest) ProtoMessage() {}
 
 func (x *ListProcessesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[59]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4262,7 +4977,7 @@ func (x *ListProcessesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProcessesRequest.ProtoReflect.Descriptor instead.
 func (*ListProcessesRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{59}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *ListProcessesRequest) GetAll() bool {
@@ -4281,7 +4996,7 @@ type ListProcessesResponse struct {
 
 func (x *ListProcessesResponse) Reset() {
 	*x = ListProcessesResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[60]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4293,7 +5008,7 @@ func (x *ListProcessesResponse) String() string {
 func (*ListProcessesResponse) ProtoMessage() {}
 
 func (x *ListProcessesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[60]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4306,7 +5021,7 @@ func (x *ListProcessesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProcessesResponse.ProtoReflect.Descriptor instead.
 func (*ListProcessesResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{60}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *ListProcessesResponse) GetProcesses() []*ProcessInfo {
@@ -4328,7 +5043,7 @@ type SignalProcessRequest struct {
 
 func (x *SignalProcessRequest) Reset() {
 	*x = SignalProcessRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[61]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4340,7 +5055,7 @@ func (x *SignalProcessRequest) String() string {
 func (*SignalProcessRequest) ProtoMessage() {}
 
 func (x *SignalProcessRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[61]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4353,7 +5068,7 @@ func (x *SignalProcessRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SignalProcessRequest.ProtoReflect.Descriptor instead.
 func (*SignalProcessRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{61}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *SignalProcessRequest) GetProcess() *ProcessReference {
@@ -4386,7 +5101,7 @@ type SignalProcessResponse struct {
 
 func (x *SignalProcessResponse) Reset() {
 	*x = SignalProcessResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[62]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4398,7 +5113,7 @@ func (x *SignalProcessResponse) String() string {
 func (*SignalProcessResponse) ProtoMessage() {}
 
 func (x *SignalProcessResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[62]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4411,7 +5126,7 @@ func (x *SignalProcessResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SignalProcessResponse.ProtoReflect.Descriptor instead.
 func (*SignalProcessResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{62}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *SignalProcessResponse) GetProcess() *ProcessInfo {
@@ -4440,7 +5155,7 @@ type ObserveProcessLogsRequest struct {
 
 func (x *ObserveProcessLogsRequest) Reset() {
 	*x = ObserveProcessLogsRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[63]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4452,7 +5167,7 @@ func (x *ObserveProcessLogsRequest) String() string {
 func (*ObserveProcessLogsRequest) ProtoMessage() {}
 
 func (x *ObserveProcessLogsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[63]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4465,7 +5180,7 @@ func (x *ObserveProcessLogsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ObserveProcessLogsRequest.ProtoReflect.Descriptor instead.
 func (*ObserveProcessLogsRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{63}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *ObserveProcessLogsRequest) GetProcessId() string {
@@ -4550,7 +5265,7 @@ type ProcessLogHeader struct {
 
 func (x *ProcessLogHeader) Reset() {
 	*x = ProcessLogHeader{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[64]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4562,7 +5277,7 @@ func (x *ProcessLogHeader) String() string {
 func (*ProcessLogHeader) ProtoMessage() {}
 
 func (x *ProcessLogHeader) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[64]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4575,7 +5290,7 @@ func (x *ProcessLogHeader) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessLogHeader.ProtoReflect.Descriptor instead.
 func (*ProcessLogHeader) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{64}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *ProcessLogHeader) GetProcessId() string {
@@ -4666,7 +5381,7 @@ type ProcessLogChunk struct {
 
 func (x *ProcessLogChunk) Reset() {
 	*x = ProcessLogChunk{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[65]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4678,7 +5393,7 @@ func (x *ProcessLogChunk) String() string {
 func (*ProcessLogChunk) ProtoMessage() {}
 
 func (x *ProcessLogChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[65]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4691,7 +5406,7 @@ func (x *ProcessLogChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessLogChunk.ProtoReflect.Descriptor instead.
 func (*ProcessLogChunk) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{65}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *ProcessLogChunk) GetOffset() uint64 {
@@ -4767,7 +5482,7 @@ type ProcessLogCheckpoint struct {
 
 func (x *ProcessLogCheckpoint) Reset() {
 	*x = ProcessLogCheckpoint{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[66]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4779,7 +5494,7 @@ func (x *ProcessLogCheckpoint) String() string {
 func (*ProcessLogCheckpoint) ProtoMessage() {}
 
 func (x *ProcessLogCheckpoint) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[66]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4792,7 +5507,7 @@ func (x *ProcessLogCheckpoint) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessLogCheckpoint.ProtoReflect.Descriptor instead.
 func (*ProcessLogCheckpoint) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{66}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *ProcessLogCheckpoint) GetNextOffset() uint64 {
@@ -4823,7 +5538,7 @@ type ProcessLogEnd struct {
 
 func (x *ProcessLogEnd) Reset() {
 	*x = ProcessLogEnd{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[67]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4835,7 +5550,7 @@ func (x *ProcessLogEnd) String() string {
 func (*ProcessLogEnd) ProtoMessage() {}
 
 func (x *ProcessLogEnd) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[67]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4848,7 +5563,7 @@ func (x *ProcessLogEnd) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessLogEnd.ProtoReflect.Descriptor instead.
 func (*ProcessLogEnd) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{67}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *ProcessLogEnd) GetNextOffset() uint64 {
@@ -4908,7 +5623,7 @@ type ObserveProcessLogsResponse struct {
 
 func (x *ObserveProcessLogsResponse) Reset() {
 	*x = ObserveProcessLogsResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[68]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4920,7 +5635,7 @@ func (x *ObserveProcessLogsResponse) String() string {
 func (*ObserveProcessLogsResponse) ProtoMessage() {}
 
 func (x *ObserveProcessLogsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[68]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4933,7 +5648,7 @@ func (x *ObserveProcessLogsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ObserveProcessLogsResponse.ProtoReflect.Descriptor instead.
 func (*ObserveProcessLogsResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{68}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *ObserveProcessLogsResponse) GetPayload() isObserveProcessLogsResponse_Payload {
@@ -5016,7 +5731,7 @@ type ProcessInputOpen struct {
 
 func (x *ProcessInputOpen) Reset() {
 	*x = ProcessInputOpen{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[69]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5028,7 +5743,7 @@ func (x *ProcessInputOpen) String() string {
 func (*ProcessInputOpen) ProtoMessage() {}
 
 func (x *ProcessInputOpen) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[69]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5041,7 +5756,7 @@ func (x *ProcessInputOpen) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessInputOpen.ProtoReflect.Descriptor instead.
 func (*ProcessInputOpen) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{69}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *ProcessInputOpen) GetProcess() *ProcessReference {
@@ -5062,7 +5777,7 @@ type ProcessInputData struct {
 
 func (x *ProcessInputData) Reset() {
 	*x = ProcessInputData{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[70]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5074,7 +5789,7 @@ func (x *ProcessInputData) String() string {
 func (*ProcessInputData) ProtoMessage() {}
 
 func (x *ProcessInputData) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[70]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5087,7 +5802,7 @@ func (x *ProcessInputData) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessInputData.ProtoReflect.Descriptor instead.
 func (*ProcessInputData) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{70}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *ProcessInputData) GetSequence() uint64 {
@@ -5114,7 +5829,7 @@ type TerminalSize struct {
 
 func (x *TerminalSize) Reset() {
 	*x = TerminalSize{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[71]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5126,7 +5841,7 @@ func (x *TerminalSize) String() string {
 func (*TerminalSize) ProtoMessage() {}
 
 func (x *TerminalSize) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[71]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5139,7 +5854,7 @@ func (x *TerminalSize) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TerminalSize.ProtoReflect.Descriptor instead.
 func (*TerminalSize) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{71}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{78}
 }
 
 func (x *TerminalSize) GetRows() uint32 {
@@ -5167,7 +5882,7 @@ type ProcessTerminalResize struct {
 
 func (x *ProcessTerminalResize) Reset() {
 	*x = ProcessTerminalResize{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[72]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5179,7 +5894,7 @@ func (x *ProcessTerminalResize) String() string {
 func (*ProcessTerminalResize) ProtoMessage() {}
 
 func (x *ProcessTerminalResize) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[72]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5192,7 +5907,7 @@ func (x *ProcessTerminalResize) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessTerminalResize.ProtoReflect.Descriptor instead.
 func (*ProcessTerminalResize) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{72}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *ProcessTerminalResize) GetSequence() uint64 {
@@ -5217,7 +5932,7 @@ type ProcessInputClose struct {
 
 func (x *ProcessInputClose) Reset() {
 	*x = ProcessInputClose{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[73]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5229,7 +5944,7 @@ func (x *ProcessInputClose) String() string {
 func (*ProcessInputClose) ProtoMessage() {}
 
 func (x *ProcessInputClose) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[73]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5242,7 +5957,7 @@ func (x *ProcessInputClose) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessInputClose.ProtoReflect.Descriptor instead.
 func (*ProcessInputClose) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{73}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{80}
 }
 
 type ProcessInputDetach struct {
@@ -5253,7 +5968,7 @@ type ProcessInputDetach struct {
 
 func (x *ProcessInputDetach) Reset() {
 	*x = ProcessInputDetach{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[74]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5265,7 +5980,7 @@ func (x *ProcessInputDetach) String() string {
 func (*ProcessInputDetach) ProtoMessage() {}
 
 func (x *ProcessInputDetach) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[74]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5278,7 +5993,7 @@ func (x *ProcessInputDetach) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessInputDetach.ProtoReflect.Descriptor instead.
 func (*ProcessInputDetach) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{74}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{81}
 }
 
 type StreamProcessInputRequest struct {
@@ -5297,7 +6012,7 @@ type StreamProcessInputRequest struct {
 
 func (x *StreamProcessInputRequest) Reset() {
 	*x = StreamProcessInputRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[75]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5309,7 +6024,7 @@ func (x *StreamProcessInputRequest) String() string {
 func (*StreamProcessInputRequest) ProtoMessage() {}
 
 func (x *StreamProcessInputRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[75]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5322,7 +6037,7 @@ func (x *StreamProcessInputRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamProcessInputRequest.ProtoReflect.Descriptor instead.
 func (*StreamProcessInputRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{75}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *StreamProcessInputRequest) GetPayload() isStreamProcessInputRequest_Payload {
@@ -5424,7 +6139,7 @@ type ProcessInputOpened struct {
 
 func (x *ProcessInputOpened) Reset() {
 	*x = ProcessInputOpened{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[76]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5436,7 +6151,7 @@ func (x *ProcessInputOpened) String() string {
 func (*ProcessInputOpened) ProtoMessage() {}
 
 func (x *ProcessInputOpened) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[76]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5449,7 +6164,7 @@ func (x *ProcessInputOpened) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessInputOpened.ProtoReflect.Descriptor instead.
 func (*ProcessInputOpened) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{76}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{83}
 }
 
 func (x *ProcessInputOpened) GetProcess() *ProcessInfo {
@@ -5469,7 +6184,7 @@ type ProcessInputAck struct {
 
 func (x *ProcessInputAck) Reset() {
 	*x = ProcessInputAck{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[77]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[84]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5481,7 +6196,7 @@ func (x *ProcessInputAck) String() string {
 func (*ProcessInputAck) ProtoMessage() {}
 
 func (x *ProcessInputAck) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[77]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[84]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5494,7 +6209,7 @@ func (x *ProcessInputAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessInputAck.ProtoReflect.Descriptor instead.
 func (*ProcessInputAck) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{77}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{84}
 }
 
 func (x *ProcessInputAck) GetSequence() uint64 {
@@ -5521,7 +6236,7 @@ type ProcessTerminalResizeAck struct {
 
 func (x *ProcessTerminalResizeAck) Reset() {
 	*x = ProcessTerminalResizeAck{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[78]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[85]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5533,7 +6248,7 @@ func (x *ProcessTerminalResizeAck) String() string {
 func (*ProcessTerminalResizeAck) ProtoMessage() {}
 
 func (x *ProcessTerminalResizeAck) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[78]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[85]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5546,7 +6261,7 @@ func (x *ProcessTerminalResizeAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessTerminalResizeAck.ProtoReflect.Descriptor instead.
 func (*ProcessTerminalResizeAck) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{78}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{85}
 }
 
 func (x *ProcessTerminalResizeAck) GetSequence() uint64 {
@@ -5573,7 +6288,7 @@ type ProcessInputEnd struct {
 
 func (x *ProcessInputEnd) Reset() {
 	*x = ProcessInputEnd{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[79]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[86]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5585,7 +6300,7 @@ func (x *ProcessInputEnd) String() string {
 func (*ProcessInputEnd) ProtoMessage() {}
 
 func (x *ProcessInputEnd) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[79]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[86]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5598,7 +6313,7 @@ func (x *ProcessInputEnd) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessInputEnd.ProtoReflect.Descriptor instead.
 func (*ProcessInputEnd) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{79}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{86}
 }
 
 func (x *ProcessInputEnd) GetReason() ProcessInputEndReason {
@@ -5630,7 +6345,7 @@ type StreamProcessInputResponse struct {
 
 func (x *StreamProcessInputResponse) Reset() {
 	*x = StreamProcessInputResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[80]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[87]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5642,7 +6357,7 @@ func (x *StreamProcessInputResponse) String() string {
 func (*StreamProcessInputResponse) ProtoMessage() {}
 
 func (x *StreamProcessInputResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[80]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[87]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5655,7 +6370,7 @@ func (x *StreamProcessInputResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamProcessInputResponse.ProtoReflect.Descriptor instead.
 func (*StreamProcessInputResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{80}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{87}
 }
 
 func (x *StreamProcessInputResponse) GetPayload() isStreamProcessInputResponse_Payload {
@@ -5738,7 +6453,7 @@ type DeleteProcessRequest struct {
 
 func (x *DeleteProcessRequest) Reset() {
 	*x = DeleteProcessRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[81]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[88]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5750,7 +6465,7 @@ func (x *DeleteProcessRequest) String() string {
 func (*DeleteProcessRequest) ProtoMessage() {}
 
 func (x *DeleteProcessRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[81]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[88]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5763,7 +6478,7 @@ func (x *DeleteProcessRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteProcessRequest.ProtoReflect.Descriptor instead.
 func (*DeleteProcessRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{81}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{88}
 }
 
 func (x *DeleteProcessRequest) GetProcess() *ProcessReference {
@@ -5783,7 +6498,7 @@ type DeleteProcessResponse struct {
 
 func (x *DeleteProcessResponse) Reset() {
 	*x = DeleteProcessResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[82]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[89]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5795,7 +6510,7 @@ func (x *DeleteProcessResponse) String() string {
 func (*DeleteProcessResponse) ProtoMessage() {}
 
 func (x *DeleteProcessResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[82]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[89]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5808,7 +6523,7 @@ func (x *DeleteProcessResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteProcessResponse.ProtoReflect.Descriptor instead.
 func (*DeleteProcessResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{82}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{89}
 }
 
 func (x *DeleteProcessResponse) GetProcess() *ProcessInfo {
@@ -5831,7 +6546,7 @@ type ProcessSelector struct {
 
 func (x *ProcessSelector) Reset() {
 	*x = ProcessSelector{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[83]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[90]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5843,7 +6558,7 @@ func (x *ProcessSelector) String() string {
 func (*ProcessSelector) ProtoMessage() {}
 
 func (x *ProcessSelector) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[83]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[90]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5856,7 +6571,7 @@ func (x *ProcessSelector) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessSelector.ProtoReflect.Descriptor instead.
 func (*ProcessSelector) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{83}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{90}
 }
 
 func (x *ProcessSelector) GetValue() isProcessSelector_Value {
@@ -5910,7 +6625,7 @@ type BatchDeleteProcessesRequest struct {
 
 func (x *BatchDeleteProcessesRequest) Reset() {
 	*x = BatchDeleteProcessesRequest{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[84]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[91]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5922,7 +6637,7 @@ func (x *BatchDeleteProcessesRequest) String() string {
 func (*BatchDeleteProcessesRequest) ProtoMessage() {}
 
 func (x *BatchDeleteProcessesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[84]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[91]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5935,7 +6650,7 @@ func (x *BatchDeleteProcessesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchDeleteProcessesRequest.ProtoReflect.Descriptor instead.
 func (*BatchDeleteProcessesRequest) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{84}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{91}
 }
 
 func (x *BatchDeleteProcessesRequest) GetSelectors() []*ProcessSelector {
@@ -5958,7 +6673,7 @@ type BatchDeleteSelectorResult struct {
 
 func (x *BatchDeleteSelectorResult) Reset() {
 	*x = BatchDeleteSelectorResult{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[85]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[92]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5970,7 +6685,7 @@ func (x *BatchDeleteSelectorResult) String() string {
 func (*BatchDeleteSelectorResult) ProtoMessage() {}
 
 func (x *BatchDeleteSelectorResult) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[85]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[92]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5983,7 +6698,7 @@ func (x *BatchDeleteSelectorResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchDeleteSelectorResult.ProtoReflect.Descriptor instead.
 func (*BatchDeleteSelectorResult) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{85}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{92}
 }
 
 func (x *BatchDeleteSelectorResult) GetSelectorIndex() uint32 {
@@ -6019,7 +6734,7 @@ type ProcessDeleteTarget struct {
 
 func (x *ProcessDeleteTarget) Reset() {
 	*x = ProcessDeleteTarget{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[86]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[93]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6031,7 +6746,7 @@ func (x *ProcessDeleteTarget) String() string {
 func (*ProcessDeleteTarget) ProtoMessage() {}
 
 func (x *ProcessDeleteTarget) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[86]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[93]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6044,7 +6759,7 @@ func (x *ProcessDeleteTarget) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessDeleteTarget.ProtoReflect.Descriptor instead.
 func (*ProcessDeleteTarget) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{86}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{93}
 }
 
 func (x *ProcessDeleteTarget) GetId() string {
@@ -6088,7 +6803,7 @@ type BatchDeleteProcessResult struct {
 
 func (x *BatchDeleteProcessResult) Reset() {
 	*x = BatchDeleteProcessResult{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[87]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[94]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6100,7 +6815,7 @@ func (x *BatchDeleteProcessResult) String() string {
 func (*BatchDeleteProcessResult) ProtoMessage() {}
 
 func (x *BatchDeleteProcessResult) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[87]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[94]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6113,7 +6828,7 @@ func (x *BatchDeleteProcessResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchDeleteProcessResult.ProtoReflect.Descriptor instead.
 func (*BatchDeleteProcessResult) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{87}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{94}
 }
 
 func (x *BatchDeleteProcessResult) GetProcess() *ProcessDeleteTarget {
@@ -6149,7 +6864,7 @@ type BatchDeleteProcessesResponse struct {
 
 func (x *BatchDeleteProcessesResponse) Reset() {
 	*x = BatchDeleteProcessesResponse{}
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[88]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[95]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6161,7 +6876,7 @@ func (x *BatchDeleteProcessesResponse) String() string {
 func (*BatchDeleteProcessesResponse) ProtoMessage() {}
 
 func (x *BatchDeleteProcessesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_remote_code_v1_remote_code_proto_msgTypes[88]
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[95]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6174,7 +6889,7 @@ func (x *BatchDeleteProcessesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchDeleteProcessesResponse.ProtoReflect.Descriptor instead.
 func (*BatchDeleteProcessesResponse) Descriptor() ([]byte, []int) {
-	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{88}
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{95}
 }
 
 func (x *BatchDeleteProcessesResponse) GetSelectors() []*BatchDeleteSelectorResult {
@@ -6196,7 +6911,7 @@ var File_remote_code_v1_remote_code_proto protoreflect.FileDescriptor
 const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	"\n" +
 	" remote/code/v1/remote_code.proto\x12\x0eremote.code.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x17google/rpc/status.proto\"\x10\n" +
-	"\x0eGetInfoRequest\"\xe4\x02\n" +
+	"\x0eGetInfoRequest\"\xb8\x03\n" +
 	"\x0fGetInfoResponse\x12-\n" +
 	"\x12controller_version\x18\x01 \x01(\tR\x11controllerVersion\x12\x1f\n" +
 	"\vapi_version\x18\x02 \x01(\tR\n" +
@@ -6205,7 +6920,61 @@ const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	"\x10max_upload_bytes\x18\x04 \x01(\x03R\x0emaxUploadBytes\x12#\n" +
 	"\rmax_processes\x18\x06 \x01(\rR\fmaxProcesses\x124\n" +
 	"\x16process_template_count\x18\a \x01(\rR\x14processTemplateCount\x12O\n" +
-	"\x0efile_transfers\x18\b \x01(\v2(.remote.code.v1.FileTransferCapabilitiesR\rfileTransfersJ\x04\b\x05\x10\x06\"\x8d\x02\n" +
+	"\x0efile_transfers\x18\b \x01(\v2(.remote.code.v1.FileTransferCapabilitiesR\rfileTransfers\x12R\n" +
+	"\x0fcontroller_logs\x18\t \x01(\v2).remote.code.v1.ControllerLogCapabilitiesR\x0econtrollerLogsJ\x04\b\x05\x10\x06\"\xab\x01\n" +
+	"\x19ControllerLogCapabilities\x12\x1c\n" +
+	"\tavailable\x18\x01 \x01(\bR\tavailable\x12%\n" +
+	"\x0eformat_version\x18\x02 \x01(\rR\rformatVersion\x12$\n" +
+	"\x0emax_tail_lines\x18\x03 \x01(\x04R\fmaxTailLines\x12#\n" +
+	"\rmax_observers\x18\x04 \x01(\rR\fmaxObservers\"z\n" +
+	"\x1cObserveControllerLogsRequest\x12\x18\n" +
+	"\x06offset\x18\x01 \x01(\x04H\x00R\x06offset\x12\x1f\n" +
+	"\n" +
+	"tail_lines\x18\x02 \x01(\x04H\x00R\ttailLines\x12\x16\n" +
+	"\x06follow\x18\x03 \x01(\bR\x06followB\a\n" +
+	"\x05start\"\xce\x02\n" +
+	"\x13ControllerLogHeader\x12\x17\n" +
+	"\aboot_id\x18\x01 \x01(\tR\x06bootId\x12'\n" +
+	"\x0fearliest_offset\x18\x02 \x01(\x04R\x0eearliestOffset\x12.\n" +
+	"\x13snapshot_end_offset\x18\x03 \x01(\x04R\x11snapshotEndOffset\x122\n" +
+	"\x15resolved_start_offset\x18\x04 \x01(\x04R\x13resolvedStartOffset\x12+\n" +
+	"\x11history_truncated\x18\x05 \x01(\bR\x10historyTruncated\x12%\n" +
+	"\x0etail_truncated\x18\x06 \x01(\bR\rtailTruncated\x12\x16\n" +
+	"\x06follow\x18\a \x01(\bR\x06follow\x12%\n" +
+	"\x0eformat_version\x18\b \x01(\rR\rformatVersion\"\xd2\x03\n" +
+	"\x12ControllerLogEntry\x12\x16\n" +
+	"\x06offset\x18\x01 \x01(\x04R\x06offset\x128\n" +
+	"\ttimestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x128\n" +
+	"\x05level\x18\x03 \x01(\x0e2\".remote.code.v1.ControllerLogLevelR\x05level\x12\x1c\n" +
+	"\tcomponent\x18\x04 \x01(\tR\tcomponent\x12\x14\n" +
+	"\x05event\x18\x05 \x01(\tR\x05event\x12\x18\n" +
+	"\amessage\x18\x06 \x01(\tR\amessage\x12F\n" +
+	"\x06fields\x18\a \x03(\v2..remote.code.v1.ControllerLogEntry.FieldsEntryR\x06fields\x12%\n" +
+	"\x0eline_truncated\x18\b \x01(\bR\rlineTruncated\x12\x17\n" +
+	"\aboot_id\x18\t \x01(\tR\x06bootId\x12\x1f\n" +
+	"\vnext_offset\x18\n" +
+	" \x01(\x04R\n" +
+	"nextOffset\x1a9\n" +
+	"\vFieldsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"c\n" +
+	"\x17ControllerLogCheckpoint\x12\x1f\n" +
+	"\vnext_offset\x18\x01 \x01(\x04R\n" +
+	"nextOffset\x12'\n" +
+	"\x0freplay_complete\x18\x02 \x01(\bR\x0ereplayComplete\"\x98\x01\n" +
+	"\x10ControllerLogEnd\x12\x1f\n" +
+	"\vnext_offset\x18\x01 \x01(\x04R\n" +
+	"nextOffset\x12>\n" +
+	"\x06reason\x18\x02 \x01(\x0e2&.remote.code.v1.ControllerLogEndReasonR\x06reason\x12#\n" +
+	"\rlogs_complete\x18\x03 \x01(\bR\flogsComplete\"\xa6\x02\n" +
+	"\x1dObserveControllerLogsResponse\x12=\n" +
+	"\x06header\x18\x01 \x01(\v2#.remote.code.v1.ControllerLogHeaderH\x00R\x06header\x12:\n" +
+	"\x05entry\x18\x02 \x01(\v2\".remote.code.v1.ControllerLogEntryH\x00R\x05entry\x12I\n" +
+	"\n" +
+	"checkpoint\x18\x03 \x01(\v2'.remote.code.v1.ControllerLogCheckpointH\x00R\n" +
+	"checkpoint\x124\n" +
+	"\x03end\x18\x04 \x01(\v2 .remote.code.v1.ControllerLogEndH\x00R\x03endB\t\n" +
+	"\apayload\"\x8d\x02\n" +
 	"\x18FileTransferCapabilities\x12)\n" +
 	"\x10resumable_upload\x18\x01 \x01(\bR\x0fresumableUpload\x12-\n" +
 	"\x12resumable_download\x18\x02 \x01(\bR\x11resumableDownload\x122\n" +
@@ -6570,7 +7339,18 @@ const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	"\x06status\x18\x03 \x01(\v2\x12.google.rpc.StatusR\x06status\"\xaf\x01\n" +
 	"\x1cBatchDeleteProcessesResponse\x12G\n" +
 	"\tselectors\x18\x01 \x03(\v2).remote.code.v1.BatchDeleteSelectorResultR\tselectors\x12F\n" +
-	"\tprocesses\x18\x02 \x03(\v2(.remote.code.v1.BatchDeleteProcessResultR\tprocesses*\x81\x01\n" +
+	"\tprocesses\x18\x02 \x03(\v2(.remote.code.v1.BatchDeleteProcessResultR\tprocesses*\xb8\x01\n" +
+	"\x12ControllerLogLevel\x12$\n" +
+	" CONTROLLER_LOG_LEVEL_UNSPECIFIED\x10\x00\x12\x1e\n" +
+	"\x1aCONTROLLER_LOG_LEVEL_DEBUG\x10\x01\x12\x1d\n" +
+	"\x19CONTROLLER_LOG_LEVEL_INFO\x10\x02\x12\x1d\n" +
+	"\x19CONTROLLER_LOG_LEVEL_WARN\x10\x03\x12\x1e\n" +
+	"\x1aCONTROLLER_LOG_LEVEL_ERROR\x10\x04*\xd6\x01\n" +
+	"\x16ControllerLogEndReason\x12)\n" +
+	"%CONTROLLER_LOG_END_REASON_UNSPECIFIED\x10\x00\x12/\n" +
+	"+CONTROLLER_LOG_END_REASON_SNAPSHOT_COMPLETE\x10\x01\x121\n" +
+	"-CONTROLLER_LOG_END_REASON_CONTROLLER_SHUTDOWN\x10\x02\x12-\n" +
+	")CONTROLLER_LOG_END_REASON_LOG_UNAVAILABLE\x10\x03*\x81\x01\n" +
 	"\bFileType\x12\x19\n" +
 	"\x15FILE_TYPE_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11FILE_TYPE_REGULAR\x10\x01\x12\x17\n" +
@@ -6636,9 +7416,10 @@ const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	"$PROCESS_INPUT_END_REASON_UNSPECIFIED\x10\x00\x12%\n" +
 	"!PROCESS_INPUT_END_REASON_DETACHED\x10\x01\x12)\n" +
 	"%PROCESS_INPUT_END_REASON_INPUT_CLOSED\x10\x02\x12+\n" +
-	"'PROCESS_INPUT_END_REASON_PROCESS_EXITED\x10\x032_\n" +
+	"'PROCESS_INPUT_END_REASON_PROCESS_EXITED\x10\x032\xd7\x01\n" +
 	"\x11ControllerService\x12J\n" +
-	"\aGetInfo\x12\x1e.remote.code.v1.GetInfoRequest\x1a\x1f.remote.code.v1.GetInfoResponse2\x93\t\n" +
+	"\aGetInfo\x12\x1e.remote.code.v1.GetInfoRequest\x1a\x1f.remote.code.v1.GetInfoResponse\x12v\n" +
+	"\x15ObserveControllerLogs\x12,.remote.code.v1.ObserveControllerLogsRequest\x1a-.remote.code.v1.ObserveControllerLogsResponse0\x012\x93\t\n" +
 	"\vFileService\x12A\n" +
 	"\x04Stat\x12\x1b.remote.code.v1.StatRequest\x1a\x1c.remote.code.v1.StatResponse\x12A\n" +
 	"\x04List\x12\x1b.remote.code.v1.ListRequest\x1a\x1c.remote.code.v1.ListResponse\x12A\n" +
@@ -6678,265 +7459,286 @@ func file_remote_code_v1_remote_code_proto_rawDescGZIP() []byte {
 	return file_remote_code_v1_remote_code_proto_rawDescData
 }
 
-var file_remote_code_v1_remote_code_proto_enumTypes = make([]protoimpl.EnumInfo, 11)
-var file_remote_code_v1_remote_code_proto_msgTypes = make([]protoimpl.MessageInfo, 90)
+var file_remote_code_v1_remote_code_proto_enumTypes = make([]protoimpl.EnumInfo, 13)
+var file_remote_code_v1_remote_code_proto_msgTypes = make([]protoimpl.MessageInfo, 98)
 var file_remote_code_v1_remote_code_proto_goTypes = []any{
-	(FileType)(0),                            // 0: remote.code.v1.FileType
-	(UploadSessionState)(0),                  // 1: remote.code.v1.UploadSessionState
-	(FileTransferErrorReason)(0),             // 2: remote.code.v1.FileTransferErrorReason
-	(ProcessIOMode)(0),                       // 3: remote.code.v1.ProcessIOMode
-	(ProcessState)(0),                        // 4: remote.code.v1.ProcessState
-	(ProcessSignal)(0),                       // 5: remote.code.v1.ProcessSignal
-	(ProcessLogStream)(0),                    // 6: remote.code.v1.ProcessLogStream
-	(ProcessLogEndReason)(0),                 // 7: remote.code.v1.ProcessLogEndReason
-	(ProcessInputMode)(0),                    // 8: remote.code.v1.ProcessInputMode
-	(ProcessInputState)(0),                   // 9: remote.code.v1.ProcessInputState
-	(ProcessInputEndReason)(0),               // 10: remote.code.v1.ProcessInputEndReason
-	(*GetInfoRequest)(nil),                   // 11: remote.code.v1.GetInfoRequest
-	(*GetInfoResponse)(nil),                  // 12: remote.code.v1.GetInfoResponse
-	(*FileTransferCapabilities)(nil),         // 13: remote.code.v1.FileTransferCapabilities
-	(*FileInfo)(nil),                         // 14: remote.code.v1.FileInfo
-	(*StatRequest)(nil),                      // 15: remote.code.v1.StatRequest
-	(*StatResponse)(nil),                     // 16: remote.code.v1.StatResponse
-	(*ListRequest)(nil),                      // 17: remote.code.v1.ListRequest
-	(*ListResponse)(nil),                     // 18: remote.code.v1.ListResponse
-	(*TreeNode)(nil),                         // 19: remote.code.v1.TreeNode
-	(*TreeRequest)(nil),                      // 20: remote.code.v1.TreeRequest
-	(*TreeResponse)(nil),                     // 21: remote.code.v1.TreeResponse
-	(*UploadMetadata)(nil),                   // 22: remote.code.v1.UploadMetadata
-	(*UploadRequest)(nil),                    // 23: remote.code.v1.UploadRequest
-	(*UploadResponse)(nil),                   // 24: remote.code.v1.UploadResponse
-	(*DownloadRequest)(nil),                  // 25: remote.code.v1.DownloadRequest
-	(*DownloadMetadata)(nil),                 // 26: remote.code.v1.DownloadMetadata
-	(*DownloadSummary)(nil),                  // 27: remote.code.v1.DownloadSummary
-	(*DownloadResponse)(nil),                 // 28: remote.code.v1.DownloadResponse
-	(*CreateUploadSessionRequest)(nil),       // 29: remote.code.v1.CreateUploadSessionRequest
-	(*UploadSession)(nil),                    // 30: remote.code.v1.UploadSession
-	(*CreateUploadSessionResponse)(nil),      // 31: remote.code.v1.CreateUploadSessionResponse
-	(*TransferUploadOpen)(nil),               // 32: remote.code.v1.TransferUploadOpen
-	(*TransferUploadChunk)(nil),              // 33: remote.code.v1.TransferUploadChunk
-	(*TransferUploadFinish)(nil),             // 34: remote.code.v1.TransferUploadFinish
-	(*TransferUploadRequest)(nil),            // 35: remote.code.v1.TransferUploadRequest
-	(*TransferUploadReady)(nil),              // 36: remote.code.v1.TransferUploadReady
-	(*TransferUploadCheckpoint)(nil),         // 37: remote.code.v1.TransferUploadCheckpoint
-	(*TransferUploadComplete)(nil),           // 38: remote.code.v1.TransferUploadComplete
-	(*TransferUploadResponse)(nil),           // 39: remote.code.v1.TransferUploadResponse
-	(*GetUploadSessionRequest)(nil),          // 40: remote.code.v1.GetUploadSessionRequest
-	(*GetUploadSessionResponse)(nil),         // 41: remote.code.v1.GetUploadSessionResponse
-	(*AbortUploadSessionRequest)(nil),        // 42: remote.code.v1.AbortUploadSessionRequest
-	(*AbortUploadSessionResponse)(nil),       // 43: remote.code.v1.AbortUploadSessionResponse
-	(*DownloadRangeRequest)(nil),             // 44: remote.code.v1.DownloadRangeRequest
-	(*DownloadRangeMetadata)(nil),            // 45: remote.code.v1.DownloadRangeMetadata
-	(*DownloadRangeChunk)(nil),               // 46: remote.code.v1.DownloadRangeChunk
-	(*DownloadRangeSummary)(nil),             // 47: remote.code.v1.DownloadRangeSummary
-	(*DownloadRangeResponse)(nil),            // 48: remote.code.v1.DownloadRangeResponse
-	(*FileTransferError)(nil),                // 49: remote.code.v1.FileTransferError
-	(*RemoveRequest)(nil),                    // 50: remote.code.v1.RemoveRequest
-	(*RemoveResponse)(nil),                   // 51: remote.code.v1.RemoveResponse
-	(*MoveRequest)(nil),                      // 52: remote.code.v1.MoveRequest
-	(*MoveResponse)(nil),                     // 53: remote.code.v1.MoveResponse
-	(*ChmodRequest)(nil),                     // 54: remote.code.v1.ChmodRequest
-	(*ChmodResponse)(nil),                    // 55: remote.code.v1.ChmodResponse
-	(*MkdirRequest)(nil),                     // 56: remote.code.v1.MkdirRequest
-	(*MkdirResponse)(nil),                    // 57: remote.code.v1.MkdirResponse
-	(*ProcessInfo)(nil),                      // 58: remote.code.v1.ProcessInfo
-	(*ProcessReference)(nil),                 // 59: remote.code.v1.ProcessReference
-	(*StartProcessRequest)(nil),              // 60: remote.code.v1.StartProcessRequest
-	(*StartProcessResponse)(nil),             // 61: remote.code.v1.StartProcessResponse
-	(*ProcessTemplateSummary)(nil),           // 62: remote.code.v1.ProcessTemplateSummary
-	(*ProcessTemplate)(nil),                  // 63: remote.code.v1.ProcessTemplate
-	(*ListProcessTemplatesRequest)(nil),      // 64: remote.code.v1.ListProcessTemplatesRequest
-	(*ListProcessTemplatesResponse)(nil),     // 65: remote.code.v1.ListProcessTemplatesResponse
-	(*GetProcessTemplateRequest)(nil),        // 66: remote.code.v1.GetProcessTemplateRequest
-	(*GetProcessTemplateResponse)(nil),       // 67: remote.code.v1.GetProcessTemplateResponse
-	(*StartProcessFromTemplateRequest)(nil),  // 68: remote.code.v1.StartProcessFromTemplateRequest
-	(*StartProcessFromTemplateResponse)(nil), // 69: remote.code.v1.StartProcessFromTemplateResponse
-	(*ListProcessesRequest)(nil),             // 70: remote.code.v1.ListProcessesRequest
-	(*ListProcessesResponse)(nil),            // 71: remote.code.v1.ListProcessesResponse
-	(*SignalProcessRequest)(nil),             // 72: remote.code.v1.SignalProcessRequest
-	(*SignalProcessResponse)(nil),            // 73: remote.code.v1.SignalProcessResponse
-	(*ObserveProcessLogsRequest)(nil),        // 74: remote.code.v1.ObserveProcessLogsRequest
-	(*ProcessLogHeader)(nil),                 // 75: remote.code.v1.ProcessLogHeader
-	(*ProcessLogChunk)(nil),                  // 76: remote.code.v1.ProcessLogChunk
-	(*ProcessLogCheckpoint)(nil),             // 77: remote.code.v1.ProcessLogCheckpoint
-	(*ProcessLogEnd)(nil),                    // 78: remote.code.v1.ProcessLogEnd
-	(*ObserveProcessLogsResponse)(nil),       // 79: remote.code.v1.ObserveProcessLogsResponse
-	(*ProcessInputOpen)(nil),                 // 80: remote.code.v1.ProcessInputOpen
-	(*ProcessInputData)(nil),                 // 81: remote.code.v1.ProcessInputData
-	(*TerminalSize)(nil),                     // 82: remote.code.v1.TerminalSize
-	(*ProcessTerminalResize)(nil),            // 83: remote.code.v1.ProcessTerminalResize
-	(*ProcessInputClose)(nil),                // 84: remote.code.v1.ProcessInputClose
-	(*ProcessInputDetach)(nil),               // 85: remote.code.v1.ProcessInputDetach
-	(*StreamProcessInputRequest)(nil),        // 86: remote.code.v1.StreamProcessInputRequest
-	(*ProcessInputOpened)(nil),               // 87: remote.code.v1.ProcessInputOpened
-	(*ProcessInputAck)(nil),                  // 88: remote.code.v1.ProcessInputAck
-	(*ProcessTerminalResizeAck)(nil),         // 89: remote.code.v1.ProcessTerminalResizeAck
-	(*ProcessInputEnd)(nil),                  // 90: remote.code.v1.ProcessInputEnd
-	(*StreamProcessInputResponse)(nil),       // 91: remote.code.v1.StreamProcessInputResponse
-	(*DeleteProcessRequest)(nil),             // 92: remote.code.v1.DeleteProcessRequest
-	(*DeleteProcessResponse)(nil),            // 93: remote.code.v1.DeleteProcessResponse
-	(*ProcessSelector)(nil),                  // 94: remote.code.v1.ProcessSelector
-	(*BatchDeleteProcessesRequest)(nil),      // 95: remote.code.v1.BatchDeleteProcessesRequest
-	(*BatchDeleteSelectorResult)(nil),        // 96: remote.code.v1.BatchDeleteSelectorResult
-	(*ProcessDeleteTarget)(nil),              // 97: remote.code.v1.ProcessDeleteTarget
-	(*BatchDeleteProcessResult)(nil),         // 98: remote.code.v1.BatchDeleteProcessResult
-	(*BatchDeleteProcessesResponse)(nil),     // 99: remote.code.v1.BatchDeleteProcessesResponse
-	nil,                                      // 100: remote.code.v1.StartProcessRequest.EnvironmentEntry
-	(*timestamppb.Timestamp)(nil),            // 101: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),                  // 102: google.protobuf.Struct
-	(*status.Status)(nil),                    // 103: google.rpc.Status
+	(ControllerLogLevel)(0),                  // 0: remote.code.v1.ControllerLogLevel
+	(ControllerLogEndReason)(0),              // 1: remote.code.v1.ControllerLogEndReason
+	(FileType)(0),                            // 2: remote.code.v1.FileType
+	(UploadSessionState)(0),                  // 3: remote.code.v1.UploadSessionState
+	(FileTransferErrorReason)(0),             // 4: remote.code.v1.FileTransferErrorReason
+	(ProcessIOMode)(0),                       // 5: remote.code.v1.ProcessIOMode
+	(ProcessState)(0),                        // 6: remote.code.v1.ProcessState
+	(ProcessSignal)(0),                       // 7: remote.code.v1.ProcessSignal
+	(ProcessLogStream)(0),                    // 8: remote.code.v1.ProcessLogStream
+	(ProcessLogEndReason)(0),                 // 9: remote.code.v1.ProcessLogEndReason
+	(ProcessInputMode)(0),                    // 10: remote.code.v1.ProcessInputMode
+	(ProcessInputState)(0),                   // 11: remote.code.v1.ProcessInputState
+	(ProcessInputEndReason)(0),               // 12: remote.code.v1.ProcessInputEndReason
+	(*GetInfoRequest)(nil),                   // 13: remote.code.v1.GetInfoRequest
+	(*GetInfoResponse)(nil),                  // 14: remote.code.v1.GetInfoResponse
+	(*ControllerLogCapabilities)(nil),        // 15: remote.code.v1.ControllerLogCapabilities
+	(*ObserveControllerLogsRequest)(nil),     // 16: remote.code.v1.ObserveControllerLogsRequest
+	(*ControllerLogHeader)(nil),              // 17: remote.code.v1.ControllerLogHeader
+	(*ControllerLogEntry)(nil),               // 18: remote.code.v1.ControllerLogEntry
+	(*ControllerLogCheckpoint)(nil),          // 19: remote.code.v1.ControllerLogCheckpoint
+	(*ControllerLogEnd)(nil),                 // 20: remote.code.v1.ControllerLogEnd
+	(*ObserveControllerLogsResponse)(nil),    // 21: remote.code.v1.ObserveControllerLogsResponse
+	(*FileTransferCapabilities)(nil),         // 22: remote.code.v1.FileTransferCapabilities
+	(*FileInfo)(nil),                         // 23: remote.code.v1.FileInfo
+	(*StatRequest)(nil),                      // 24: remote.code.v1.StatRequest
+	(*StatResponse)(nil),                     // 25: remote.code.v1.StatResponse
+	(*ListRequest)(nil),                      // 26: remote.code.v1.ListRequest
+	(*ListResponse)(nil),                     // 27: remote.code.v1.ListResponse
+	(*TreeNode)(nil),                         // 28: remote.code.v1.TreeNode
+	(*TreeRequest)(nil),                      // 29: remote.code.v1.TreeRequest
+	(*TreeResponse)(nil),                     // 30: remote.code.v1.TreeResponse
+	(*UploadMetadata)(nil),                   // 31: remote.code.v1.UploadMetadata
+	(*UploadRequest)(nil),                    // 32: remote.code.v1.UploadRequest
+	(*UploadResponse)(nil),                   // 33: remote.code.v1.UploadResponse
+	(*DownloadRequest)(nil),                  // 34: remote.code.v1.DownloadRequest
+	(*DownloadMetadata)(nil),                 // 35: remote.code.v1.DownloadMetadata
+	(*DownloadSummary)(nil),                  // 36: remote.code.v1.DownloadSummary
+	(*DownloadResponse)(nil),                 // 37: remote.code.v1.DownloadResponse
+	(*CreateUploadSessionRequest)(nil),       // 38: remote.code.v1.CreateUploadSessionRequest
+	(*UploadSession)(nil),                    // 39: remote.code.v1.UploadSession
+	(*CreateUploadSessionResponse)(nil),      // 40: remote.code.v1.CreateUploadSessionResponse
+	(*TransferUploadOpen)(nil),               // 41: remote.code.v1.TransferUploadOpen
+	(*TransferUploadChunk)(nil),              // 42: remote.code.v1.TransferUploadChunk
+	(*TransferUploadFinish)(nil),             // 43: remote.code.v1.TransferUploadFinish
+	(*TransferUploadRequest)(nil),            // 44: remote.code.v1.TransferUploadRequest
+	(*TransferUploadReady)(nil),              // 45: remote.code.v1.TransferUploadReady
+	(*TransferUploadCheckpoint)(nil),         // 46: remote.code.v1.TransferUploadCheckpoint
+	(*TransferUploadComplete)(nil),           // 47: remote.code.v1.TransferUploadComplete
+	(*TransferUploadResponse)(nil),           // 48: remote.code.v1.TransferUploadResponse
+	(*GetUploadSessionRequest)(nil),          // 49: remote.code.v1.GetUploadSessionRequest
+	(*GetUploadSessionResponse)(nil),         // 50: remote.code.v1.GetUploadSessionResponse
+	(*AbortUploadSessionRequest)(nil),        // 51: remote.code.v1.AbortUploadSessionRequest
+	(*AbortUploadSessionResponse)(nil),       // 52: remote.code.v1.AbortUploadSessionResponse
+	(*DownloadRangeRequest)(nil),             // 53: remote.code.v1.DownloadRangeRequest
+	(*DownloadRangeMetadata)(nil),            // 54: remote.code.v1.DownloadRangeMetadata
+	(*DownloadRangeChunk)(nil),               // 55: remote.code.v1.DownloadRangeChunk
+	(*DownloadRangeSummary)(nil),             // 56: remote.code.v1.DownloadRangeSummary
+	(*DownloadRangeResponse)(nil),            // 57: remote.code.v1.DownloadRangeResponse
+	(*FileTransferError)(nil),                // 58: remote.code.v1.FileTransferError
+	(*RemoveRequest)(nil),                    // 59: remote.code.v1.RemoveRequest
+	(*RemoveResponse)(nil),                   // 60: remote.code.v1.RemoveResponse
+	(*MoveRequest)(nil),                      // 61: remote.code.v1.MoveRequest
+	(*MoveResponse)(nil),                     // 62: remote.code.v1.MoveResponse
+	(*ChmodRequest)(nil),                     // 63: remote.code.v1.ChmodRequest
+	(*ChmodResponse)(nil),                    // 64: remote.code.v1.ChmodResponse
+	(*MkdirRequest)(nil),                     // 65: remote.code.v1.MkdirRequest
+	(*MkdirResponse)(nil),                    // 66: remote.code.v1.MkdirResponse
+	(*ProcessInfo)(nil),                      // 67: remote.code.v1.ProcessInfo
+	(*ProcessReference)(nil),                 // 68: remote.code.v1.ProcessReference
+	(*StartProcessRequest)(nil),              // 69: remote.code.v1.StartProcessRequest
+	(*StartProcessResponse)(nil),             // 70: remote.code.v1.StartProcessResponse
+	(*ProcessTemplateSummary)(nil),           // 71: remote.code.v1.ProcessTemplateSummary
+	(*ProcessTemplate)(nil),                  // 72: remote.code.v1.ProcessTemplate
+	(*ListProcessTemplatesRequest)(nil),      // 73: remote.code.v1.ListProcessTemplatesRequest
+	(*ListProcessTemplatesResponse)(nil),     // 74: remote.code.v1.ListProcessTemplatesResponse
+	(*GetProcessTemplateRequest)(nil),        // 75: remote.code.v1.GetProcessTemplateRequest
+	(*GetProcessTemplateResponse)(nil),       // 76: remote.code.v1.GetProcessTemplateResponse
+	(*StartProcessFromTemplateRequest)(nil),  // 77: remote.code.v1.StartProcessFromTemplateRequest
+	(*StartProcessFromTemplateResponse)(nil), // 78: remote.code.v1.StartProcessFromTemplateResponse
+	(*ListProcessesRequest)(nil),             // 79: remote.code.v1.ListProcessesRequest
+	(*ListProcessesResponse)(nil),            // 80: remote.code.v1.ListProcessesResponse
+	(*SignalProcessRequest)(nil),             // 81: remote.code.v1.SignalProcessRequest
+	(*SignalProcessResponse)(nil),            // 82: remote.code.v1.SignalProcessResponse
+	(*ObserveProcessLogsRequest)(nil),        // 83: remote.code.v1.ObserveProcessLogsRequest
+	(*ProcessLogHeader)(nil),                 // 84: remote.code.v1.ProcessLogHeader
+	(*ProcessLogChunk)(nil),                  // 85: remote.code.v1.ProcessLogChunk
+	(*ProcessLogCheckpoint)(nil),             // 86: remote.code.v1.ProcessLogCheckpoint
+	(*ProcessLogEnd)(nil),                    // 87: remote.code.v1.ProcessLogEnd
+	(*ObserveProcessLogsResponse)(nil),       // 88: remote.code.v1.ObserveProcessLogsResponse
+	(*ProcessInputOpen)(nil),                 // 89: remote.code.v1.ProcessInputOpen
+	(*ProcessInputData)(nil),                 // 90: remote.code.v1.ProcessInputData
+	(*TerminalSize)(nil),                     // 91: remote.code.v1.TerminalSize
+	(*ProcessTerminalResize)(nil),            // 92: remote.code.v1.ProcessTerminalResize
+	(*ProcessInputClose)(nil),                // 93: remote.code.v1.ProcessInputClose
+	(*ProcessInputDetach)(nil),               // 94: remote.code.v1.ProcessInputDetach
+	(*StreamProcessInputRequest)(nil),        // 95: remote.code.v1.StreamProcessInputRequest
+	(*ProcessInputOpened)(nil),               // 96: remote.code.v1.ProcessInputOpened
+	(*ProcessInputAck)(nil),                  // 97: remote.code.v1.ProcessInputAck
+	(*ProcessTerminalResizeAck)(nil),         // 98: remote.code.v1.ProcessTerminalResizeAck
+	(*ProcessInputEnd)(nil),                  // 99: remote.code.v1.ProcessInputEnd
+	(*StreamProcessInputResponse)(nil),       // 100: remote.code.v1.StreamProcessInputResponse
+	(*DeleteProcessRequest)(nil),             // 101: remote.code.v1.DeleteProcessRequest
+	(*DeleteProcessResponse)(nil),            // 102: remote.code.v1.DeleteProcessResponse
+	(*ProcessSelector)(nil),                  // 103: remote.code.v1.ProcessSelector
+	(*BatchDeleteProcessesRequest)(nil),      // 104: remote.code.v1.BatchDeleteProcessesRequest
+	(*BatchDeleteSelectorResult)(nil),        // 105: remote.code.v1.BatchDeleteSelectorResult
+	(*ProcessDeleteTarget)(nil),              // 106: remote.code.v1.ProcessDeleteTarget
+	(*BatchDeleteProcessResult)(nil),         // 107: remote.code.v1.BatchDeleteProcessResult
+	(*BatchDeleteProcessesResponse)(nil),     // 108: remote.code.v1.BatchDeleteProcessesResponse
+	nil,                                      // 109: remote.code.v1.ControllerLogEntry.FieldsEntry
+	nil,                                      // 110: remote.code.v1.StartProcessRequest.EnvironmentEntry
+	(*timestamppb.Timestamp)(nil),            // 111: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),                  // 112: google.protobuf.Struct
+	(*status.Status)(nil),                    // 113: google.rpc.Status
 }
 var file_remote_code_v1_remote_code_proto_depIdxs = []int32{
-	13,  // 0: remote.code.v1.GetInfoResponse.file_transfers:type_name -> remote.code.v1.FileTransferCapabilities
-	0,   // 1: remote.code.v1.FileInfo.type:type_name -> remote.code.v1.FileType
-	101, // 2: remote.code.v1.FileInfo.modified_at:type_name -> google.protobuf.Timestamp
-	14,  // 3: remote.code.v1.StatResponse.file:type_name -> remote.code.v1.FileInfo
-	14,  // 4: remote.code.v1.ListResponse.files:type_name -> remote.code.v1.FileInfo
-	14,  // 5: remote.code.v1.TreeNode.file:type_name -> remote.code.v1.FileInfo
-	19,  // 6: remote.code.v1.TreeNode.children:type_name -> remote.code.v1.TreeNode
-	19,  // 7: remote.code.v1.TreeResponse.root:type_name -> remote.code.v1.TreeNode
-	22,  // 8: remote.code.v1.UploadRequest.metadata:type_name -> remote.code.v1.UploadMetadata
-	14,  // 9: remote.code.v1.UploadResponse.file:type_name -> remote.code.v1.FileInfo
-	14,  // 10: remote.code.v1.DownloadMetadata.file:type_name -> remote.code.v1.FileInfo
-	26,  // 11: remote.code.v1.DownloadResponse.metadata:type_name -> remote.code.v1.DownloadMetadata
-	27,  // 12: remote.code.v1.DownloadResponse.summary:type_name -> remote.code.v1.DownloadSummary
-	1,   // 13: remote.code.v1.UploadSession.state:type_name -> remote.code.v1.UploadSessionState
-	101, // 14: remote.code.v1.UploadSession.expires_at:type_name -> google.protobuf.Timestamp
-	24,  // 15: remote.code.v1.UploadSession.result:type_name -> remote.code.v1.UploadResponse
-	30,  // 16: remote.code.v1.CreateUploadSessionResponse.session:type_name -> remote.code.v1.UploadSession
-	32,  // 17: remote.code.v1.TransferUploadRequest.open:type_name -> remote.code.v1.TransferUploadOpen
-	33,  // 18: remote.code.v1.TransferUploadRequest.chunk:type_name -> remote.code.v1.TransferUploadChunk
-	34,  // 19: remote.code.v1.TransferUploadRequest.finish:type_name -> remote.code.v1.TransferUploadFinish
-	24,  // 20: remote.code.v1.TransferUploadComplete.result:type_name -> remote.code.v1.UploadResponse
-	36,  // 21: remote.code.v1.TransferUploadResponse.ready:type_name -> remote.code.v1.TransferUploadReady
-	37,  // 22: remote.code.v1.TransferUploadResponse.checkpoint:type_name -> remote.code.v1.TransferUploadCheckpoint
-	38,  // 23: remote.code.v1.TransferUploadResponse.complete:type_name -> remote.code.v1.TransferUploadComplete
-	30,  // 24: remote.code.v1.GetUploadSessionResponse.session:type_name -> remote.code.v1.UploadSession
-	30,  // 25: remote.code.v1.AbortUploadSessionResponse.session:type_name -> remote.code.v1.UploadSession
-	14,  // 26: remote.code.v1.DownloadRangeMetadata.file:type_name -> remote.code.v1.FileInfo
-	45,  // 27: remote.code.v1.DownloadRangeResponse.metadata:type_name -> remote.code.v1.DownloadRangeMetadata
-	46,  // 28: remote.code.v1.DownloadRangeResponse.chunk:type_name -> remote.code.v1.DownloadRangeChunk
-	47,  // 29: remote.code.v1.DownloadRangeResponse.summary:type_name -> remote.code.v1.DownloadRangeSummary
-	2,   // 30: remote.code.v1.FileTransferError.reason:type_name -> remote.code.v1.FileTransferErrorReason
-	14,  // 31: remote.code.v1.MoveResponse.file:type_name -> remote.code.v1.FileInfo
-	14,  // 32: remote.code.v1.ChmodResponse.file:type_name -> remote.code.v1.FileInfo
-	14,  // 33: remote.code.v1.MkdirResponse.file:type_name -> remote.code.v1.FileInfo
-	3,   // 34: remote.code.v1.ProcessInfo.io_mode:type_name -> remote.code.v1.ProcessIOMode
-	4,   // 35: remote.code.v1.ProcessInfo.state:type_name -> remote.code.v1.ProcessState
-	101, // 36: remote.code.v1.ProcessInfo.started_at:type_name -> google.protobuf.Timestamp
-	101, // 37: remote.code.v1.ProcessInfo.exited_at:type_name -> google.protobuf.Timestamp
-	101, // 38: remote.code.v1.ProcessInfo.created_at:type_name -> google.protobuf.Timestamp
-	8,   // 39: remote.code.v1.ProcessInfo.input_mode:type_name -> remote.code.v1.ProcessInputMode
-	9,   // 40: remote.code.v1.ProcessInfo.input_state:type_name -> remote.code.v1.ProcessInputState
-	3,   // 41: remote.code.v1.StartProcessRequest.io_mode:type_name -> remote.code.v1.ProcessIOMode
-	100, // 42: remote.code.v1.StartProcessRequest.environment:type_name -> remote.code.v1.StartProcessRequest.EnvironmentEntry
-	8,   // 43: remote.code.v1.StartProcessRequest.input_mode:type_name -> remote.code.v1.ProcessInputMode
-	82,  // 44: remote.code.v1.StartProcessRequest.terminal_size:type_name -> remote.code.v1.TerminalSize
-	58,  // 45: remote.code.v1.StartProcessResponse.process:type_name -> remote.code.v1.ProcessInfo
-	3,   // 46: remote.code.v1.ProcessTemplateSummary.io_mode:type_name -> remote.code.v1.ProcessIOMode
-	8,   // 47: remote.code.v1.ProcessTemplateSummary.input_mode:type_name -> remote.code.v1.ProcessInputMode
-	62,  // 48: remote.code.v1.ProcessTemplate.summary:type_name -> remote.code.v1.ProcessTemplateSummary
-	102, // 49: remote.code.v1.ProcessTemplate.parameters_schema:type_name -> google.protobuf.Struct
-	62,  // 50: remote.code.v1.ListProcessTemplatesResponse.templates:type_name -> remote.code.v1.ProcessTemplateSummary
-	63,  // 51: remote.code.v1.GetProcessTemplateResponse.template:type_name -> remote.code.v1.ProcessTemplate
-	102, // 52: remote.code.v1.StartProcessFromTemplateRequest.parameters:type_name -> google.protobuf.Struct
-	82,  // 53: remote.code.v1.StartProcessFromTemplateRequest.terminal_size:type_name -> remote.code.v1.TerminalSize
-	58,  // 54: remote.code.v1.StartProcessFromTemplateResponse.process:type_name -> remote.code.v1.ProcessInfo
-	58,  // 55: remote.code.v1.ListProcessesResponse.processes:type_name -> remote.code.v1.ProcessInfo
-	59,  // 56: remote.code.v1.SignalProcessRequest.process:type_name -> remote.code.v1.ProcessReference
-	5,   // 57: remote.code.v1.SignalProcessRequest.signal:type_name -> remote.code.v1.ProcessSignal
-	58,  // 58: remote.code.v1.SignalProcessResponse.process:type_name -> remote.code.v1.ProcessInfo
-	6,   // 59: remote.code.v1.ObserveProcessLogsRequest.streams:type_name -> remote.code.v1.ProcessLogStream
-	3,   // 60: remote.code.v1.ProcessLogHeader.io_mode:type_name -> remote.code.v1.ProcessIOMode
-	6,   // 61: remote.code.v1.ProcessLogHeader.streams:type_name -> remote.code.v1.ProcessLogStream
-	101, // 62: remote.code.v1.ProcessLogChunk.timestamp:type_name -> google.protobuf.Timestamp
-	6,   // 63: remote.code.v1.ProcessLogChunk.stream:type_name -> remote.code.v1.ProcessLogStream
-	7,   // 64: remote.code.v1.ProcessLogEnd.reason:type_name -> remote.code.v1.ProcessLogEndReason
-	4,   // 65: remote.code.v1.ProcessLogEnd.state:type_name -> remote.code.v1.ProcessState
-	75,  // 66: remote.code.v1.ObserveProcessLogsResponse.header:type_name -> remote.code.v1.ProcessLogHeader
-	76,  // 67: remote.code.v1.ObserveProcessLogsResponse.chunk:type_name -> remote.code.v1.ProcessLogChunk
-	77,  // 68: remote.code.v1.ObserveProcessLogsResponse.checkpoint:type_name -> remote.code.v1.ProcessLogCheckpoint
-	78,  // 69: remote.code.v1.ObserveProcessLogsResponse.end:type_name -> remote.code.v1.ProcessLogEnd
-	59,  // 70: remote.code.v1.ProcessInputOpen.process:type_name -> remote.code.v1.ProcessReference
-	82,  // 71: remote.code.v1.ProcessTerminalResize.size:type_name -> remote.code.v1.TerminalSize
-	80,  // 72: remote.code.v1.StreamProcessInputRequest.open:type_name -> remote.code.v1.ProcessInputOpen
-	81,  // 73: remote.code.v1.StreamProcessInputRequest.data:type_name -> remote.code.v1.ProcessInputData
-	84,  // 74: remote.code.v1.StreamProcessInputRequest.close_input:type_name -> remote.code.v1.ProcessInputClose
-	85,  // 75: remote.code.v1.StreamProcessInputRequest.detach:type_name -> remote.code.v1.ProcessInputDetach
-	83,  // 76: remote.code.v1.StreamProcessInputRequest.resize:type_name -> remote.code.v1.ProcessTerminalResize
-	58,  // 77: remote.code.v1.ProcessInputOpened.process:type_name -> remote.code.v1.ProcessInfo
-	82,  // 78: remote.code.v1.ProcessTerminalResizeAck.size:type_name -> remote.code.v1.TerminalSize
-	10,  // 79: remote.code.v1.ProcessInputEnd.reason:type_name -> remote.code.v1.ProcessInputEndReason
-	58,  // 80: remote.code.v1.ProcessInputEnd.process:type_name -> remote.code.v1.ProcessInfo
-	87,  // 81: remote.code.v1.StreamProcessInputResponse.opened:type_name -> remote.code.v1.ProcessInputOpened
-	88,  // 82: remote.code.v1.StreamProcessInputResponse.ack:type_name -> remote.code.v1.ProcessInputAck
-	90,  // 83: remote.code.v1.StreamProcessInputResponse.end:type_name -> remote.code.v1.ProcessInputEnd
-	89,  // 84: remote.code.v1.StreamProcessInputResponse.resize_ack:type_name -> remote.code.v1.ProcessTerminalResizeAck
-	59,  // 85: remote.code.v1.DeleteProcessRequest.process:type_name -> remote.code.v1.ProcessReference
-	58,  // 86: remote.code.v1.DeleteProcessResponse.process:type_name -> remote.code.v1.ProcessInfo
-	59,  // 87: remote.code.v1.ProcessSelector.reference:type_name -> remote.code.v1.ProcessReference
-	94,  // 88: remote.code.v1.BatchDeleteProcessesRequest.selectors:type_name -> remote.code.v1.ProcessSelector
-	103, // 89: remote.code.v1.BatchDeleteSelectorResult.status:type_name -> google.rpc.Status
-	4,   // 90: remote.code.v1.ProcessDeleteTarget.state:type_name -> remote.code.v1.ProcessState
-	97,  // 91: remote.code.v1.BatchDeleteProcessResult.process:type_name -> remote.code.v1.ProcessDeleteTarget
-	103, // 92: remote.code.v1.BatchDeleteProcessResult.status:type_name -> google.rpc.Status
-	96,  // 93: remote.code.v1.BatchDeleteProcessesResponse.selectors:type_name -> remote.code.v1.BatchDeleteSelectorResult
-	98,  // 94: remote.code.v1.BatchDeleteProcessesResponse.processes:type_name -> remote.code.v1.BatchDeleteProcessResult
-	11,  // 95: remote.code.v1.ControllerService.GetInfo:input_type -> remote.code.v1.GetInfoRequest
-	15,  // 96: remote.code.v1.FileService.Stat:input_type -> remote.code.v1.StatRequest
-	17,  // 97: remote.code.v1.FileService.List:input_type -> remote.code.v1.ListRequest
-	20,  // 98: remote.code.v1.FileService.Tree:input_type -> remote.code.v1.TreeRequest
-	23,  // 99: remote.code.v1.FileService.Upload:input_type -> remote.code.v1.UploadRequest
-	25,  // 100: remote.code.v1.FileService.Download:input_type -> remote.code.v1.DownloadRequest
-	29,  // 101: remote.code.v1.FileService.CreateUploadSession:input_type -> remote.code.v1.CreateUploadSessionRequest
-	35,  // 102: remote.code.v1.FileService.TransferUpload:input_type -> remote.code.v1.TransferUploadRequest
-	40,  // 103: remote.code.v1.FileService.GetUploadSession:input_type -> remote.code.v1.GetUploadSessionRequest
-	42,  // 104: remote.code.v1.FileService.AbortUploadSession:input_type -> remote.code.v1.AbortUploadSessionRequest
-	44,  // 105: remote.code.v1.FileService.DownloadRange:input_type -> remote.code.v1.DownloadRangeRequest
-	50,  // 106: remote.code.v1.FileService.Remove:input_type -> remote.code.v1.RemoveRequest
-	52,  // 107: remote.code.v1.FileService.Move:input_type -> remote.code.v1.MoveRequest
-	54,  // 108: remote.code.v1.FileService.Chmod:input_type -> remote.code.v1.ChmodRequest
-	56,  // 109: remote.code.v1.FileService.Mkdir:input_type -> remote.code.v1.MkdirRequest
-	60,  // 110: remote.code.v1.ProcessService.StartProcess:input_type -> remote.code.v1.StartProcessRequest
-	64,  // 111: remote.code.v1.ProcessService.ListProcessTemplates:input_type -> remote.code.v1.ListProcessTemplatesRequest
-	66,  // 112: remote.code.v1.ProcessService.GetProcessTemplate:input_type -> remote.code.v1.GetProcessTemplateRequest
-	68,  // 113: remote.code.v1.ProcessService.StartProcessFromTemplate:input_type -> remote.code.v1.StartProcessFromTemplateRequest
-	70,  // 114: remote.code.v1.ProcessService.ListProcesses:input_type -> remote.code.v1.ListProcessesRequest
-	72,  // 115: remote.code.v1.ProcessService.SignalProcess:input_type -> remote.code.v1.SignalProcessRequest
-	92,  // 116: remote.code.v1.ProcessService.DeleteProcess:input_type -> remote.code.v1.DeleteProcessRequest
-	95,  // 117: remote.code.v1.ProcessService.BatchDeleteProcesses:input_type -> remote.code.v1.BatchDeleteProcessesRequest
-	74,  // 118: remote.code.v1.ProcessService.ObserveProcessLogs:input_type -> remote.code.v1.ObserveProcessLogsRequest
-	86,  // 119: remote.code.v1.ProcessService.StreamProcessInput:input_type -> remote.code.v1.StreamProcessInputRequest
-	12,  // 120: remote.code.v1.ControllerService.GetInfo:output_type -> remote.code.v1.GetInfoResponse
-	16,  // 121: remote.code.v1.FileService.Stat:output_type -> remote.code.v1.StatResponse
-	18,  // 122: remote.code.v1.FileService.List:output_type -> remote.code.v1.ListResponse
-	21,  // 123: remote.code.v1.FileService.Tree:output_type -> remote.code.v1.TreeResponse
-	24,  // 124: remote.code.v1.FileService.Upload:output_type -> remote.code.v1.UploadResponse
-	28,  // 125: remote.code.v1.FileService.Download:output_type -> remote.code.v1.DownloadResponse
-	31,  // 126: remote.code.v1.FileService.CreateUploadSession:output_type -> remote.code.v1.CreateUploadSessionResponse
-	39,  // 127: remote.code.v1.FileService.TransferUpload:output_type -> remote.code.v1.TransferUploadResponse
-	41,  // 128: remote.code.v1.FileService.GetUploadSession:output_type -> remote.code.v1.GetUploadSessionResponse
-	43,  // 129: remote.code.v1.FileService.AbortUploadSession:output_type -> remote.code.v1.AbortUploadSessionResponse
-	48,  // 130: remote.code.v1.FileService.DownloadRange:output_type -> remote.code.v1.DownloadRangeResponse
-	51,  // 131: remote.code.v1.FileService.Remove:output_type -> remote.code.v1.RemoveResponse
-	53,  // 132: remote.code.v1.FileService.Move:output_type -> remote.code.v1.MoveResponse
-	55,  // 133: remote.code.v1.FileService.Chmod:output_type -> remote.code.v1.ChmodResponse
-	57,  // 134: remote.code.v1.FileService.Mkdir:output_type -> remote.code.v1.MkdirResponse
-	61,  // 135: remote.code.v1.ProcessService.StartProcess:output_type -> remote.code.v1.StartProcessResponse
-	65,  // 136: remote.code.v1.ProcessService.ListProcessTemplates:output_type -> remote.code.v1.ListProcessTemplatesResponse
-	67,  // 137: remote.code.v1.ProcessService.GetProcessTemplate:output_type -> remote.code.v1.GetProcessTemplateResponse
-	69,  // 138: remote.code.v1.ProcessService.StartProcessFromTemplate:output_type -> remote.code.v1.StartProcessFromTemplateResponse
-	71,  // 139: remote.code.v1.ProcessService.ListProcesses:output_type -> remote.code.v1.ListProcessesResponse
-	73,  // 140: remote.code.v1.ProcessService.SignalProcess:output_type -> remote.code.v1.SignalProcessResponse
-	93,  // 141: remote.code.v1.ProcessService.DeleteProcess:output_type -> remote.code.v1.DeleteProcessResponse
-	99,  // 142: remote.code.v1.ProcessService.BatchDeleteProcesses:output_type -> remote.code.v1.BatchDeleteProcessesResponse
-	79,  // 143: remote.code.v1.ProcessService.ObserveProcessLogs:output_type -> remote.code.v1.ObserveProcessLogsResponse
-	91,  // 144: remote.code.v1.ProcessService.StreamProcessInput:output_type -> remote.code.v1.StreamProcessInputResponse
-	120, // [120:145] is the sub-list for method output_type
-	95,  // [95:120] is the sub-list for method input_type
-	95,  // [95:95] is the sub-list for extension type_name
-	95,  // [95:95] is the sub-list for extension extendee
-	0,   // [0:95] is the sub-list for field type_name
+	22,  // 0: remote.code.v1.GetInfoResponse.file_transfers:type_name -> remote.code.v1.FileTransferCapabilities
+	15,  // 1: remote.code.v1.GetInfoResponse.controller_logs:type_name -> remote.code.v1.ControllerLogCapabilities
+	111, // 2: remote.code.v1.ControllerLogEntry.timestamp:type_name -> google.protobuf.Timestamp
+	0,   // 3: remote.code.v1.ControllerLogEntry.level:type_name -> remote.code.v1.ControllerLogLevel
+	109, // 4: remote.code.v1.ControllerLogEntry.fields:type_name -> remote.code.v1.ControllerLogEntry.FieldsEntry
+	1,   // 5: remote.code.v1.ControllerLogEnd.reason:type_name -> remote.code.v1.ControllerLogEndReason
+	17,  // 6: remote.code.v1.ObserveControllerLogsResponse.header:type_name -> remote.code.v1.ControllerLogHeader
+	18,  // 7: remote.code.v1.ObserveControllerLogsResponse.entry:type_name -> remote.code.v1.ControllerLogEntry
+	19,  // 8: remote.code.v1.ObserveControllerLogsResponse.checkpoint:type_name -> remote.code.v1.ControllerLogCheckpoint
+	20,  // 9: remote.code.v1.ObserveControllerLogsResponse.end:type_name -> remote.code.v1.ControllerLogEnd
+	2,   // 10: remote.code.v1.FileInfo.type:type_name -> remote.code.v1.FileType
+	111, // 11: remote.code.v1.FileInfo.modified_at:type_name -> google.protobuf.Timestamp
+	23,  // 12: remote.code.v1.StatResponse.file:type_name -> remote.code.v1.FileInfo
+	23,  // 13: remote.code.v1.ListResponse.files:type_name -> remote.code.v1.FileInfo
+	23,  // 14: remote.code.v1.TreeNode.file:type_name -> remote.code.v1.FileInfo
+	28,  // 15: remote.code.v1.TreeNode.children:type_name -> remote.code.v1.TreeNode
+	28,  // 16: remote.code.v1.TreeResponse.root:type_name -> remote.code.v1.TreeNode
+	31,  // 17: remote.code.v1.UploadRequest.metadata:type_name -> remote.code.v1.UploadMetadata
+	23,  // 18: remote.code.v1.UploadResponse.file:type_name -> remote.code.v1.FileInfo
+	23,  // 19: remote.code.v1.DownloadMetadata.file:type_name -> remote.code.v1.FileInfo
+	35,  // 20: remote.code.v1.DownloadResponse.metadata:type_name -> remote.code.v1.DownloadMetadata
+	36,  // 21: remote.code.v1.DownloadResponse.summary:type_name -> remote.code.v1.DownloadSummary
+	3,   // 22: remote.code.v1.UploadSession.state:type_name -> remote.code.v1.UploadSessionState
+	111, // 23: remote.code.v1.UploadSession.expires_at:type_name -> google.protobuf.Timestamp
+	33,  // 24: remote.code.v1.UploadSession.result:type_name -> remote.code.v1.UploadResponse
+	39,  // 25: remote.code.v1.CreateUploadSessionResponse.session:type_name -> remote.code.v1.UploadSession
+	41,  // 26: remote.code.v1.TransferUploadRequest.open:type_name -> remote.code.v1.TransferUploadOpen
+	42,  // 27: remote.code.v1.TransferUploadRequest.chunk:type_name -> remote.code.v1.TransferUploadChunk
+	43,  // 28: remote.code.v1.TransferUploadRequest.finish:type_name -> remote.code.v1.TransferUploadFinish
+	33,  // 29: remote.code.v1.TransferUploadComplete.result:type_name -> remote.code.v1.UploadResponse
+	45,  // 30: remote.code.v1.TransferUploadResponse.ready:type_name -> remote.code.v1.TransferUploadReady
+	46,  // 31: remote.code.v1.TransferUploadResponse.checkpoint:type_name -> remote.code.v1.TransferUploadCheckpoint
+	47,  // 32: remote.code.v1.TransferUploadResponse.complete:type_name -> remote.code.v1.TransferUploadComplete
+	39,  // 33: remote.code.v1.GetUploadSessionResponse.session:type_name -> remote.code.v1.UploadSession
+	39,  // 34: remote.code.v1.AbortUploadSessionResponse.session:type_name -> remote.code.v1.UploadSession
+	23,  // 35: remote.code.v1.DownloadRangeMetadata.file:type_name -> remote.code.v1.FileInfo
+	54,  // 36: remote.code.v1.DownloadRangeResponse.metadata:type_name -> remote.code.v1.DownloadRangeMetadata
+	55,  // 37: remote.code.v1.DownloadRangeResponse.chunk:type_name -> remote.code.v1.DownloadRangeChunk
+	56,  // 38: remote.code.v1.DownloadRangeResponse.summary:type_name -> remote.code.v1.DownloadRangeSummary
+	4,   // 39: remote.code.v1.FileTransferError.reason:type_name -> remote.code.v1.FileTransferErrorReason
+	23,  // 40: remote.code.v1.MoveResponse.file:type_name -> remote.code.v1.FileInfo
+	23,  // 41: remote.code.v1.ChmodResponse.file:type_name -> remote.code.v1.FileInfo
+	23,  // 42: remote.code.v1.MkdirResponse.file:type_name -> remote.code.v1.FileInfo
+	5,   // 43: remote.code.v1.ProcessInfo.io_mode:type_name -> remote.code.v1.ProcessIOMode
+	6,   // 44: remote.code.v1.ProcessInfo.state:type_name -> remote.code.v1.ProcessState
+	111, // 45: remote.code.v1.ProcessInfo.started_at:type_name -> google.protobuf.Timestamp
+	111, // 46: remote.code.v1.ProcessInfo.exited_at:type_name -> google.protobuf.Timestamp
+	111, // 47: remote.code.v1.ProcessInfo.created_at:type_name -> google.protobuf.Timestamp
+	10,  // 48: remote.code.v1.ProcessInfo.input_mode:type_name -> remote.code.v1.ProcessInputMode
+	11,  // 49: remote.code.v1.ProcessInfo.input_state:type_name -> remote.code.v1.ProcessInputState
+	5,   // 50: remote.code.v1.StartProcessRequest.io_mode:type_name -> remote.code.v1.ProcessIOMode
+	110, // 51: remote.code.v1.StartProcessRequest.environment:type_name -> remote.code.v1.StartProcessRequest.EnvironmentEntry
+	10,  // 52: remote.code.v1.StartProcessRequest.input_mode:type_name -> remote.code.v1.ProcessInputMode
+	91,  // 53: remote.code.v1.StartProcessRequest.terminal_size:type_name -> remote.code.v1.TerminalSize
+	67,  // 54: remote.code.v1.StartProcessResponse.process:type_name -> remote.code.v1.ProcessInfo
+	5,   // 55: remote.code.v1.ProcessTemplateSummary.io_mode:type_name -> remote.code.v1.ProcessIOMode
+	10,  // 56: remote.code.v1.ProcessTemplateSummary.input_mode:type_name -> remote.code.v1.ProcessInputMode
+	71,  // 57: remote.code.v1.ProcessTemplate.summary:type_name -> remote.code.v1.ProcessTemplateSummary
+	112, // 58: remote.code.v1.ProcessTemplate.parameters_schema:type_name -> google.protobuf.Struct
+	71,  // 59: remote.code.v1.ListProcessTemplatesResponse.templates:type_name -> remote.code.v1.ProcessTemplateSummary
+	72,  // 60: remote.code.v1.GetProcessTemplateResponse.template:type_name -> remote.code.v1.ProcessTemplate
+	112, // 61: remote.code.v1.StartProcessFromTemplateRequest.parameters:type_name -> google.protobuf.Struct
+	91,  // 62: remote.code.v1.StartProcessFromTemplateRequest.terminal_size:type_name -> remote.code.v1.TerminalSize
+	67,  // 63: remote.code.v1.StartProcessFromTemplateResponse.process:type_name -> remote.code.v1.ProcessInfo
+	67,  // 64: remote.code.v1.ListProcessesResponse.processes:type_name -> remote.code.v1.ProcessInfo
+	68,  // 65: remote.code.v1.SignalProcessRequest.process:type_name -> remote.code.v1.ProcessReference
+	7,   // 66: remote.code.v1.SignalProcessRequest.signal:type_name -> remote.code.v1.ProcessSignal
+	67,  // 67: remote.code.v1.SignalProcessResponse.process:type_name -> remote.code.v1.ProcessInfo
+	8,   // 68: remote.code.v1.ObserveProcessLogsRequest.streams:type_name -> remote.code.v1.ProcessLogStream
+	5,   // 69: remote.code.v1.ProcessLogHeader.io_mode:type_name -> remote.code.v1.ProcessIOMode
+	8,   // 70: remote.code.v1.ProcessLogHeader.streams:type_name -> remote.code.v1.ProcessLogStream
+	111, // 71: remote.code.v1.ProcessLogChunk.timestamp:type_name -> google.protobuf.Timestamp
+	8,   // 72: remote.code.v1.ProcessLogChunk.stream:type_name -> remote.code.v1.ProcessLogStream
+	9,   // 73: remote.code.v1.ProcessLogEnd.reason:type_name -> remote.code.v1.ProcessLogEndReason
+	6,   // 74: remote.code.v1.ProcessLogEnd.state:type_name -> remote.code.v1.ProcessState
+	84,  // 75: remote.code.v1.ObserveProcessLogsResponse.header:type_name -> remote.code.v1.ProcessLogHeader
+	85,  // 76: remote.code.v1.ObserveProcessLogsResponse.chunk:type_name -> remote.code.v1.ProcessLogChunk
+	86,  // 77: remote.code.v1.ObserveProcessLogsResponse.checkpoint:type_name -> remote.code.v1.ProcessLogCheckpoint
+	87,  // 78: remote.code.v1.ObserveProcessLogsResponse.end:type_name -> remote.code.v1.ProcessLogEnd
+	68,  // 79: remote.code.v1.ProcessInputOpen.process:type_name -> remote.code.v1.ProcessReference
+	91,  // 80: remote.code.v1.ProcessTerminalResize.size:type_name -> remote.code.v1.TerminalSize
+	89,  // 81: remote.code.v1.StreamProcessInputRequest.open:type_name -> remote.code.v1.ProcessInputOpen
+	90,  // 82: remote.code.v1.StreamProcessInputRequest.data:type_name -> remote.code.v1.ProcessInputData
+	93,  // 83: remote.code.v1.StreamProcessInputRequest.close_input:type_name -> remote.code.v1.ProcessInputClose
+	94,  // 84: remote.code.v1.StreamProcessInputRequest.detach:type_name -> remote.code.v1.ProcessInputDetach
+	92,  // 85: remote.code.v1.StreamProcessInputRequest.resize:type_name -> remote.code.v1.ProcessTerminalResize
+	67,  // 86: remote.code.v1.ProcessInputOpened.process:type_name -> remote.code.v1.ProcessInfo
+	91,  // 87: remote.code.v1.ProcessTerminalResizeAck.size:type_name -> remote.code.v1.TerminalSize
+	12,  // 88: remote.code.v1.ProcessInputEnd.reason:type_name -> remote.code.v1.ProcessInputEndReason
+	67,  // 89: remote.code.v1.ProcessInputEnd.process:type_name -> remote.code.v1.ProcessInfo
+	96,  // 90: remote.code.v1.StreamProcessInputResponse.opened:type_name -> remote.code.v1.ProcessInputOpened
+	97,  // 91: remote.code.v1.StreamProcessInputResponse.ack:type_name -> remote.code.v1.ProcessInputAck
+	99,  // 92: remote.code.v1.StreamProcessInputResponse.end:type_name -> remote.code.v1.ProcessInputEnd
+	98,  // 93: remote.code.v1.StreamProcessInputResponse.resize_ack:type_name -> remote.code.v1.ProcessTerminalResizeAck
+	68,  // 94: remote.code.v1.DeleteProcessRequest.process:type_name -> remote.code.v1.ProcessReference
+	67,  // 95: remote.code.v1.DeleteProcessResponse.process:type_name -> remote.code.v1.ProcessInfo
+	68,  // 96: remote.code.v1.ProcessSelector.reference:type_name -> remote.code.v1.ProcessReference
+	103, // 97: remote.code.v1.BatchDeleteProcessesRequest.selectors:type_name -> remote.code.v1.ProcessSelector
+	113, // 98: remote.code.v1.BatchDeleteSelectorResult.status:type_name -> google.rpc.Status
+	6,   // 99: remote.code.v1.ProcessDeleteTarget.state:type_name -> remote.code.v1.ProcessState
+	106, // 100: remote.code.v1.BatchDeleteProcessResult.process:type_name -> remote.code.v1.ProcessDeleteTarget
+	113, // 101: remote.code.v1.BatchDeleteProcessResult.status:type_name -> google.rpc.Status
+	105, // 102: remote.code.v1.BatchDeleteProcessesResponse.selectors:type_name -> remote.code.v1.BatchDeleteSelectorResult
+	107, // 103: remote.code.v1.BatchDeleteProcessesResponse.processes:type_name -> remote.code.v1.BatchDeleteProcessResult
+	13,  // 104: remote.code.v1.ControllerService.GetInfo:input_type -> remote.code.v1.GetInfoRequest
+	16,  // 105: remote.code.v1.ControllerService.ObserveControllerLogs:input_type -> remote.code.v1.ObserveControllerLogsRequest
+	24,  // 106: remote.code.v1.FileService.Stat:input_type -> remote.code.v1.StatRequest
+	26,  // 107: remote.code.v1.FileService.List:input_type -> remote.code.v1.ListRequest
+	29,  // 108: remote.code.v1.FileService.Tree:input_type -> remote.code.v1.TreeRequest
+	32,  // 109: remote.code.v1.FileService.Upload:input_type -> remote.code.v1.UploadRequest
+	34,  // 110: remote.code.v1.FileService.Download:input_type -> remote.code.v1.DownloadRequest
+	38,  // 111: remote.code.v1.FileService.CreateUploadSession:input_type -> remote.code.v1.CreateUploadSessionRequest
+	44,  // 112: remote.code.v1.FileService.TransferUpload:input_type -> remote.code.v1.TransferUploadRequest
+	49,  // 113: remote.code.v1.FileService.GetUploadSession:input_type -> remote.code.v1.GetUploadSessionRequest
+	51,  // 114: remote.code.v1.FileService.AbortUploadSession:input_type -> remote.code.v1.AbortUploadSessionRequest
+	53,  // 115: remote.code.v1.FileService.DownloadRange:input_type -> remote.code.v1.DownloadRangeRequest
+	59,  // 116: remote.code.v1.FileService.Remove:input_type -> remote.code.v1.RemoveRequest
+	61,  // 117: remote.code.v1.FileService.Move:input_type -> remote.code.v1.MoveRequest
+	63,  // 118: remote.code.v1.FileService.Chmod:input_type -> remote.code.v1.ChmodRequest
+	65,  // 119: remote.code.v1.FileService.Mkdir:input_type -> remote.code.v1.MkdirRequest
+	69,  // 120: remote.code.v1.ProcessService.StartProcess:input_type -> remote.code.v1.StartProcessRequest
+	73,  // 121: remote.code.v1.ProcessService.ListProcessTemplates:input_type -> remote.code.v1.ListProcessTemplatesRequest
+	75,  // 122: remote.code.v1.ProcessService.GetProcessTemplate:input_type -> remote.code.v1.GetProcessTemplateRequest
+	77,  // 123: remote.code.v1.ProcessService.StartProcessFromTemplate:input_type -> remote.code.v1.StartProcessFromTemplateRequest
+	79,  // 124: remote.code.v1.ProcessService.ListProcesses:input_type -> remote.code.v1.ListProcessesRequest
+	81,  // 125: remote.code.v1.ProcessService.SignalProcess:input_type -> remote.code.v1.SignalProcessRequest
+	101, // 126: remote.code.v1.ProcessService.DeleteProcess:input_type -> remote.code.v1.DeleteProcessRequest
+	104, // 127: remote.code.v1.ProcessService.BatchDeleteProcesses:input_type -> remote.code.v1.BatchDeleteProcessesRequest
+	83,  // 128: remote.code.v1.ProcessService.ObserveProcessLogs:input_type -> remote.code.v1.ObserveProcessLogsRequest
+	95,  // 129: remote.code.v1.ProcessService.StreamProcessInput:input_type -> remote.code.v1.StreamProcessInputRequest
+	14,  // 130: remote.code.v1.ControllerService.GetInfo:output_type -> remote.code.v1.GetInfoResponse
+	21,  // 131: remote.code.v1.ControllerService.ObserveControllerLogs:output_type -> remote.code.v1.ObserveControllerLogsResponse
+	25,  // 132: remote.code.v1.FileService.Stat:output_type -> remote.code.v1.StatResponse
+	27,  // 133: remote.code.v1.FileService.List:output_type -> remote.code.v1.ListResponse
+	30,  // 134: remote.code.v1.FileService.Tree:output_type -> remote.code.v1.TreeResponse
+	33,  // 135: remote.code.v1.FileService.Upload:output_type -> remote.code.v1.UploadResponse
+	37,  // 136: remote.code.v1.FileService.Download:output_type -> remote.code.v1.DownloadResponse
+	40,  // 137: remote.code.v1.FileService.CreateUploadSession:output_type -> remote.code.v1.CreateUploadSessionResponse
+	48,  // 138: remote.code.v1.FileService.TransferUpload:output_type -> remote.code.v1.TransferUploadResponse
+	50,  // 139: remote.code.v1.FileService.GetUploadSession:output_type -> remote.code.v1.GetUploadSessionResponse
+	52,  // 140: remote.code.v1.FileService.AbortUploadSession:output_type -> remote.code.v1.AbortUploadSessionResponse
+	57,  // 141: remote.code.v1.FileService.DownloadRange:output_type -> remote.code.v1.DownloadRangeResponse
+	60,  // 142: remote.code.v1.FileService.Remove:output_type -> remote.code.v1.RemoveResponse
+	62,  // 143: remote.code.v1.FileService.Move:output_type -> remote.code.v1.MoveResponse
+	64,  // 144: remote.code.v1.FileService.Chmod:output_type -> remote.code.v1.ChmodResponse
+	66,  // 145: remote.code.v1.FileService.Mkdir:output_type -> remote.code.v1.MkdirResponse
+	70,  // 146: remote.code.v1.ProcessService.StartProcess:output_type -> remote.code.v1.StartProcessResponse
+	74,  // 147: remote.code.v1.ProcessService.ListProcessTemplates:output_type -> remote.code.v1.ListProcessTemplatesResponse
+	76,  // 148: remote.code.v1.ProcessService.GetProcessTemplate:output_type -> remote.code.v1.GetProcessTemplateResponse
+	78,  // 149: remote.code.v1.ProcessService.StartProcessFromTemplate:output_type -> remote.code.v1.StartProcessFromTemplateResponse
+	80,  // 150: remote.code.v1.ProcessService.ListProcesses:output_type -> remote.code.v1.ListProcessesResponse
+	82,  // 151: remote.code.v1.ProcessService.SignalProcess:output_type -> remote.code.v1.SignalProcessResponse
+	102, // 152: remote.code.v1.ProcessService.DeleteProcess:output_type -> remote.code.v1.DeleteProcessResponse
+	108, // 153: remote.code.v1.ProcessService.BatchDeleteProcesses:output_type -> remote.code.v1.BatchDeleteProcessesResponse
+	88,  // 154: remote.code.v1.ProcessService.ObserveProcessLogs:output_type -> remote.code.v1.ObserveProcessLogsResponse
+	100, // 155: remote.code.v1.ProcessService.StreamProcessInput:output_type -> remote.code.v1.StreamProcessInputResponse
+	130, // [130:156] is the sub-list for method output_type
+	104, // [104:130] is the sub-list for method input_type
+	104, // [104:104] is the sub-list for extension type_name
+	104, // [104:104] is the sub-list for extension extendee
+	0,   // [0:104] is the sub-list for field type_name
 }
 
 func init() { file_remote_code_v1_remote_code_proto_init() }
@@ -6944,61 +7746,71 @@ func file_remote_code_v1_remote_code_proto_init() {
 	if File_remote_code_v1_remote_code_proto != nil {
 		return
 	}
-	file_remote_code_v1_remote_code_proto_msgTypes[12].OneofWrappers = []any{
+	file_remote_code_v1_remote_code_proto_msgTypes[3].OneofWrappers = []any{
+		(*ObserveControllerLogsRequest_Offset)(nil),
+		(*ObserveControllerLogsRequest_TailLines)(nil),
+	}
+	file_remote_code_v1_remote_code_proto_msgTypes[8].OneofWrappers = []any{
+		(*ObserveControllerLogsResponse_Header)(nil),
+		(*ObserveControllerLogsResponse_Entry)(nil),
+		(*ObserveControllerLogsResponse_Checkpoint)(nil),
+		(*ObserveControllerLogsResponse_End)(nil),
+	}
+	file_remote_code_v1_remote_code_proto_msgTypes[19].OneofWrappers = []any{
 		(*UploadRequest_Metadata)(nil),
 		(*UploadRequest_Chunk)(nil),
 	}
-	file_remote_code_v1_remote_code_proto_msgTypes[17].OneofWrappers = []any{
+	file_remote_code_v1_remote_code_proto_msgTypes[24].OneofWrappers = []any{
 		(*DownloadResponse_Metadata)(nil),
 		(*DownloadResponse_Chunk)(nil),
 		(*DownloadResponse_Summary)(nil),
 	}
-	file_remote_code_v1_remote_code_proto_msgTypes[24].OneofWrappers = []any{
+	file_remote_code_v1_remote_code_proto_msgTypes[31].OneofWrappers = []any{
 		(*TransferUploadRequest_Open)(nil),
 		(*TransferUploadRequest_Chunk)(nil),
 		(*TransferUploadRequest_Finish)(nil),
 	}
-	file_remote_code_v1_remote_code_proto_msgTypes[28].OneofWrappers = []any{
+	file_remote_code_v1_remote_code_proto_msgTypes[35].OneofWrappers = []any{
 		(*TransferUploadResponse_Ready)(nil),
 		(*TransferUploadResponse_Checkpoint)(nil),
 		(*TransferUploadResponse_Complete)(nil),
 	}
-	file_remote_code_v1_remote_code_proto_msgTypes[37].OneofWrappers = []any{
+	file_remote_code_v1_remote_code_proto_msgTypes[44].OneofWrappers = []any{
 		(*DownloadRangeResponse_Metadata)(nil),
 		(*DownloadRangeResponse_Chunk)(nil),
 		(*DownloadRangeResponse_Summary)(nil),
 	}
-	file_remote_code_v1_remote_code_proto_msgTypes[47].OneofWrappers = []any{}
-	file_remote_code_v1_remote_code_proto_msgTypes[48].OneofWrappers = []any{
+	file_remote_code_v1_remote_code_proto_msgTypes[54].OneofWrappers = []any{}
+	file_remote_code_v1_remote_code_proto_msgTypes[55].OneofWrappers = []any{
 		(*ProcessReference_Id)(nil),
 		(*ProcessReference_Name)(nil),
 		(*ProcessReference_Pid)(nil),
 	}
-	file_remote_code_v1_remote_code_proto_msgTypes[63].OneofWrappers = []any{
+	file_remote_code_v1_remote_code_proto_msgTypes[70].OneofWrappers = []any{
 		(*ObserveProcessLogsRequest_Offset)(nil),
 		(*ObserveProcessLogsRequest_TailLines)(nil),
 	}
-	file_remote_code_v1_remote_code_proto_msgTypes[67].OneofWrappers = []any{}
-	file_remote_code_v1_remote_code_proto_msgTypes[68].OneofWrappers = []any{
+	file_remote_code_v1_remote_code_proto_msgTypes[74].OneofWrappers = []any{}
+	file_remote_code_v1_remote_code_proto_msgTypes[75].OneofWrappers = []any{
 		(*ObserveProcessLogsResponse_Header)(nil),
 		(*ObserveProcessLogsResponse_Chunk)(nil),
 		(*ObserveProcessLogsResponse_Checkpoint)(nil),
 		(*ObserveProcessLogsResponse_End)(nil),
 	}
-	file_remote_code_v1_remote_code_proto_msgTypes[75].OneofWrappers = []any{
+	file_remote_code_v1_remote_code_proto_msgTypes[82].OneofWrappers = []any{
 		(*StreamProcessInputRequest_Open)(nil),
 		(*StreamProcessInputRequest_Data)(nil),
 		(*StreamProcessInputRequest_CloseInput)(nil),
 		(*StreamProcessInputRequest_Detach)(nil),
 		(*StreamProcessInputRequest_Resize)(nil),
 	}
-	file_remote_code_v1_remote_code_proto_msgTypes[80].OneofWrappers = []any{
+	file_remote_code_v1_remote_code_proto_msgTypes[87].OneofWrappers = []any{
 		(*StreamProcessInputResponse_Opened)(nil),
 		(*StreamProcessInputResponse_Ack)(nil),
 		(*StreamProcessInputResponse_End)(nil),
 		(*StreamProcessInputResponse_ResizeAck)(nil),
 	}
-	file_remote_code_v1_remote_code_proto_msgTypes[83].OneofWrappers = []any{
+	file_remote_code_v1_remote_code_proto_msgTypes[90].OneofWrappers = []any{
 		(*ProcessSelector_Reference)(nil),
 		(*ProcessSelector_NameGlob)(nil),
 	}
@@ -7007,8 +7819,8 @@ func file_remote_code_v1_remote_code_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_remote_code_v1_remote_code_proto_rawDesc), len(file_remote_code_v1_remote_code_proto_rawDesc)),
-			NumEnums:      11,
-			NumMessages:   90,
+			NumEnums:      13,
+			NumMessages:   98,
 			NumExtensions: 0,
 			NumServices:   3,
 		},

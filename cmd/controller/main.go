@@ -6,12 +6,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/qq1426155093/remote-code/internal/controllerlog"
+	"github.com/qq1426155093/remote-code/internal/logging"
 	"github.com/qq1426155093/remote-code/internal/server"
 	"github.com/qq1426155093/remote-code/internal/version"
 	"google.golang.org/grpc"
@@ -19,7 +20,7 @@ import (
 
 func main() {
 	if err := run(); err != nil {
-		log.Printf("controller error: %v", err)
+		fmt.Fprintf(os.Stderr, "controller error: %v\n", err)
 		os.Exit(1)
 	}
 }
@@ -44,8 +45,22 @@ func runController(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
+	var controllerLogger *controllerlog.Logger
+	if !options.checkConfig {
+		controllerLogger, err = controllerlog.Open(config.RuntimeDirectory, config.ControllerLogs, stderr)
+		if err != nil {
+			controllerLogger = controllerlog.NewFallback(stderr)
+			fmt.Fprintf(stderr, "controller runtime log unavailable: %v\n", err)
+		}
+	}
 	prepared, err := server.Prepare(config)
 	if err != nil {
+		if controllerLogger != nil {
+			controllerLogger.Emit(logging.Event{Level: logging.LevelError, Component: "controller", Name: "prepare_failed", Message: "controller preparation failed", Fields: map[string]string{
+				"error_kind": fmt.Sprintf("%T", err),
+			}})
+			_ = controllerLogger.Close()
+		}
 		return err
 	}
 	if options.checkConfig {
@@ -53,13 +68,20 @@ func runController(args []string, stdout, stderr io.Writer) error {
 		return nil
 	}
 
-	controller, err := server.NewPrepared(prepared)
+	if controllerLogger == nil {
+		controllerLogger = controllerlog.NewFallback(stderr)
+	}
+	controller, err := server.NewPreparedWithLogger(prepared, controllerLogger)
 	if err != nil {
 		return err
 	}
-	log.Printf("remote-code-controller v%s listening on %s", version.Version, controller.Address())
+	controller.Emit(logging.Event{Level: logging.LevelInfo, Component: "controller", Name: "started", Message: "controller is listening", Fields: map[string]string{
+		"version": version.Version, "address": controller.Address(),
+	}})
 	if address := controller.MCPAddress(); address != "" {
-		log.Printf("MCP Streamable HTTP listening on %s%s", address, prepared.Config.MCP.EndpointPath)
+		controller.Emit(logging.Event{Level: logging.LevelInfo, Component: "mcp", Name: "listening", Message: "MCP Streamable HTTP is listening", Fields: map[string]string{
+			"address": address, "path": prepared.Config.MCP.EndpointPath,
+		}})
 	}
 	serveErrors := make(chan error, 1)
 	go func() {
@@ -71,13 +93,30 @@ func runController(args []string, stdout, stderr io.Writer) error {
 	defer signal.Stop(signals)
 	select {
 	case received := <-signals:
-		log.Printf("received %s, shutting down", received)
+		controller.Emit(logging.Event{Level: logging.LevelInfo, Component: "controller", Name: "signal_received", Message: "shutdown signal received", Fields: map[string]string{
+			"signal": received.String(),
+		}})
 	case err := <-serveErrors:
 		if err != nil && !errors.Is(err, grpc.ErrServerStopped) {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			_ = controller.Shutdown(ctx)
+			controller.Emit(logging.Event{Level: logging.LevelError, Component: "controller", Name: "serve_failed", Message: "controller serve loop failed", Fields: map[string]string{
+				"error_kind": fmt.Sprintf("%T", err),
+			}})
+		}
+		// Serve can return because a listener failed or because an embedding
+		// caller stopped the gRPC server. In either case own the full cleanup
+		// path here; otherwise the runtime-log lock and MCP listener can leak
+		// when no signal branch performs the shutdown.
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		shutdownErr := controller.Shutdown(ctx)
+		cancel()
+		if err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+			if shutdownErr != nil && !errors.Is(shutdownErr, context.DeadlineExceeded) {
+				return fmt.Errorf("serve controller: %w (shutdown: %v)", err, shutdownErr)
+			}
 			return fmt.Errorf("serve controller: %w", err)
+		}
+		if shutdownErr != nil && !errors.Is(shutdownErr, context.DeadlineExceeded) {
+			return fmt.Errorf("shutdown controller: %w", shutdownErr)
 		}
 		return nil
 	}

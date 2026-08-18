@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"runtime/debug"
 	"sort"
 	"strings"
@@ -16,6 +15,7 @@ import (
 	"github.com/expr-lang/expr"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/qq1426155093/remote-code/internal/auth"
+	"github.com/qq1426155093/remote-code/internal/logging"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -26,12 +26,20 @@ type runner struct {
 	globalSlots chan struct{}
 	toolSlots   map[string]chan struct{}
 	maxResponse int64
+	logger      logging.Logger
 }
 
-func newRunner(config Config, registry *Registry, hosts HostDispatcher) *runner {
+func newRunner(config Config, registry *Registry, hosts HostDispatcher, loggers ...logging.Logger) *runner {
+	var logger logging.Logger
+	if len(loggers) > 0 {
+		logger = loggers[0]
+	}
+	if logger == nil {
+		logger = logging.Nop{}
+	}
 	result := &runner{
 		hosts: hosts, globalSlots: make(chan struct{}, config.MaxConcurrentCalls),
-		toolSlots: make(map[string]chan struct{}), maxResponse: config.MaxResponseBytes,
+		toolSlots: make(map[string]chan struct{}), maxResponse: config.MaxResponseBytes, logger: logger,
 	}
 	for _, tool := range registry.ordered {
 		if tool.MaxConcurrency > 0 {
@@ -47,12 +55,18 @@ func (r *runner) call(ctx context.Context, tool *CompiledTool, raw json.RawMessa
 	resultIsError := true
 	defer func() {
 		if recover() != nil {
-			log.Printf("MCP tool panic id=%s tool=%q stack=%q", callID, tool.Name, debug.Stack())
+			logging.Emit(r.logger, logging.Event{Level: logging.LevelError, Component: "mcp", Name: "tool_panic", Message: "MCP tool execution panicked", Fields: map[string]string{
+				"call_id": callID, "tool": tool.Name, "stack": string(debug.Stack()),
+			}})
 			result = toolError("tool execution failed")
 			resultIsError = true
 		}
 		principal, _ := auth.PrincipalFromContext(ctx)
-		log.Printf("MCP tool call id=%s tool=%q client=%q principal=%q error=%t duration_ms=%d", callID, tool.Name, clientName, principal.ID, resultIsError, time.Since(started).Milliseconds())
+		principalID := strings.TrimPrefix(principal.ID, "token:")
+		logging.Emit(r.logger, logging.Event{Level: logging.LevelInfo, Component: "mcp", Name: "tool_call", Message: "MCP tool call completed", Fields: map[string]string{
+			"call_id": callID, "tool": tool.Name, "client": clientName, "principal": principalID,
+			"error": fmt.Sprintf("%t", resultIsError), "duration_ms": fmt.Sprintf("%d", time.Since(started).Milliseconds()),
+		}})
 	}()
 	arguments, err := decodeJSONValue(raw)
 	if err != nil {

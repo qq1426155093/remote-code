@@ -22,10 +22,10 @@ remote-code-controller \
 除 `max_processes` 被命令行覆盖外，其它值仍来自 TOML。布尔值可以显式反向覆盖，例如
 `--allow-insecure-remote=false`。
 
-## TOML schema v1、v2、v3、v4 与 v5
+## TOML schema v1、v2、v3、v4、v5 与 v6
 
 ```toml
-version = 5
+version = 6
 workspace = "/srv/remote-code/workspace"
 listen_address = "127.0.0.1:9443"
 runtime_directory = "/var/run/remote-code-controller"
@@ -49,6 +49,13 @@ max_total_bytes = 4294967296
 segment_bytes = 4194304
 retention_after_exit = "168h"
 max_observers_per_process = 8
+
+[controller_logs]
+max_bytes_per_controller = 33554432
+max_total_bytes = 134217728
+segment_bytes = 4194304
+retention_after_restart = "168h"
+max_observers = 8
 
 [tls]
 certificate_file = "/etc/remote-code/tls/server.crt"
@@ -98,7 +105,8 @@ tool_list_page_size = 100
 ```
 
 `version` 必须存在。schema v1 继续兼容，但不允许 `[mcp]`；schema v2 增加 MCP；schema v3 增加
-`[process_templates]`；schema v4 增加 `process_templates.extra_parameters`。v3、v4 均可省略
+`[process_templates]`；schema v4 增加 `process_templates.extra_parameters`；schema v5 增加
+`[file_transfers]`；schema v6 增加 `[controller_logs]`。v3、v4、v5、v6 均可省略
 `[process_templates]` 或配置空 `definition_files`，此时没有进程模板；v3 不接受
 `extra_parameters`。TLS
 certificate/key 必须同时配置。认证配置只接受 token 文件路径，
@@ -108,11 +116,20 @@ certificate/key 必须同时配置。认证配置只接受 token 文件路径，
 解析采用严格模式：未知字段、错误类型、重复 key、缺失/不支持的 schema version 都会使
 controller 拒绝启动。配置文件最大 1 MiB。
 
-`file_transfers` 从 schema v5 开始可用。上传 session 元数据和下载 revision 密钥保存在
+`file_transfers` 从 schema v5 开始可用，`controller_logs` 从 schema v6 开始可用。上传 session 元数据和下载 revision 密钥保存在
 `<runtime_directory>/file-transfers/`；已经确认的上传 checkpoint 可以跨 controller 进程重启恢复。
 若还要求跨主机重启恢复，`runtime_directory` 必须位于持久磁盘，不能依赖重启时会清空的 `/run`。
 `max_staging_bytes` 必须不小于 `max_upload_bytes`，并按活动 session 的声明大小预留，避免未完成上传
 耗尽磁盘。
+
+`controller_logs` 与 `process_logs` 使用相同的 CRC 分段存储约束，但只保存 Controller 自身的有界 JSON
+诊断事件。`max_bytes_per_controller`、`max_total_bytes` 和 `segment_bytes` 的单位是字节，最小 segment
+和单 Controller 上限为 256 KiB；`retention_after_restart` 控制正常关闭后跨重启保留多久的旧 segment，
+`max_observers` 的范围是 1–1024。CLI 覆盖参数分别为 `--controller-log-max-bytes`、
+`--controller-log-max-total-bytes`、`--controller-log-segment-bytes`、`--controller-log-retention` 和
+`--controller-log-max-observers`。日志目录位于 `<runtime_directory>/controller-logs/`，事件字段会对 token、
+secret、password、authorization、credential 和环境值等敏感 key 做脱敏；调用方仍不得把秘密放入消息或
+普通字段。日志不可用不会阻止 Controller 提供其它服务，`GetInfo.controller_logs.available` 会为 false。
 
 ## 字段映射
 
@@ -137,6 +154,11 @@ controller 拒绝启动。配置文件最大 1 MiB。
 | `process_logs.segment_bytes` | `--process-log-segment-bytes` | `4194304` |
 | `process_logs.retention_after_exit` | `--process-log-retention` | `168h` |
 | `process_logs.max_observers_per_process` | `--process-log-max-observers` | `8` |
+| `controller_logs.max_bytes_per_controller` | `--controller-log-max-bytes` | `33554432` |
+| `controller_logs.max_total_bytes` | `--controller-log-max-total-bytes` | `134217728` |
+| `controller_logs.segment_bytes` | `--controller-log-segment-bytes` | `4194304` |
+| `controller_logs.retention_after_restart` | `--controller-log-retention` | `168h` |
+| `controller_logs.max_observers` | `--controller-log-max-observers` | `8` |
 | `tls.certificate_file` | `--tls-cert` | 空 |
 | `tls.key_file` | `--tls-key` | 空 |
 | `auth.token_file` | `--token-file` | 空 |

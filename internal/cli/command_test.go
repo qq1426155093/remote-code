@@ -101,6 +101,7 @@ attach PROCESS
 windows | mux [-n TAIL_LINES] [PROCESS ...] (Ctrl-] ? shows keys)
 forget PROCESS_OR_GLOB [PROCESS_OR_GLOB ...]
 logs [-f] [-n LINES|--offset OFFSET] [--stdout|--stderr] PROCESS_ID (Ctrl-C stops following; process continues)
+controller-logs | clogs [-f] [-n LINES|--tail LINES|--offset OFFSET] (Ctrl-C stops following)
 clear
 exit | quit
 `

@@ -914,7 +914,10 @@ func (l *processLog) trimOldestSegment() bool {
 		return false
 	}
 	segment := l.segments[0]
-	if segment == l.active || (!l.finalized && len(l.segments) == 1) {
+	// A rebuilt log has no active file until the next append, so its final
+	// segment is already sealed even when the reopened store is non-finalized.
+	// Keep the live-path guard only when an active segment is present.
+	if segment == l.active || (!l.finalized && l.active != nil && len(l.segments) == 1) {
 		return false
 	}
 	l.removeSegmentLocked(0)

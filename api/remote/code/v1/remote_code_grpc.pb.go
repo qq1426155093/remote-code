@@ -19,7 +19,8 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ControllerService_GetInfo_FullMethodName = "/remote.code.v1.ControllerService/GetInfo"
+	ControllerService_GetInfo_FullMethodName               = "/remote.code.v1.ControllerService/GetInfo"
+	ControllerService_ObserveControllerLogs_FullMethodName = "/remote.code.v1.ControllerService/ObserveControllerLogs"
 )
 
 // ControllerServiceClient is the client API for ControllerService service.
@@ -27,6 +28,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ControllerServiceClient interface {
 	GetInfo(ctx context.Context, in *GetInfoRequest, opts ...grpc.CallOption) (*GetInfoResponse, error)
+	ObserveControllerLogs(ctx context.Context, in *ObserveControllerLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ObserveControllerLogsResponse], error)
 }
 
 type controllerServiceClient struct {
@@ -47,11 +49,31 @@ func (c *controllerServiceClient) GetInfo(ctx context.Context, in *GetInfoReques
 	return out, nil
 }
 
+func (c *controllerServiceClient) ObserveControllerLogs(ctx context.Context, in *ObserveControllerLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ObserveControllerLogsResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ControllerService_ServiceDesc.Streams[0], ControllerService_ObserveControllerLogs_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ObserveControllerLogsRequest, ObserveControllerLogsResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ControllerService_ObserveControllerLogsClient = grpc.ServerStreamingClient[ObserveControllerLogsResponse]
+
 // ControllerServiceServer is the server API for ControllerService service.
 // All implementations must embed UnimplementedControllerServiceServer
 // for forward compatibility.
 type ControllerServiceServer interface {
 	GetInfo(context.Context, *GetInfoRequest) (*GetInfoResponse, error)
+	ObserveControllerLogs(*ObserveControllerLogsRequest, grpc.ServerStreamingServer[ObserveControllerLogsResponse]) error
 	mustEmbedUnimplementedControllerServiceServer()
 }
 
@@ -64,6 +86,9 @@ type UnimplementedControllerServiceServer struct{}
 
 func (UnimplementedControllerServiceServer) GetInfo(context.Context, *GetInfoRequest) (*GetInfoResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetInfo not implemented")
+}
+func (UnimplementedControllerServiceServer) ObserveControllerLogs(*ObserveControllerLogsRequest, grpc.ServerStreamingServer[ObserveControllerLogsResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method ObserveControllerLogs not implemented")
 }
 func (UnimplementedControllerServiceServer) mustEmbedUnimplementedControllerServiceServer() {}
 func (UnimplementedControllerServiceServer) testEmbeddedByValue()                           {}
@@ -104,6 +129,17 @@ func _ControllerService_GetInfo_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ControllerService_ObserveControllerLogs_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ObserveControllerLogsRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ControllerServiceServer).ObserveControllerLogs(m, &grpc.GenericServerStream[ObserveControllerLogsRequest, ObserveControllerLogsResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ControllerService_ObserveControllerLogsServer = grpc.ServerStreamingServer[ObserveControllerLogsResponse]
+
 // ControllerService_ServiceDesc is the grpc.ServiceDesc for ControllerService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -116,7 +152,13 @@ var ControllerService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ControllerService_GetInfo_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "ObserveControllerLogs",
+			Handler:       _ControllerService_ObserveControllerLogs_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "remote/code/v1/remote_code.proto",
 }
 

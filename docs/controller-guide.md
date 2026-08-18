@@ -18,6 +18,7 @@ Controller 是部署在远程开发机上的长期运行服务，也是远程工
 - 通过服务端模板固化 Code Agent 等复杂进程的启动约束；
 - 对传输大小、活动进程、日志、MCP 调用和并发连接实施资源限制；
 - 在进程退出或 Controller 重启后保留必要的历史记录。
+- 将 Controller 自身的生命周期、进程服务和 MCP 诊断写入独立的持久化事件日志，并提供 gRPC 回放/follow。
 
 当前能力边界如下：
 
@@ -44,6 +45,7 @@ flowchart LR
         Auth --> Info[Controller service]
         Auth --> Files[File service]
         Auth --> Processes[Process service]
+        Auth --> ControllerLogs[Controller runtime log]
         MCP --> MCPAuth[Bearer authentication]
         MCPAuth --> Registry[MCP tool registry]
         Registry --> Files
@@ -53,6 +55,7 @@ flowchart LR
     Files --> Workspace[(Workspace)]
     Files --> TransferState[(Transfer state)]
     Processes --> Runtime[(Process metadata and logs)]
+    ControllerLogs --> RuntimeDiagnostics[(controller log segments)]
     Processes --> Groups[Managed process groups]
     Groups --> Workspace
 ```
@@ -64,7 +67,7 @@ Controller 内部的主要组件如下：
 
 | 组件 | 职责 |
 | --- | --- |
-| `ControllerService` | 返回版本、API、workspace、文件传输能力、进程上限和模板数量 |
+| `ControllerService` | 返回版本、API、workspace、文件传输能力、进程上限、模板数量，并观察 Controller 运行日志 |
 | `FileService` | 实施工作区边界、文件元数据、目录树、原子传输和文件变更 |
 | `ProcessService` | 管理进程注册表、进程组、PIPE/PTY、输入流、日志、模板和持久化历史 |
 | gRPC health service | 提供标准 gRPC 健康状态；启用 token 时健康请求同样需要认证 |
@@ -155,7 +158,24 @@ PTY 进程支持初始窗口大小和运行时 resize。网络断开或显式 de
 逻辑 offset 与物理 segment 位置无关，适合客户端保存为断线续读游标。若所请求的历史已经被回收，
 服务端会明确报告可用的最早 offset，而不是静默返回错误区间。
 
-### 3.5 服务端进程模板
+### 3.5 Controller 自身运行日志
+
+Controller 还维护一份独立于进程 stdout/stderr 的运行日志，落在
+`runtime_directory/controller-logs/`。每条记录是有界 JSON 事件，包含 UTC 时间、boot ID、级别、组件、
+事件名、消息和经过字段级脱敏的诊断字段。当前会记录启动、监听、持久化恢复、进程启动与退出、信号、MCP
+调用以及关闭阶段；不会记录 token、提示词、环境变量值、上传内容或进程输出。
+
+`ControllerService.ObserveControllerLogs` 支持按逻辑 offset 或末尾行数回放，并用 `follow` 等待新事件。
+响应先发送 header，再发送 entry、checkpoint 和 end；checkpoint 的 `next_offset` 是可保存的续读游标，
+entry 同时携带产生它的 `boot_id`。历史被容量回收时服务端返回 `OUT_OF_RANGE` 及当前最早 offset，关闭时
+follow 流以明确的 end reason 结束。`GetInfo.controller_logs` 公布是否可用、格式版本、tail 上限和 observer
+上限。
+
+CLI 的 `controller-logs`（别名 `clogs`）输出一行一个 JSON entry，支持 `-n/--tail`、`--offset` 和
+`-f/--follow`，并在发生跨 segment 的截断时标出 `line_truncated`。持久化目录拥有独立锁，不会与文件断点续传状态的锁冲突；启动无法打开日志时服务继续运行，
+但能力标记为不可用并把有界事件写入标准错误。关闭流程会先停止新进程、广播日志结束，再排空 gRPC 请求。
+
+### 3.6 服务端进程模板
 
 进程模板用于把稳定、复杂且由运维方控制的启动方式保存在 Controller 一侧。一次模板启动依次执行：
 
@@ -177,7 +197,7 @@ YAML、编译 Draft 2020-12 JSON Schema 和 Expr；当前不支持热加载，�
 模板是一种部署约束和脱敏机制，不是授权边界。只要同一个 token 仍可调用直接 `StartProcess`，调用者就
 可以绕过模板直接启动其它命令。
 
-### 3.6 可配置 MCP Server
+### 3.7 可配置 MCP Server
 
 MCP 默认关闭。启用后，Controller 从 workspace 外的 `.mcp.yaml` 文件加载工具，并通过独立的
 Streamable HTTP endpoint 对外提供。当前示例覆盖：
@@ -235,10 +255,11 @@ mkdir -p ./var/workspace ./var/runtime
   --listen-addr 127.0.0.1:9443
 ```
 
-启动日志应包含：
+启动时会向标准错误输出一行脱敏 JSON 事件（同时写入
+`runtime_directory/controller-logs/`）：
 
 ```text
-remote-code-controller v0.1.0 listening on 127.0.0.1:9443
+{"timestamp":"2026-08-18T00:00:00Z","boot_id":"...","level":"INFO","component":"controller","event":"started","message":"controller is listening","fields":{"address":"127.0.0.1:9443","version":"v0.1.0"}}
 ```
 
 在另一个终端验证：
@@ -251,7 +272,7 @@ remote-code-controller v0.1.0 listening on 127.0.0.1:9443
 
 ## 5. 配置文件
 
-Controller 不会隐式查找配置，必须使用 `--config` 指定 TOML 文件。当前推荐 schema v5；v1-v4
+Controller 不会隐式查找配置，必须使用 `--config` 指定 TOML 文件。当前推荐 schema v6；v1-v5
 继续兼容，但较早版本不能使用后来增加的 MCP、模板、额外参数或断点续传配置。
 
 最终值的覆盖顺序为：
@@ -263,7 +284,7 @@ Controller 不会隐式查找配置，必须使用 `--config` 指定 TOML 文件
 一个适合本机演示的最小配置如下：
 
 ```toml
-version = 5
+version = 6
 workspace = "/absolute/path/to/workspace"
 listen_address = "127.0.0.1:9443"
 runtime_directory = "/absolute/path/to/runtime"
@@ -279,6 +300,7 @@ allow_insecure_remote = false
 | 顶层字段 | workspace、gRPC 地址、runtime、上传上限、活动进程数和明文远端策略 |
 | `[file_transfers]` | 断点续传开关、session TTL、暂存容量、checkpoint 和下载并发 |
 | `[process_logs]` | 单进程/全局日志容量、segment、保留期和观察者数量 |
+| `[controller_logs]` | Controller 运行事件容量、segment、重启保留期和观察者数量 |
 | `[tls]` | 全局服务端证书和私钥，两项必须同时提供 |
 | `[auth]` | bearer token 文件路径；token 内容不直接写入 TOML |
 | `[process_templates]` | workspace 外模板定义文件和只读 `extra_parameters` |
@@ -449,10 +471,10 @@ allowed_host_capabilities = [
 ]
 ```
 
-启动成功后日志会额外显示：
+启动成功后还会记录一行 MCP 监听事件：
 
 ```text
-MCP Streamable HTTP listening on 127.0.0.1:9444/mcp
+{"timestamp":"2026-08-18T00:00:00Z","boot_id":"...","level":"INFO","component":"mcp","event":"listening","message":"MCP Streamable HTTP is listening","fields":{"address":"127.0.0.1:9444","path":"/mcp"}}
 ```
 
 MCP 客户端应把 endpoint 配置为 `http://127.0.0.1:9444/mcp`，远程 TLS 部署则使用 `https`，并在每次
@@ -494,16 +516,19 @@ MCP 客户端应把 endpoint 配置为 `http://127.0.0.1:9444/mcp`，远程 TLS 
 
 ## 10. 运维观测
 
-Controller 当前使用标准日志输出启动、监听、信号和配置错误。业务输出进入每个进程自己的持久化日志，
-不会混入 Controller 日志。
+Controller 会把启动、监听、信号、配置/服务失败、进程生命周期和 MCP 诊断写入脱敏的持久化运行日志，
+同时向标准错误输出同一份有界 JSON 事件。业务输出仍进入每个进程自己的持久化日志，不会混入 Controller
+运行日志。无法打开持久化目录时，Controller 继续提供服务，但只保留标准错误诊断。
 
 常用检查路径：
 
 ```text
 启动日志                         确认 gRPC/MCP 实际监听地址
 Client: info                    确认版本、API、workspace 和能力协商
+Client: controller-logs -n 100  查看 Controller 自身的结构化运行事件
 Client: ps -a                   检查活动与历史进程状态
 Client: logs -n 100 <UUID>      检查持久化输出
+runtime/controller-logs/        Controller 运行日志 segment；优先通过 gRPC/CLI 读取
 runtime/<uuid>/status.json      离线故障调查；不要在服务运行时手工修改
 runtime/<uuid>/logs/            日志 segment；不要绕过服务直接清理活动记录
 runtime/file-transfers/         可恢复文件传输状态

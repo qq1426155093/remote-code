@@ -182,6 +182,7 @@ Controller 还会再次实施路径校验。
 | `ps [-a]` | 列出活动进程；`-a` 包括退出、失败和丢失历史 |
 | `kill [-s SIGNAL] [-w] PROCESS` | 向整个进程组发信号；默认 `TERM`，`-w` 等待终态 |
 | `logs [-f] [-n LINES\|--offset OFFSET] [--stdout\|--stderr] PROCESS_ID` | 回放或跟随日志 |
+| `controller-logs` / `clogs` `[-f] [-n LINES\|--offset OFFSET]` | 回放或跟随 Controller 自身的结构化运行事件 |
 | `stdin PROCESS` | 进入逐行 managed-input 子模式 |
 | `attach PROCESS` | 接入 PTY 的原始交互终端 |
 | `forget PROCESS_OR_GLOB [...]` | 永久删除一个或多个终态进程的历史与日志 |
@@ -353,6 +354,18 @@ remote-code:/> logs --stderr --follow 7aa5daab-e886-4889-9ec3-92d461883091
 - `--follow` 先回放选定范围，再持续输出；
 - follow 中按 `Ctrl-C` 只停止当前观察，不会终止远端进程；
 - 默认 `--timeout 30s` 仍适用于 follow，长期观察请使用 `--timeout 0` 启动 Client。
+
+Controller 自身日志使用独立命令：
+
+```text
+remote-code:/> controller-logs -n 100
+remote-code:/> clogs --offset 500 --follow
+```
+
+它输出一行一个 JSON 事件，包含 `offset`、`next_offset`、`boot_id`、时间、级别、组件、事件名和脱敏字段。offset 是
+Controller 日志的逻辑续读游标，与进程日志互不相同；服务重启后旧事件仍可回放，entry 会保留其原始 boot ID。
+`Ctrl-C` 只取消当前 follow。若历史已回收，服务端返回 `OUT_OF_RANGE`，应使用错误详情中的 earliest offset 或
+重新指定 tail。
 
 ### 6.5 逐行输入子模式
 
@@ -569,7 +582,7 @@ func main() {
 | 进程模板 | `ListProcessTemplates`、`GetProcessTemplate`、`StartProcessFromTemplate` |
 | 进程生命周期 | `StartProcess`、`StartProcessWithOptions`、`ListProcesses`、`SignalProcess` |
 | 历史删除 | `DeleteProcess`、`BatchDeleteProcesses`、`ExactProcessSelector`、`ProcessNameGlobSelector` |
-| 日志 | `ObserveProcessLogs` |
+| 日志 | `ObserveProcessLogs`、`ObserveControllerLogs` |
 | 输入 | `OpenProcessInput`、`ProcessInputSession` |
 | 交互终端 | `OpenProcessAttachment`、`ProcessAttachment` |
 
@@ -654,6 +667,11 @@ import (
 
 生产代码应读取日志 stream 的 header、checkpoint 和 end frame，并持久化 `NextOffset`，以便断线后按逻辑
 offset 继续，而不重复处理已经确认的记录。
+
+公共 Go client 通过 `ObserveControllerLogs(ctx, ControllerLogOptions{...})` 暴露 Controller 日志。选项中的
+`Offset`、`TailLines` 互斥，`Follow` 控制是否等待新事件；返回流的 `Header` 先公布当前 boot/保留边界，
+随后读取 `Entry` 并在 `Checkpoint.NextOffset` 成功处理后保存游标。不要把 entry 的 `boot_id` 当作 offset，
+它只用于区分跨重启的事件来源。
 
 ### 9.5 输入和 attach API
 

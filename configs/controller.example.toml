@@ -1,5 +1,5 @@
-# remote-code-controller configuration, TOML schema version 5.
-version = 5
+# remote-code-controller configuration, TOML schema version 6.
+version = 6
 
 # All file RPCs and relative process working directories are confined here.
 workspace = "/srv/remote-code/workspace"
@@ -28,6 +28,16 @@ max_total_bytes = 4294967296
 segment_bytes = 4194304
 retention_after_exit = "168h"
 max_observers_per_process = 8
+
+[controller_logs]
+# Controller lifecycle, process-service and MCP diagnostics are persisted as
+# bounded JSON events and can be replayed with the controller-logs CLI command
+# or ControllerService.ObserveControllerLogs.
+max_bytes_per_controller = 33554432
+max_total_bytes = 134217728
+segment_bytes = 4194304
+retention_after_restart = "168h"
+max_observers = 8
 
 # Uncomment both fields to enable TLS.
 # [tls]

@@ -64,10 +64,13 @@ protobuf package 为 `remote.code.v1`，Go package 为 `codev1`。
 ```protobuf
 service ControllerService {
   rpc GetInfo(GetInfoRequest) returns (GetInfoResponse);
+  rpc ObserveControllerLogs(ObserveControllerLogsRequest) returns (stream ObserveControllerLogsResponse);
 }
 ```
 
-`GetInfoResponse` 返回 controller 版本、API 版本、工作区显示名、最大上传字节数、活动进程上限和文件传输能力。它既是能力查询，也是 CLI 进入 REPL 前的连接探测。绝不返回工作区绝对路径。
+`GetInfoResponse` 返回 controller 版本、API 版本、工作区显示名、最大上传字节数、活动进程上限、文件传输能力和
+`controller_logs` 能力。它既是能力查询，也是 CLI 进入 REPL 前的连接探测。绝不返回工作区绝对路径。
+`ObserveControllerLogs` 使用逻辑 offset/tail 回放脱敏 JSON 运行事件，支持 follow、checkpoint 和跨重启 boot ID。
 
 ### 4.2 FileService
 
@@ -107,6 +110,15 @@ service ProcessService {
 ```
 
 `ProcessInfo` 返回 UUID、逻辑名称、OS PID、PTY/pipe 模式、输入模式/状态、具体命令、参数、虚拟工作目录、环境覆盖 key、状态、时间戳以及可选退出码/退出信号。`StartProcessRequest.environment` 是覆盖 map，value 不会出现在响应或磁盘元数据。`ListProcessesRequest.all` 区分活动进程与完整历史。`ProcessReference` 用 oneof 明确区分 UUID、名称与 PID。`SignalProcess.wait=true` 使用 RPC context 作为等待上限；`DeleteProcess` 永久删除单条终态历史，`BatchDeleteProcesses` 从同一快照展开多个精确引用或名称 glob，按 UUID 去重并逐项返回状态。输入流见[进程标准输入详细设计 v1](process-input-design-v1.md)，完整进程设计见[通用进程管理详细设计 v1](process-management-design-v1.md)。
+
+### 4.3 Controller 运行日志
+
+`ObserveControllerLogs` 是独立的 server-streaming RPC。Controller 将生命周期、进程服务和 MCP 诊断编码为有界
+JSON 事件，落在 `runtime_directory/controller-logs/` 的 v2 分段中；事件字段在写入前做敏感 key 脱敏，绝不混入
+进程 stdout/stderr、prompt、上传内容或 token。请求可选择 `offset`、`tail_lines` 和 `follow`，响应顺序固定为
+header、entry、checkpoint、end。entry 使用 `[offset,next_offset)`，checkpoint 的 `next_offset` 也是跨
+segment/重启稳定的续读游标，entry 带来源 `boot_id`；容量回收返回 `OUT_OF_RANGE` 和 earliest offset，
+关闭时 follow 以 shutdown end reason 结束。
 
 ### 4.4 兼容上传流
 

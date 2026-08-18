@@ -18,6 +18,7 @@ import (
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/qq1426155093/remote-code/internal/auth"
 	"github.com/qq1426155093/remote-code/internal/files"
+	"github.com/qq1426155093/remote-code/internal/logging"
 	processservice "github.com/qq1426155093/remote-code/internal/process"
 	"github.com/qq1426155093/remote-code/internal/version"
 )
@@ -31,13 +32,13 @@ type Server struct {
 
 // NewServer binds the configured MCP listener and connects host functions to
 // the existing controller services.
-func NewServer(prepared *Prepared, fileService *files.Service, processService *processservice.Service) (*Server, error) {
+func NewServer(prepared *Prepared, fileService *files.Service, processService *processservice.Service, loggers ...logging.Logger) (*Server, error) {
 	if prepared == nil || !prepared.Config.Enabled || prepared.Registry == nil {
 		return nil, errors.New("prepared MCP configuration is required")
 	}
 	config := prepared.Config
 	hosts := &controllerHosts{files: fileService, processes: processService}
-	runner := newRunner(config, prepared.Registry, hosts)
+	runner := newRunner(config, prepared.Registry, hosts, loggers...)
 	sdkServer := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "remote-code-controller", Version: version.Version}, &mcpsdk.ServerOptions{
 		PageSize:     config.ToolListPageSize,
 		Capabilities: &mcpsdk.ServerCapabilities{Tools: &mcpsdk.ToolCapabilities{ListChanged: false}},

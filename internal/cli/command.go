@@ -171,6 +171,13 @@ var defaultCommandRegistry = mustCommandRegistry([]commandSpec{
 		handler:    (*REPL).observeProcessLogs,
 		complete:   (*commandCompleter).completeLogs,
 	},
+	{
+		name: "controller-logs", aliases: []string{"clogs"}, arguments: "[-f] [-n LINES|--tail LINES|--offset OFFSET]",
+		listSuffix: "(Ctrl-C stops following)",
+		details:    "Replay controller runtime events; --follow waits for new events",
+		handler:    (*REPL).observeControllerLogs,
+		complete:   (*commandCompleter).completeControllerLogs,
+	},
 	{name: "clear", handler: (*REPL).clearScreen},
 	{name: "exit", aliases: []string{"quit"}, handler: (*REPL).exitSession, action: commandExit},
 })

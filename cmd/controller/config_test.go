@@ -80,6 +80,8 @@ func TestParseControllerOptionsUsesDefaultsWithoutConfig(t *testing.T) {
 		config.RuntimeDirectory != "/var/run/remote-code-controller" || config.MaxUploadBytes != 1<<30 || config.MaxProcesses != 16 ||
 		config.ProcessLogs.MaxBytesPerProcess != 64<<20 || config.ProcessLogs.MaxTotalBytes != 4<<30 ||
 		config.ProcessLogs.SegmentBytes != 4<<20 || config.ProcessLogs.RetentionAfterExit != 7*24*time.Hour || config.ProcessLogs.MaxObservers != 8 ||
+		config.ControllerLogs.MaxBytesPerController != 32<<20 || config.ControllerLogs.MaxTotalBytes != 128<<20 ||
+		config.ControllerLogs.SegmentBytes != 4<<20 || config.ControllerLogs.RetentionAfterRestart != 7*24*time.Hour || config.ControllerLogs.MaxObservers != 8 ||
 		config.FileTransfers.Disabled || config.FileTransfers.UploadSessionTTL != 24*time.Hour || config.FileTransfers.CompletedSessionTTL != time.Hour ||
 		config.FileTransfers.MaxUploadSessions != 64 || config.FileTransfers.MaxStagingBytes != 4<<30 || config.FileTransfers.CheckpointBytes != 4<<20 ||
 		config.FileTransfers.CheckpointInterval != time.Second || config.FileTransfers.MaxConcurrentDownloads != 16 {
@@ -94,7 +96,7 @@ func TestLoadControllerConfigRejectsInvalidFiles(t *testing.T) {
 		want     string
 	}{
 		{name: "missing version", contents: `workspace = "/work"`, want: "version must be 1"},
-		{name: "future version", contents: "version = 6\n", want: "version must be 1, 2, 3, 4, or 5"},
+		{name: "future version", contents: "version = 7\n", want: "version must be 1, 2, 3, 4, 5, or 6"},
 		{name: "unknown field", contents: "version = 1\nmax_proceses = 2\n", want: "unknown field"},
 		{name: "wrong type", contents: "version = 1\nmax_processes = \"many\"\n", want: "cannot decode"},
 		{name: "duplicate key", contents: "version = 1\nmax_processes = 2\nmax_processes = 3\n", want: "already defined"},
@@ -266,6 +268,37 @@ max_concurrent_downloads = 5
 	v4WithTransfers := writeControllerConfig(t, "version = 4\n[file_transfers]\nresumable_enabled = true\n")
 	if _, err := loadControllerConfig(v4WithTransfers); err == nil || !strings.Contains(err.Error(), "does not support the file_transfers table") {
 		t.Fatalf("v4 file_transfers error = %v", err)
+	}
+}
+
+func TestLoadControllerConfigV6ControllerLogs(t *testing.T) {
+	configFile := writeControllerConfig(t, `
+version = 6
+workspace = "/work"
+
+[controller_logs]
+max_bytes_per_controller = 1048576
+max_total_bytes = 2097152
+segment_bytes = 262144
+retention_after_restart = "36h"
+max_observers = 3
+`)
+	file, err := loadControllerConfig(configFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := defaultControllerOptions()
+	if err := applyControllerFileConfig(&options, file); err != nil {
+		t.Fatal(err)
+	}
+	got := options.serverConfig.ControllerLogs
+	if got.MaxBytesPerController != 1048576 || got.MaxTotalBytes != 2097152 || got.SegmentBytes != 262144 || got.RetentionAfterRestart != 36*time.Hour || got.MaxObservers != 3 {
+		t.Fatalf("controller log config = %+v", got)
+	}
+
+	v5WithControllerLogs := writeControllerConfig(t, "version = 5\n[controller_logs]\nmax_observers = 2\n")
+	if _, err := loadControllerConfig(v5WithControllerLogs); err == nil || !strings.Contains(err.Error(), "does not support the controller_logs table") {
+		t.Fatalf("v5 controller_logs error = %v", err)
 	}
 }
 

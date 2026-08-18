@@ -233,6 +233,44 @@ func (c *commandCompleter) completeLogs(previous []string, current string) []com
 	return candidates
 }
 
+func (c *commandCompleter) completeControllerLogs(previous []string, current string) []completionCandidate {
+	used := make(map[string]bool)
+	expectValue := false
+	for _, argument := range previous {
+		if expectValue {
+			expectValue = false
+			continue
+		}
+		switch argument {
+		case "-n", "--tail", "--offset":
+			used["start"] = true
+			expectValue = true
+		case "-f", "--follow":
+			used["follow"] = true
+		default:
+			return nil
+		}
+	}
+	if expectValue || (current != "" && !strings.HasPrefix(current, "-")) {
+		return nil
+	}
+	var candidates []completionCandidate
+	for _, option := range []struct {
+		value string
+		key   string
+	}{
+		{value: "-f", key: "follow"},
+		{value: "-n", key: "start"},
+		{value: "--tail", key: "start"},
+		{value: "--offset", key: "start"},
+	} {
+		if !used[option.key] {
+			candidates = append(candidates, completionCandidate{value: option.value, finish: true})
+		}
+	}
+	return candidates
+}
+
 func (c *commandCompleter) completeExec(previous []string, current string) []completionCandidate {
 	if len(previous) > 0 {
 		switch previous[len(previous)-1] {

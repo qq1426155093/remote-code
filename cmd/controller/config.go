@@ -11,6 +11,7 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 	"github.com/qq1426155093/remote-code/internal/auth"
+	controllerlog "github.com/qq1426155093/remote-code/internal/controllerlog"
 	fileservice "github.com/qq1426155093/remote-code/internal/files"
 	mcpserver "github.com/qq1426155093/remote-code/internal/mcp"
 	processservice "github.com/qq1426155093/remote-code/internal/process"
@@ -23,6 +24,7 @@ const (
 	controllerConfigVersionV3 = 3
 	controllerConfigVersionV4 = 4
 	controllerConfigVersionV5 = 5
+	controllerConfigVersionV6 = 6
 	maxControllerConfigBytes  = 1 << 20
 	maxConfiguredProcesses    = 4096
 )
@@ -57,9 +59,18 @@ type controllerFileConfig struct {
 		RetentionAfterExit *string `toml:"retention_after_exit"`
 		MaxObservers       *int    `toml:"max_observers_per_process"`
 	} `toml:"process_logs"`
+	ControllerLogs   *controllerLogFileConfig   `toml:"controller_logs"`
 	ProcessTemplates *processTemplateFileConfig `toml:"process_templates"`
 	FileTransfers    *fileTransferFileConfig    `toml:"file_transfers"`
 	MCP              *mcpFileConfig             `toml:"mcp"`
+}
+
+type controllerLogFileConfig struct {
+	MaxBytesPerController *int64  `toml:"max_bytes_per_controller"`
+	MaxTotalBytes         *int64  `toml:"max_total_bytes"`
+	SegmentBytes          *int64  `toml:"segment_bytes"`
+	RetentionAfterRestart *string `toml:"retention_after_restart"`
+	MaxObservers          *int    `toml:"max_observers"`
 }
 
 type fileTransferFileConfig struct {
@@ -108,6 +119,7 @@ func defaultControllerOptions() controllerOptions {
 			RetentionAfterExit: 7 * 24 * time.Hour,
 			MaxObservers:       8,
 		},
+		ControllerLogs: controllerlog.DefaultConfig(),
 		FileTransfers: fileservice.TransferConfig{
 			UploadSessionTTL: 24 * time.Hour, CompletedSessionTTL: time.Hour,
 			MaxUploadSessions: 64, MaxStagingBytes: 4 << 30,
@@ -158,6 +170,11 @@ func parseControllerOptions(args []string, output io.Writer) (controllerOptions,
 	flags.Int64Var(&options.serverConfig.ProcessLogs.SegmentBytes, "process-log-segment-bytes", options.serverConfig.ProcessLogs.SegmentBytes, "target process log segment size")
 	flags.DurationVar(&options.serverConfig.ProcessLogs.RetentionAfterExit, "process-log-retention", options.serverConfig.ProcessLogs.RetentionAfterExit, "process log retention after exit")
 	flags.IntVar(&options.serverConfig.ProcessLogs.MaxObservers, "process-log-max-observers", options.serverConfig.ProcessLogs.MaxObservers, "maximum concurrent log observers per process")
+	flags.Int64Var(&options.serverConfig.ControllerLogs.MaxBytesPerController, "controller-log-max-bytes", options.serverConfig.ControllerLogs.MaxBytesPerController, "maximum retained controller runtime log bytes")
+	flags.Int64Var(&options.serverConfig.ControllerLogs.MaxTotalBytes, "controller-log-max-total-bytes", options.serverConfig.ControllerLogs.MaxTotalBytes, "maximum total controller runtime log bytes")
+	flags.Int64Var(&options.serverConfig.ControllerLogs.SegmentBytes, "controller-log-segment-bytes", options.serverConfig.ControllerLogs.SegmentBytes, "target controller runtime log segment size")
+	flags.DurationVar(&options.serverConfig.ControllerLogs.RetentionAfterRestart, "controller-log-retention", options.serverConfig.ControllerLogs.RetentionAfterRestart, "controller log retention across restarts")
+	flags.IntVar(&options.serverConfig.ControllerLogs.MaxObservers, "controller-log-max-observers", options.serverConfig.ControllerLogs.MaxObservers, "maximum concurrent controller log observers")
 	flags.StringVar(&options.serverConfig.TLSCertificateFile, "tls-cert", options.serverConfig.TLSCertificateFile, "TLS certificate PEM file")
 	flags.StringVar(&options.serverConfig.TLSKeyFile, "tls-key", options.serverConfig.TLSKeyFile, "TLS private key PEM file")
 	flags.StringVar(&options.tokenFile, "token-file", options.tokenFile, "optional bearer token file")
@@ -180,7 +197,10 @@ func findConfigFile(args []string) (string, error) {
 		"tls-key": true, "token-file": true, "process-log-max-bytes": true,
 		"process-log-max-total-bytes": true, "process-log-segment-bytes": true,
 		"process-log-retention": true, "process-log-max-observers": true,
-		"upload-session-ttl": true, "completed-upload-session-ttl": true,
+		"controller-log-max-bytes": true, "controller-log-max-total-bytes": true,
+		"controller-log-segment-bytes": true, "controller-log-retention": true,
+		"controller-log-max-observers": true,
+		"upload-session-ttl":           true, "completed-upload-session-ttl": true,
 		"max-upload-sessions": true, "max-upload-staging-bytes": true,
 		"upload-checkpoint-bytes": true, "upload-checkpoint-interval": true,
 		"max-concurrent-downloads": true,
@@ -257,8 +277,8 @@ func loadControllerConfig(name string) (controllerFileConfig, error) {
 		}
 		return controllerFileConfig{}, fmt.Errorf("decode controller config %q: %s", name, details)
 	}
-	if config.Version != controllerConfigVersionV1 && config.Version != controllerConfigVersionV2 && config.Version != controllerConfigVersionV3 && config.Version != controllerConfigVersionV4 && config.Version != controllerConfigVersionV5 {
-		return controllerFileConfig{}, fmt.Errorf("controller config version must be %d, %d, %d, %d, or %d", controllerConfigVersionV1, controllerConfigVersionV2, controllerConfigVersionV3, controllerConfigVersionV4, controllerConfigVersionV5)
+	if config.Version != controllerConfigVersionV1 && config.Version != controllerConfigVersionV2 && config.Version != controllerConfigVersionV3 && config.Version != controllerConfigVersionV4 && config.Version != controllerConfigVersionV5 && config.Version != controllerConfigVersionV6 {
+		return controllerFileConfig{}, fmt.Errorf("controller config version must be %d, %d, %d, %d, %d, or %d", controllerConfigVersionV1, controllerConfigVersionV2, controllerConfigVersionV3, controllerConfigVersionV4, controllerConfigVersionV5, controllerConfigVersionV6)
 	}
 	if config.Version == controllerConfigVersionV1 && config.MCP != nil {
 		return controllerFileConfig{}, errors.New("controller config version 1 does not support the mcp table")
@@ -271,6 +291,9 @@ func loadControllerConfig(name string) (controllerFileConfig, error) {
 	}
 	if config.Version < controllerConfigVersionV5 && config.FileTransfers != nil {
 		return controllerFileConfig{}, fmt.Errorf("controller config version %d does not support the file_transfers table", config.Version)
+	}
+	if config.Version < controllerConfigVersionV6 && config.ControllerLogs != nil {
+		return controllerFileConfig{}, fmt.Errorf("controller config version %d does not support the controller_logs table", config.Version)
 	}
 	return config, nil
 }
@@ -321,6 +344,27 @@ func applyControllerFileConfig(options *controllerOptions, config controllerFile
 	}
 	if config.ProcessLogs.MaxObservers != nil {
 		options.serverConfig.ProcessLogs.MaxObservers = *config.ProcessLogs.MaxObservers
+	}
+	if config.ControllerLogs != nil {
+		if config.ControllerLogs.MaxBytesPerController != nil {
+			options.serverConfig.ControllerLogs.MaxBytesPerController = *config.ControllerLogs.MaxBytesPerController
+		}
+		if config.ControllerLogs.MaxTotalBytes != nil {
+			options.serverConfig.ControllerLogs.MaxTotalBytes = *config.ControllerLogs.MaxTotalBytes
+		}
+		if config.ControllerLogs.SegmentBytes != nil {
+			options.serverConfig.ControllerLogs.SegmentBytes = *config.ControllerLogs.SegmentBytes
+		}
+		if config.ControllerLogs.RetentionAfterRestart != nil {
+			retention, err := time.ParseDuration(*config.ControllerLogs.RetentionAfterRestart)
+			if err != nil {
+				return fmt.Errorf("invalid controller_logs.retention_after_restart: %w", err)
+			}
+			options.serverConfig.ControllerLogs.RetentionAfterRestart = retention
+		}
+		if config.ControllerLogs.MaxObservers != nil {
+			options.serverConfig.ControllerLogs.MaxObservers = *config.ControllerLogs.MaxObservers
+		}
 	}
 	if config.ProcessTemplates != nil {
 		if config.ProcessTemplates.DefinitionFiles != nil {
@@ -458,6 +502,9 @@ func (o controllerOptions) validatedServerConfig() (server.Config, error) {
 		return server.Config{}, fmt.Errorf("max processes must be between 1 and %d", maxConfiguredProcesses)
 	}
 	if err := processservice.ValidateLogConfig(config.ProcessLogs); err != nil {
+		return server.Config{}, err
+	}
+	if err := controllerlog.ValidateConfig(config.ControllerLogs); err != nil {
 		return server.Config{}, err
 	}
 	if (config.TLSCertificateFile == "") != (config.TLSKeyFile == "") {

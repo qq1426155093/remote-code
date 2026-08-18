@@ -11,6 +11,8 @@ Remote Code 是一个面向远程开发任务的 Code Agent 控制平面。它�
 > Expr 驱动的服务端进程模板。controller 也可从多个
 > `.mcp.yaml` 文件加载 Expr tool，并通过带认证的 Streamable HTTP MCP endpoint 暴露 controller 信息、
 > 有界文件读取/搜索/补丁、进程快照/偏移日志、进程模板和 binary workspace Resource。
+> controller 自身的生命周期、进程服务和 MCP 诊断也会以脱敏 JSON 事件持久化，并可通过
+> `ControllerService.ObserveControllerLogs` 或 CLI 的 `controller-logs`/`clogs` 回放、续读和 follow。
 > Agent 语义仍是后续版本计划。
 
 ## 功能与使用文档
@@ -60,6 +62,8 @@ remote-code:/> ps
 remote-code:/> ps -a
 remote-code:/> logs -n 100 --follow 7aa5daab-e886-4889-9ec3-92d461883091
 # 按 Ctrl-C 停止 follow；远端进程继续运行
+remote-code:/> controller-logs -n 100
+# controller-logs 输出结构化 JSON；--follow 可观察 controller 关闭前的事件
 remote-code:/> kill -s TERM -w listing
 remote-code:/> forget listing 'test-*' glob:reused-name
 remote-code:/> templates
@@ -200,6 +204,7 @@ API 放在版本化包 `remote.code.v1` 中。当前实现 `ControllerService.Ge
 ```protobuf
 service ControllerService {
   rpc GetInfo(GetInfoRequest) returns (GetInfoResponse);
+  rpc ObserveControllerLogs(ObserveControllerLogsRequest) returns (stream ObserveControllerLogsResponse);
 }
 
 service FileService {

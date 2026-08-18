@@ -10,6 +10,7 @@ option go_package = "github.com/qq1426155093/remote-code/api/remote/code/v1;code
 
 service ControllerService {
   rpc GetInfo(GetInfoRequest) returns (GetInfoResponse);
+  rpc ObserveControllerLogs(ObserveControllerLogsRequest) returns (stream ObserveControllerLogsResponse);
 }
 
 service FileService {
@@ -53,6 +54,81 @@ message GetInfoResponse {
   uint32 max_processes = 6;
   uint32 process_template_count = 7;
   FileTransferCapabilities file_transfers = 8;
+  ControllerLogCapabilities controller_logs = 9;
+}
+
+message ControllerLogCapabilities {
+  bool available = 1;
+  uint32 format_version = 2;
+  uint64 max_tail_lines = 3;
+  uint32 max_observers = 4;
+}
+
+enum ControllerLogLevel {
+  CONTROLLER_LOG_LEVEL_UNSPECIFIED = 0;
+  CONTROLLER_LOG_LEVEL_DEBUG = 1;
+  CONTROLLER_LOG_LEVEL_INFO = 2;
+  CONTROLLER_LOG_LEVEL_WARN = 3;
+  CONTROLLER_LOG_LEVEL_ERROR = 4;
+}
+
+enum ControllerLogEndReason {
+  CONTROLLER_LOG_END_REASON_UNSPECIFIED = 0;
+  CONTROLLER_LOG_END_REASON_SNAPSHOT_COMPLETE = 1;
+  CONTROLLER_LOG_END_REASON_CONTROLLER_SHUTDOWN = 2;
+  CONTROLLER_LOG_END_REASON_LOG_UNAVAILABLE = 3;
+}
+
+message ObserveControllerLogsRequest {
+  oneof start {
+    uint64 offset = 1;
+    uint64 tail_lines = 2;
+  }
+  bool follow = 3;
+}
+
+message ControllerLogHeader {
+  string boot_id = 1;
+  uint64 earliest_offset = 2;
+  uint64 snapshot_end_offset = 3;
+  uint64 resolved_start_offset = 4;
+  bool history_truncated = 5;
+  bool tail_truncated = 6;
+  bool follow = 7;
+  uint32 format_version = 8;
+}
+
+message ControllerLogEntry {
+  uint64 offset = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  ControllerLogLevel level = 3;
+  string component = 4;
+  string event = 5;
+  string message = 6;
+  map<string, string> fields = 7;
+  bool line_truncated = 8;
+  string boot_id = 9;
+  uint64 next_offset = 10;
+}
+
+message ControllerLogCheckpoint {
+  uint64 next_offset = 1;
+  bool replay_complete = 2;
+}
+
+message ControllerLogEnd {
+  uint64 next_offset = 1;
+  ControllerLogEndReason reason = 2;
+  bool logs_complete = 3;
+}
+
+message ObserveControllerLogsResponse {
+  oneof payload {
+    ControllerLogHeader header = 1;
+    ControllerLogEntry entry = 2;
+    ControllerLogCheckpoint checkpoint = 3;
+    ControllerLogEnd end = 4;
+  }
 }
 
 message FileTransferCapabilities {

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
+	"github.com/qq1426155093/remote-code/internal/logging"
 	statuspb "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -55,6 +56,7 @@ type Config struct {
 	MaxProcesses     int
 	Logs             LogConfig
 	Templates        *TemplateRegistry
+	Logger           logging.Logger
 }
 
 // Service manages process lifecycle and implements the gRPC process API.
@@ -68,6 +70,8 @@ type Service struct {
 
 	mu          sync.Mutex
 	starts      sync.WaitGroup
+	closeOnce   sync.Once
+	closeErr    error
 	closing     bool
 	active      int
 	processes   map[string]*managedProcess
@@ -76,6 +80,7 @@ type Service struct {
 	byPID       map[int64]string
 	order       []string
 	logConfig   LogConfig
+	logger      logging.Logger
 	janitorStop chan struct{}
 	janitorDone chan struct{}
 }
@@ -155,8 +160,12 @@ func New(config Config) (*Service, error) {
 		root: root, store: store, maxProcesses: maxProcesses,
 		processes: make(map[string]*managedProcess), activeNames: make(map[string]string),
 		byName: make(map[string]string), byPID: make(map[int64]string),
-		logConfig: logConfig, janitorStop: make(chan struct{}), janitorDone: make(chan struct{}), templates: config.Templates,
+		logConfig: logConfig, logger: config.Logger, janitorStop: make(chan struct{}), janitorDone: make(chan struct{}), templates: config.Templates,
 	}
+	if service.logger == nil {
+		service.logger = logging.Nop{}
+	}
+	store.logger = service.logger
 	if service.templates == nil {
 		service.templates = &TemplateRegistry{byName: make(map[string]*compiledProcessTemplate)}
 	}
@@ -180,6 +189,12 @@ func New(config Config) (*Service, error) {
 			service.byPID[info.GetPid()] = info.GetId()
 		}
 		service.order = append(service.order, info.GetId())
+		logging.Emit(service.logger, logging.Event{
+			Level: logging.LevelInfo, Component: "process", Name: "record_recovered",
+			Message: "recovered persistent process record", Fields: map[string]string{
+				"process_id": info.GetId(), "state": info.GetState().String(),
+			},
+		})
 	}
 	go service.runLogJanitor()
 	return service, nil
@@ -261,6 +276,13 @@ func (s *Service) startProcess(ctx context.Context, request *codev1.StartProcess
 	s.starts.Add(1)
 	s.mu.Unlock()
 	defer s.starts.Done()
+	logging.Emit(s.logger, logging.Event{
+		Level: logging.LevelInfo, Component: "process", Name: "start_requested",
+		Message: "process start accepted", Fields: map[string]string{
+			"process_id": id, "name": start.name,
+			"io_mode": start.ioMode.String(),
+		},
+	})
 
 	output, err := s.store.create(record.info)
 	if err != nil {
@@ -268,6 +290,10 @@ func (s *Service) startProcess(ctx context.Context, request *codev1.StartProcess
 		s.removeLocked(record)
 		s.active--
 		s.mu.Unlock()
+		logging.Emit(s.logger, logging.Event{
+			Level: logging.LevelError, Component: "process", Name: "record_create_failed",
+			Message: "create persistent process record failed", Fields: map[string]string{"process_id": id, "name": start.name},
+		})
 		return nil, status.Error(codes.Internal, "create persistent process record failed")
 	}
 	record.output = output
@@ -292,6 +318,10 @@ func (s *Service) startProcess(ctx context.Context, request *codev1.StartProcess
 		}
 		close(record.done)
 		s.mu.Unlock()
+		logging.Emit(s.logger, logging.Event{
+			Level: logging.LevelWarn, Component: "process", Name: "start_failed",
+			Message: "process executable could not be started", Fields: map[string]string{"process_id": id, "name": start.name},
+		})
 		if errors.Is(startErr, errUnsupportedPlatform) {
 			return nil, status.Errorf(codes.Unimplemented, "process %s: %s", id, startErr)
 		}
@@ -322,6 +352,12 @@ func (s *Service) startProcess(ctx context.Context, request *codev1.StartProcess
 	s.byPID[runningInfo.GetPid()] = id
 	s.mu.Unlock()
 	go s.reap(record)
+	logging.Emit(s.logger, logging.Event{
+		Level: logging.LevelInfo, Component: "process", Name: "started",
+		Message: "managed process started", Fields: map[string]string{
+			"process_id": id, "name": start.name, "pid": fmt.Sprintf("%d", runningInfo.GetPid()),
+		},
+	})
 	return &codev1.StartProcessResponse{Process: runningInfo}, nil
 }
 
@@ -553,6 +589,7 @@ func (s *Service) SignalProcess(ctx context.Context, request *codev1.SignalProce
 		return nil, status.Errorf(codes.FailedPrecondition, "process %q is %s", info.GetName(), processStateName(info.GetState()))
 	}
 	pid := int(record.info.GetPid())
+	processID := record.info.GetId()
 	done := record.done
 	s.mu.Unlock()
 
@@ -564,6 +601,12 @@ func (s *Service) SignalProcess(ctx context.Context, request *codev1.SignalProce
 		}
 		return nil, processSignalError(err)
 	}
+	logging.Emit(s.logger, logging.Event{
+		Level: logging.LevelInfo, Component: "process", Name: "signal_sent",
+		Message: "signal sent to managed process group", Fields: map[string]string{
+			"process_id": processID, "signal": signal.String(), "pid": fmt.Sprintf("%d", pid),
+		},
+	})
 	if request.GetWait() {
 		select {
 		case <-done:
@@ -583,6 +626,10 @@ func (s *Service) Shutdown(ctx context.Context) error {
 	s.mu.Lock()
 	records := s.runningLocked()
 	s.mu.Unlock()
+	logging.Emit(s.logger, logging.Event{
+		Level: logging.LevelInfo, Component: "process", Name: "shutdown_requested",
+		Message: "process service shutdown started", Fields: map[string]string{"running": fmt.Sprintf("%d", len(records))},
+	})
 	s.signalRecords(records, codev1.ProcessSignal_PROCESS_SIGNAL_TERM)
 	if waitForRecords(ctx, records) {
 		return nil
@@ -605,15 +652,37 @@ func (s *Service) BeginShutdown() {
 	s.mu.Unlock()
 }
 
-// Close releases the pinned workspace handle after Shutdown has completed.
-func (s *Service) Close() error {
-	select {
-	case <-s.janitorStop:
-	default:
-		close(s.janitorStop)
+func optionalInt32Text(value *int32) string {
+	if value == nil {
+		return ""
 	}
-	<-s.janitorDone
-	return errors.Join(s.root.Close(), s.store.close())
+	return fmt.Sprintf("%d", *value)
+}
+
+// Close releases the pinned workspace handle. It also performs a bounded
+// best-effort shutdown so callers that own a standalone Service cannot leave
+// child processes or reaper goroutines writing into a runtime directory after
+// the directory's owner has been closed.
+func (s *Service) Close() error {
+	s.closeOnce.Do(func() {
+		var shutdownErr error
+		s.mu.Lock()
+		needsShutdown := !s.closing
+		s.mu.Unlock()
+		if needsShutdown {
+			shutdownContext, cancel := context.WithTimeout(context.Background(), time.Second)
+			shutdownErr = s.Shutdown(shutdownContext)
+			cancel()
+		}
+		select {
+		case <-s.janitorStop:
+		default:
+			close(s.janitorStop)
+		}
+		<-s.janitorDone
+		s.closeErr = errors.Join(shutdownErr, s.root.Close(), s.store.close())
+	})
+	return s.closeErr
 }
 
 func (s *Service) validateStartRequest(request *codev1.StartProcessRequest) (validatedStart, error) {
@@ -806,6 +875,13 @@ func (s *Service) reap(record *managedProcess) {
 	}
 	close(record.done)
 	s.mu.Unlock()
+	logging.Emit(s.logger, logging.Event{
+		Level: logging.LevelInfo, Component: "process", Name: "exited",
+		Message: "managed process exited", Fields: map[string]string{
+			"process_id": exited.GetId(), "name": exited.GetName(), "state": exited.GetState().String(),
+			"exit_code": optionalInt32Text(exited.ExitCode), "exit_signal": optionalInt32Text(exited.ExitSignal),
+		},
+	})
 }
 
 func (s *Service) snapshot(record *managedProcess) *codev1.ProcessInfo {

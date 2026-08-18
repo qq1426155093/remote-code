@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
+	"github.com/qq1426155093/remote-code/internal/logging"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -57,6 +57,7 @@ type recordStore struct {
 	directory string
 	root      *os.Root
 	logConfig LogConfig
+	logger    logging.Logger
 }
 
 type recordOutput struct {
@@ -294,7 +295,11 @@ func (s *recordStore) load() ([]*codev1.ProcessInfo, error) {
 		directory := s.processDirectory(entry.Name())
 		info, err := loadRecord(directory)
 		if err != nil {
-			log.Printf("remote-code-controller: skip invalid process record %s", entry.Name())
+			logging.Emit(s.logger, logging.Event{
+				Level: logging.LevelWarn, Component: "process", Name: "record_skipped",
+				Message: "skipped invalid persistent process record",
+				Fields:  map[string]string{"process_id": entry.Name()},
+			})
 			continue
 		}
 		if info.GetState() == codev1.ProcessState_PROCESS_STATE_STARTING || info.GetState() == codev1.ProcessState_PROCESS_STATE_RUNNING {
