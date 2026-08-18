@@ -528,8 +528,12 @@ func TestClientRejectsInputWhenNotEnabledOverGRPC(t *testing.T) {
 	if started.GetInputMode() != codev1.ProcessInputMode_PROCESS_INPUT_MODE_DISABLED || started.GetInputState() != codev1.ProcessInputState_PROCESS_INPUT_STATE_UNAVAILABLE {
 		t.Fatalf("default input state = %s/%s", started.GetInputMode(), started.GetInputState())
 	}
-	if _, err := remote.OpenProcessInput(ctx, &codev1.ProcessReference{Value: &codev1.ProcessReference_Id{Id: started.GetId()}}); status.Code(err) != codes.FailedPrecondition {
+	_, err = remote.OpenProcessInput(ctx, &codev1.ProcessReference{Value: &codev1.ProcessReference_Id{Id: started.GetId()}})
+	if status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("OpenProcessInput(disabled) code = %s, want FailedPrecondition; error = %v", status.Code(err), err)
+	}
+	if got := client.Reason(err); got != client.ReasonProcessInputDisabled {
+		t.Fatalf("OpenProcessInput(disabled) reason = %q, want %q; error = %v", got, client.ReasonProcessInputDisabled, err)
 	}
 	if _, err := remote.SignalProcess(ctx, &codev1.ProcessReference{Value: &codev1.ProcessReference_Id{Id: started.GetId()}}, codev1.ProcessSignal_PROCESS_SIGNAL_KILL, true); err != nil {
 		t.Fatal(err)

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
+	"github.com/qq1426155093/remote-code/internal/rpcerror"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -87,11 +88,11 @@ func (s *Service) snapshotLogs(
 	info := cloneProcessInfo(record.info)
 	if logs == nil {
 		s.mu.Unlock()
-		return nil, status.Error(codes.FailedPrecondition, "process logs are unavailable")
+		return nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.ProcessLogsUnavailable, "process logs are unavailable")
 	}
 	if err := logs.acquireObserver(); err != nil {
 		s.mu.Unlock()
-		return nil, status.Error(codes.ResourceExhausted, err.Error())
+		return nil, rpcerror.Errorf(codes.ResourceExhausted, rpcerror.ProcessLogObserverLimitReached, "%s", err)
 	}
 	s.mu.Unlock()
 	defer logs.releaseObserver()

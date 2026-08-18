@@ -13,6 +13,7 @@ import (
 	"time"
 
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
+	"github.com/qq1426155093/remote-code/internal/rpcerror"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -332,11 +333,21 @@ func startFileTransferTestServer(t *testing.T, config Config) (codev1.FileServic
 
 func assertTransferError(t *testing.T, err error, reason codev1.FileTransferErrorReason, expectedOffset int64) {
 	t.Helper()
+	found := false
 	for _, detail := range status.Convert(err).Details() {
 		transfer, ok := detail.(*codev1.FileTransferError)
 		if ok && transfer.GetReason() == reason && transfer.GetExpectedOffset() == expectedOffset {
-			return
+			found = true
+			break
 		}
 	}
-	t.Fatalf("error %v has no FileTransferError(%s, %d)", err, reason, expectedOffset)
+	if !found {
+		t.Fatalf("error %v has no FileTransferError(%s, %d)", err, reason, expectedOffset)
+	}
+	// Transfers carry both details. The enum stays for clients that already read
+	// it; the reason is how every other service reports the same information.
+	want := transferReason(reason)
+	if got := rpcerror.ReasonOf(err); got != want {
+		t.Fatalf("error %v reason = %q, want %q", err, got, want)
+	}
 }

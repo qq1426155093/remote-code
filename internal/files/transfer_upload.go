@@ -9,9 +9,11 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"strconv"
 	"time"
 
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
+	"github.com/qq1426155093/remote-code/internal/rpcerror"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -592,11 +594,45 @@ func uploadCheckpointResponse(offset int64) *codev1.TransferUploadResponse {
 	}}
 }
 
+// transferStatus carries two details: FileTransferError for clients that
+// already read the enum, and ErrorInfo so transfers report their reason the same
+// way every other service does. FileTransferError stays on the wire and is not
+// deprecated by this change.
 func transferStatus(code codes.Code, message string, reason codev1.FileTransferErrorReason, expectedOffset int64) error {
 	base := status.New(code, message)
-	withDetails, err := base.WithDetails(&codev1.FileTransferError{Reason: reason, ExpectedOffset: expectedOffset})
+	transfer := &codev1.FileTransferError{Reason: reason, ExpectedOffset: expectedOffset}
+	mapped := transferReason(reason)
+	if mapped == "" {
+		withDetails, err := base.WithDetails(transfer)
+		if err != nil {
+			return base.Err()
+		}
+		return withDetails.Err()
+	}
+	var metadata map[string]string
+	if reason == codev1.FileTransferErrorReason_FILE_TRANSFER_ERROR_REASON_OFFSET_MISMATCH {
+		metadata = map[string]string{"expected_offset": strconv.FormatInt(expectedOffset, 10)}
+	}
+	withDetails, err := base.WithDetails(transfer, rpcerror.Info(mapped, metadata))
 	if err != nil {
 		return base.Err()
 	}
 	return withDetails.Err()
+}
+
+func transferReason(reason codev1.FileTransferErrorReason) rpcerror.Reason {
+	switch reason {
+	case codev1.FileTransferErrorReason_FILE_TRANSFER_ERROR_REASON_OFFSET_MISMATCH:
+		return rpcerror.TransferOffsetMismatch
+	case codev1.FileTransferErrorReason_FILE_TRANSFER_ERROR_REASON_FILE_CHANGED:
+		return rpcerror.TransferFileChanged
+	case codev1.FileTransferErrorReason_FILE_TRANSFER_ERROR_REASON_PREFIX_MISMATCH:
+		return rpcerror.TransferPrefixMismatch
+	case codev1.FileTransferErrorReason_FILE_TRANSFER_ERROR_REASON_SESSION_STATE:
+		return rpcerror.TransferSessionState
+	case codev1.FileTransferErrorReason_FILE_TRANSFER_ERROR_REASON_ACTIVE_TRANSFER:
+		return rpcerror.TransferActiveTransfer
+	default:
+		return ""
+	}
 }

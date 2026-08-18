@@ -18,6 +18,7 @@ import (
 
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
 	"github.com/qq1426155093/remote-code/internal/logging"
+	"github.com/qq1426155093/remote-code/internal/rpcerror"
 	statuspb "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -254,15 +255,15 @@ func (s *Service) startProcess(ctx context.Context, request *codev1.StartProcess
 	s.mu.Lock()
 	if s.closing {
 		s.mu.Unlock()
-		return nil, status.Error(codes.Unavailable, "process service is shutting down")
+		return nil, rpcerror.Errorf(codes.Unavailable, rpcerror.ProcessServiceShuttingDown, "process service is shutting down")
 	}
 	if s.active >= s.maxProcesses {
 		s.mu.Unlock()
-		return nil, status.Errorf(codes.ResourceExhausted, "active process limit of %d reached", s.maxProcesses)
+		return nil, rpcerror.Errorf(codes.ResourceExhausted, rpcerror.ActiveProcessLimitReached, "active process limit of %d reached", s.maxProcesses)
 	}
 	if _, exists := s.activeNames[start.name]; exists {
 		s.mu.Unlock()
-		return nil, status.Errorf(codes.AlreadyExists, "active process name %q already exists", start.name)
+		return nil, rpcerror.Errorf(codes.AlreadyExists, rpcerror.ProcessNameInUse, "active process name %q already exists", start.name)
 	}
 	if err := s.makeHistorySpaceLocked(); err != nil {
 		s.mu.Unlock()
@@ -541,10 +542,10 @@ func (s *Service) deleteProcessByID(ctx context.Context, id string) (*codev1.Pro
 func (s *Service) deleteRecordLocked(record *managedProcess) (*codev1.ProcessInfo, error) {
 	if isActiveState(record.info.GetState()) {
 		info := cloneProcessInfo(record.info)
-		return nil, status.Errorf(codes.FailedPrecondition, "process %q is %s; stop it before deleting history", info.GetName(), processStateName(info.GetState()))
+		return nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.ProcessNotTerminal, "process %q is %s; stop it before deleting history", info.GetName(), processStateName(info.GetState()))
 	}
 	if record.logs != nil && !record.logs.lockForDeletion() {
-		return nil, status.Error(codes.FailedPrecondition, "process logs are being observed")
+		return nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.ProcessLogsObserved, "process logs are being observed")
 	}
 	if record.logs != nil {
 		defer record.logs.unlockDeletion()
@@ -586,7 +587,7 @@ func (s *Service) SignalProcess(ctx context.Context, request *codev1.SignalProce
 	if record.info.GetState() != codev1.ProcessState_PROCESS_STATE_RUNNING || record.command == nil {
 		info := cloneProcessInfo(record.info)
 		s.mu.Unlock()
-		return nil, status.Errorf(codes.FailedPrecondition, "process %q is %s", info.GetName(), processStateName(info.GetState()))
+		return nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.ProcessNotRunning, "process %q is %s", info.GetName(), processStateName(info.GetState()))
 	}
 	pid := int(record.info.GetPid())
 	processID := record.info.GetId()
@@ -839,7 +840,7 @@ func (s *Service) openWorkingDirectory(rel string) (*os.File, error) {
 	}
 	if !info.IsDir() {
 		_ = directory.Close()
-		return nil, status.Errorf(codes.FailedPrecondition, "working directory %q is not a directory", displayWorkingDirectory(rel))
+		return nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.WorkingDirectoryNotDirectory, "working directory %q is not a directory", displayWorkingDirectory(rel))
 	}
 	return directory, nil
 }
@@ -956,7 +957,7 @@ func (s *Service) makeHistorySpaceLocked() error {
 			}
 		}
 		if !removed {
-			return status.Errorf(codes.ResourceExhausted, "process history limit of %d reached", maxTrackedProcesses)
+			return rpcerror.Errorf(codes.ResourceExhausted, rpcerror.ProcessHistoryLimitReached, "process history limit of %d reached", maxTrackedProcesses)
 		}
 	}
 	return nil
@@ -1042,13 +1043,13 @@ func processPathError(rel string, err error) error {
 	case errors.Is(err, syscall.ENOTDIR):
 		code = codes.FailedPrecondition
 	}
-	return status.Errorf(code, "open working directory %q failed", displayWorkingDirectory(rel))
+	return rpcerror.Errorf(code, rpcerror.WorkingDirectoryOpenFailed, "open working directory %q failed", displayWorkingDirectory(rel))
 }
 
 func processSignalError(err error) error {
 	switch {
 	case errors.Is(err, os.ErrProcessDone), errors.Is(err, syscall.ESRCH):
-		return status.Error(codes.FailedPrecondition, "process has already exited")
+		return rpcerror.Errorf(codes.FailedPrecondition, rpcerror.ProcessAlreadyExited, "process has already exited")
 	case errors.Is(err, syscall.EPERM):
 		return status.Error(codes.PermissionDenied, "signal process failed")
 	default:

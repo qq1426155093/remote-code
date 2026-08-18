@@ -7,6 +7,7 @@ import (
 	"syscall"
 
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
+	"github.com/qq1426155093/remote-code/internal/rpcerror"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -114,7 +115,7 @@ func (s *Service) StreamProcessInput(stream codev1.ProcessService_StreamProcessI
 					return err
 				}
 				if s.snapshot(record).GetIoMode() != codev1.ProcessIOMode_PROCESS_IO_MODE_PTY {
-					return status.Error(codes.FailedPrecondition, "process does not use a PTY")
+					return rpcerror.Errorf(codes.FailedPrecondition, rpcerror.ProcessNotPTY, "process does not use a PTY")
 				}
 				if err := record.command.resize(resize.GetSize().GetRows(), resize.GetSize().GetColumns()); err != nil {
 					if input.isClosed() {
@@ -133,7 +134,7 @@ func (s *Service) StreamProcessInput(stream codev1.ProcessService_StreamProcessI
 					default:
 					}
 					if errors.Is(err, errProcessNotPTY) {
-						return status.Error(codes.FailedPrecondition, err.Error())
+						return rpcerror.Errorf(codes.FailedPrecondition, rpcerror.ProcessNotPTY, "%s", err)
 					}
 					return status.Error(codes.Internal, "resize process terminal failed")
 				}
@@ -148,7 +149,7 @@ func (s *Service) StreamProcessInput(stream codev1.ProcessService_StreamProcessI
 				expectedSequence++
 			case *codev1.StreamProcessInputRequest_CloseInput:
 				if s.snapshot(record).GetIoMode() == codev1.ProcessIOMode_PROCESS_IO_MODE_PTY {
-					return status.Error(codes.FailedPrecondition, "PTY input cannot be closed independently; send terminal EOF data or signal the process")
+					return rpcerror.Errorf(codes.FailedPrecondition, rpcerror.PTYInputCloseUnsupported, "PTY input cannot be closed independently; send terminal EOF data or signal the process")
 				}
 				if err := input.closeInput(stream.Context()); err != nil {
 					return mapProcessInputWriteError(err)
@@ -179,16 +180,16 @@ func (s *Service) acquireProcessInput(reference *codev1.ProcessReference) (*mana
 		return nil, nil, err
 	}
 	if record.info.GetState() != codev1.ProcessState_PROCESS_STATE_RUNNING || record.command == nil {
-		return nil, nil, status.Errorf(codes.FailedPrecondition, "process %q is %s", record.info.GetName(), processStateName(record.info.GetState()))
+		return nil, nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.ProcessNotRunning, "process %q is %s", record.info.GetName(), processStateName(record.info.GetState()))
 	}
 	if record.info.GetInputMode() != codev1.ProcessInputMode_PROCESS_INPUT_MODE_MANAGED || record.command.input == nil {
-		return nil, nil, status.Error(codes.FailedPrecondition, "process input was not enabled at startup")
+		return nil, nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.ProcessInputDisabled, "process input was not enabled at startup")
 	}
 	if record.info.GetInputState() == codev1.ProcessInputState_PROCESS_INPUT_STATE_CLOSED || record.command.input.isClosed() {
-		return nil, nil, status.Error(codes.FailedPrecondition, "process input is closed")
+		return nil, nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.ProcessInputClosed, "process input is closed")
 	}
 	if record.inputAttached {
-		return nil, nil, status.Error(codes.AlreadyExists, "process input already has an attached writer")
+		return nil, nil, rpcerror.Errorf(codes.AlreadyExists, rpcerror.ProcessInputAttached, "process input already has an attached writer")
 	}
 	record.inputAttached = true
 	record.info.InputState = codev1.ProcessInputState_PROCESS_INPUT_STATE_ATTACHED
@@ -251,7 +252,7 @@ func mapProcessInputWriteError(err error) error {
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		return status.FromContextError(err).Err()
 	case errors.Is(err, errProcessInputClosed), errors.Is(err, io.ErrClosedPipe), errors.Is(err, syscall.EPIPE):
-		return status.Error(codes.FailedPrecondition, "process input is closed")
+		return rpcerror.Errorf(codes.FailedPrecondition, rpcerror.ProcessInputClosed, "process input is closed")
 	default:
 		return status.Error(codes.Internal, "write process input failed")
 	}

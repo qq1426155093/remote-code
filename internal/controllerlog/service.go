@@ -10,7 +10,7 @@ import (
 
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
 	processservice "github.com/qq1426155093/remote-code/internal/process"
-	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	"github.com/qq1426155093/remote-code/internal/rpcerror"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -179,19 +179,10 @@ func finish(stream codev1.ControllerService_ObserveControllerLogsServer, offset 
 
 func controllerLogRangeError(store *processservice.RuntimeLog, cause error) error {
 	current := store.Current()
-	base := status.New(codes.OutOfRange, cause.Error())
-	detail := &errdetails.ErrorInfo{
-		Reason: "CONTROLLER_LOG_OFFSET_OUT_OF_RANGE", Domain: "remote.code.v1",
-		Metadata: map[string]string{
-			"earliest_offset": strconv.FormatUint(current.Earliest, 10),
-			"next_offset":     strconv.FormatUint(current.End, 10),
-		},
-	}
-	withDetails, err := base.WithDetails(detail)
-	if err != nil {
-		return base.Err()
-	}
-	return withDetails.Err()
+	return rpcerror.ErrorfWithMetadata(codes.OutOfRange, rpcerror.ControllerLogOffsetOutOfRange, map[string]string{
+		"earliest_offset": strconv.FormatUint(current.Earliest, 10),
+		"next_offset":     strconv.FormatUint(current.End, 10),
+	}, "%s", cause)
 }
 
 func decodeEvent(data []byte, fallbackTimestamp time.Time) (persistedEvent, error) {

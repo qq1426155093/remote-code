@@ -13,6 +13,8 @@ Remote Code 是一个面向远程开发任务的 Code Agent 控制平面。它�
 > 有界文件读取/搜索/补丁、进程快照/偏移日志、进程模板和 binary workspace Resource。
 > controller 自身的生命周期、进程服务和 MCP 诊断也会以脱敏 JSON 事件持久化，并可通过
 > `ControllerService.ObserveControllerLogs` 或 CLI 的 `controller-logs`/`clogs` 回放、续读和 follow。
+> 进程与日志相关的错误携带机器可读的 reason，客户端不必匹配消息文本即可区分共用同一 status code
+> 的多种条件。
 > Agent 语义仍是后续版本计划。
 
 ## 功能与使用文档
@@ -78,7 +80,8 @@ remote-code:/> exec-template --attach --params-file ./agent-parameters.json code
 [进程日志观测详细设计](docs/process-log-observation-design-v1.md)、
 [进程标准输入详细设计](docs/process-input-design-v1.md)、
 [Client 多窗口交互详细设计](docs/client-multi-window-design-v1.md)、
-[进程模板详细设计](docs/process-template-design-v1.md)以及
+[进程模板详细设计](docs/process-template-design-v1.md)、
+[错误模型详细设计](docs/error-model-design-v1.md)以及
 [Controller 配置文件](docs/controller-configuration.md)。可配置 MCP Server 的契约与实现依据见
 [MCP Server 需求](docs/mcp-server-requirements-v1.md)和
 [MCP Server 详细设计](docs/mcp-server-design-v1.md)。
