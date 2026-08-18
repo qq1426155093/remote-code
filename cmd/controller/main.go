@@ -79,8 +79,14 @@ func runController(args []string, stdout, stderr io.Writer) error {
 		"version": version.Version, "address": controller.Address(),
 	}})
 	if address := controller.MCPAddress(); address != "" {
+		// Report which credential the endpoint authenticates with, never its
+		// value, so an operator can confirm the deployed topology from the log.
+		credential := "shared_with_grpc"
+		if options.mcpTokenFile != "" {
+			credential = "separate"
+		}
 		controller.Emit(logging.Event{Level: logging.LevelInfo, Component: "mcp", Name: "listening", Message: "MCP Streamable HTTP is listening", Fields: map[string]string{
-			"address": address, "path": prepared.Config.MCP.EndpointPath,
+			"address": address, "path": prepared.Config.MCP.EndpointPath, "credential": credential,
 		}})
 	}
 	serveErrors := make(chan error, 1)

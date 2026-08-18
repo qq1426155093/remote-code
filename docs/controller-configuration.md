@@ -106,7 +106,7 @@ tool_list_page_size = 100
 
 `version` 必须存在。schema v1 继续兼容，但不允许 `[mcp]`；schema v2 增加 MCP；schema v3 增加
 `[process_templates]`；schema v4 增加 `process_templates.extra_parameters`；schema v5 增加
-`[file_transfers]`；schema v6 增加 `[controller_logs]`。v3、v4、v5、v6 均可省略
+`[file_transfers]`；schema v6 增加 `[controller_logs]`；schema v7 增加 `mcp.token_file`。v3、v4、v5、v6 均可省略
 `[process_templates]` 或配置空 `definition_files`，此时没有进程模板；v3 不接受
 `extra_parameters`。TLS
 certificate/key 必须同时配置。认证配置只接受 token 文件路径，
@@ -192,6 +192,7 @@ MCP 字段首版不提供命令行覆盖，以免列表字段产生不明确的�
 | `mcp.enabled` | `false` |
 | `mcp.listen_address` | `127.0.0.1:9444` |
 | `mcp.endpoint_path` | `/mcp` |
+| `mcp.token_file` | 空（回落到 `auth.token_file`） |
 | `mcp.allowed_origins` | `[]` |
 | `mcp.allowed_host_capabilities` | `[]` |
 | `mcp.max_request_bytes` | `1048576` |
@@ -208,8 +209,15 @@ MCP 字段首版不提供命令行覆盖，以免列表字段产生不明确的�
 
 启用 MCP 时 `definition_files` 至少包含一个以 `.mcp.yaml` 结尾的普通文件，且文件物理路径必须位于
 workspace 之外；最终符号链接、重复物理文件以及 `.mcp.yml`/`.mcp` 扩展名都会被拒绝。MCP 强制要求
-全局 token，并复用全局 TLS。MCP 与 gRPC 使用不同 listener；非 loopback 明文监听继续受
-`allow_insecure_remote` 限制。可用 host capability 为 `controller.read`、`files.read`、`files.write`、
+bearer token，并复用全局 TLS。MCP 与 gRPC 使用不同 listener；非 loopback 明文监听继续受
+`allow_insecure_remote` 限制。
+
+`mcp.token_file`（schema v7，命令行 `--mcp-token-file`）为 MCP listener 配置独立凭据。未配置时 MCP
+继续复用 `auth.token_file`，即 MCP 客户端持有的 token 等同于完整 gRPC 权限；配置后两个秘密可独立
+轮换和吊销，"只暴露 MCP、gRPC 留在 loopback" 的拓扑才真正成立。两个文件写入相同值不会被特殊处理。
+只配置 `mcp.token_file` 而不配置 `auth.token_file` 时，MCP 要求认证而 gRPC 不认证——这只适用于
+gRPC listener 已由其它手段限制访问的部署。取舍与剩余缺口见
+[授权模型现状与演进](authorization-model-v1.md)。可用 host capability 为 `controller.read`、`files.read`、`files.write`、
 `files.delete`、`processes.read`、`processes.start`、`processes.signal`、`processes.delete`、
 `process_templates.read` 和 `process_templates.start`。仓库示例不默认使用两个 delete capability。
 

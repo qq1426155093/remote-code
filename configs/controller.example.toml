@@ -1,5 +1,5 @@
-# remote-code-controller configuration, TOML schema version 6.
-version = 6
+# remote-code-controller configuration, TOML schema version 7.
+version = 7
 
 # All file RPCs and relative process working directories are confined here.
 workspace = "/srv/remote-code/workspace"
@@ -63,12 +63,17 @@ definition_files = []
 # common_arguments = ["--approval-mode", "never"]
 # environment = { HTTP_PROXY = "http://proxy.example" }
 
-# MCP is disabled by default. Enabling it requires auth.token_file and at
-# least one definition file outside the workspace. It reuses the global TLS.
+# MCP is disabled by default. Enabling it requires a bearer token and at least
+# one definition file outside the workspace. It reuses the global TLS.
 [mcp]
 enabled = false
 listen_address = "127.0.0.1:9444"
 endpoint_path = "/mcp"
+
+# Credential for the MCP listener. Without this key MCP reuses auth.token_file,
+# which makes an MCP client's credential equivalent to full gRPC access. Set a
+# separate token whenever MCP clients should not reach the gRPC surface.
+# token_file = "/etc/remote-code/mcp.token"
 definition_files = [
   "/etc/remote-code/mcp/controller.mcp.yaml",
   "/etc/remote-code/mcp/file.mcp.yaml",

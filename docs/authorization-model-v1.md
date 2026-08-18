@@ -25,10 +25,14 @@ gRPC 入口没有任何授权层。`internal/auth/auth.go` 的 unary/stream 拦�
 token。通过之后，全部 `FileService`、`ProcessService` 与 `ControllerService` 方法一律可调用，没有
 per-RPC 授权、没有速率限制、没有调用审计。
 
-### 2.2 两个入口共用同一个 token
+### 2.2 两个入口的 token 可以分离，默认仍共享
 
-`internal/server/server.go` 在 `Prepare` 中执行 `config.MCP.Token = config.Token`。配置层没有独立的
-MCP token 项，TLS 材料同样复用。因此不存在"只能访问 MCP、不能访问 gRPC"的凭据。
+`mcp.token_file`（TOML schema v7，命令行 `--mcp-token-file`）为 MCP listener 配置独立凭据。
+`internal/server/server.go` 的 `Prepare` 是唯一的解析点：显式配置时 MCP 使用自己的 token，未配置时
+回落到 gRPC token。TLS 材料仍然复用。
+
+因此"只能访问 MCP、不能访问 gRPC"的凭据现在可以存在，但需要 operator 显式配置，默认部署仍是单一
+token。这只分离凭据，不改变权限等级：持有 gRPC token 依然等同于完整权限，原因见 3.。
 
 ### 2.3 Principal 不是调用方身份
 
@@ -43,7 +47,8 @@ MCP token 项，TLS 材料同样复用。因此不存在"只能访问 MCP、不�
 | 拓扑 | capability 是否构成边界 | 说明 |
 | --- | --- | --- |
 | 调用方可同时到达两个 listener | 否 | 用同一 token 直接调用 gRPC 即可绕过全部 capability 限制，包括 `StartProcess` |
-| 只暴露 MCP，gRPC 留在 loopback | 是 | 但同一 token 已分发给 MCP 客户端；任何到达 loopback 的途径（controller 主机上的其它进程、SSH 隧道、端口转发）都等同于完整权限 |
+| 只暴露 MCP，gRPC 留在 loopback，两者共用 token | 是 | 但同一 token 已分发给 MCP 客户端；任何到达 loopback 的途径（controller 主机上的其它进程、SSH 隧道、端口转发）都等同于完整权限 |
+| 只暴露 MCP，gRPC 留在 loopback，配置独立 `mcp.token_file` | 是 | MCP 客户端的凭据不再打开 gRPC；剩余风险是 loopback 上仍存在完整权限入口，只是不再由 MCP 客户端持有其凭据 |
 
 结论：**capability 模型目前是一项纵深防御措施，不是可依赖的权限边界。** 它能限制一个行为正常的
 MCP 客户端的误操作面，不能约束一个持有 token 的主动攻击者。
@@ -61,14 +66,16 @@ token 与远程强制 TLS；capability 默认值降低的是默认暴露面，�
 
 ## 5. 演进选项
 
-### 5.1 选项 A：独立的 MCP token
+### 5.1 选项 A：独立的 MCP token（已实现）
 
-给 MCP 增加独立的 `token_file` 配置项，不再复用 gRPC token。改动范围限于配置结构、`Prepare` 的
-连线与测试，不触碰 RPC 契约。
+给 MCP 增加独立的 `token_file` 配置项。改动范围限于配置结构、`Prepare` 的连线与测试，不触碰 RPC
+契约。落地形态是 TOML schema v7 的 `mcp.token_file` 与命令行 `--mcp-token-file`；未配置时回落到
+gRPC token，以免破坏既有部署。启动日志的 `mcp`/`listening` 事件用 `credential` 字段记录实际生效的
+模式（`separate` 或 `shared_with_grpc`），不记录 token 值。
 
 收益：让 3. 中"只暴露 MCP"的拓扑第一次真正可用——MCP 客户端持有的凭据不再等同于 gRPC 完整权限，
 两个秘密可独立轮换和吊销。代价：operator 多管理一个 token；仍然没有 per-caller 授权，同一 MCP
-token 的所有持有者权限相同。
+token 的所有持有者权限相同。回落行为意味着分离是 opt-in，未显式配置的部署维持 2.2 的共享状态。
 
 ### 5.2 选项 B：capability 下沉到 service 层
 
@@ -91,10 +98,10 @@ token 的所有持有者权限相同。
 
 ## 6. 建议
 
-1. 先落地本文与威胁模型表的修正（C 的文档部分），使现状可被准确评估；
-2. 短期做 A，成本低且解锁唯一一种 capability 有意义的拓扑；
+1. 先落地本文与威胁模型表的修正（C 的文档部分），使现状可被准确评估；**已完成**。
+2. 短期做 A，成本低且解锁唯一一种 capability 有意义的拓扑；**已完成**，见 5.1。
 3. 把 B 作为 Agent 语义层的前置项，与 Milestone 4 的角色/读写策略一并设计，避免 agent 角色建立在
-   无强制的约定之上。
+   无强制的约定之上；**待做**，是当前剩余的主要缺口。
 
 在 B 落地之前，任何依赖 capability 做权限隔离的部署都必须满足：gRPC listener 不可被 MCP 客户端到
 达，且 controller 主机上不存在可被 MCP 客户端间接利用的本地访问途径。
@@ -102,7 +109,11 @@ token 的所有持有者权限相同。
 ## 7. 验证要求
 
 选项 A 落地时至少覆盖：MCP token 与 gRPC token 不同时两个入口各自认证正确；只配置其一时的行为；
-两个 token 相同值不产生特殊处理；token 值不出现在任何日志或错误消息中。
+两个 token 相同值不产生特殊处理；token 值不出现在任何日志或错误消息中。对应测试：
+`internal/server` 的 `TestPrepareResolvesMCPTokenIndependentlyOfGRPCToken` 覆盖完整解析矩阵，
+`internal/mcp` 的 `TestStreamableHTTPAcceptsOnlyTheConfiguredMCPToken` 覆盖 endpoint 只接受 MCP token，
+`cmd/controller` 的 `TestValidatedServerConfigResolvesMCPTokenSeparatelyFromGRPCToken` 和
+`TestRunControllerDoesNotDiscloseTokenValues` 覆盖配置层解析与不泄露。
 
 选项 B 落地时至少覆盖：每个 RPC 的 capability 标注完整（缺失标注应是启动期错误而非默认放行）；
 capability 不足时返回 `PermissionDenied` 且不泄露资源存在性；同一 capability 集合经 gRPC 与 MCP
