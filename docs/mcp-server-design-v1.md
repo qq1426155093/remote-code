@@ -926,7 +926,7 @@ if tool.Semaphore != nil {
 | 威胁 | 控制 |
 | --- | --- |
 | DNS rebinding 访问 localhost | Origin allowlist、loopback、bearer token |
-| 未认证远程 RCE | MCP 强制 token、远程强制 TLS、process capability 默认不允许 |
+| 未认证远程 RCE | MCP 强制 token、远程强制 TLS |
 | prompt/tool 参数路径逃逸 | 复用 `os.Root` 与现有路径校验 |
 | `.mcp.yaml` 提权 | 文件不在 workspace、global capability 上界、启动编译 |
 | YAML alias/decode bomb | 单 document、拒绝 anchor/alias/merge、AST bytes/depth/node 上限 |
@@ -937,6 +937,11 @@ if tool.Semaphore != nil {
 | 断线后副作用重试 | 无自动 retry、稳定 handle、description 提示不确定性 |
 | 日志泄密 | 固定 audit 字段、禁止 args/result/script/token/content |
 | panic 导致进程退出 | per-request recovery、internal error、测试/fuzz |
+
+capability 默认值降低的是默认暴露面，不是对已认证调用方的 RCE 控制：MCP 与 gRPC 共用同一 bearer
+token，持有该 token 即可直接调用 `ProcessService.StartProcess` 绕过全部 capability 限制。capability
+只在 gRPC listener 对调用方不可达的拓扑下构成边界，完整分析与演进选项见
+[授权模型现状与演进 v1](authorization-model-v1.md)。
 
 工作区边界仍不是完整 sandbox。MCP `process_start` 能执行任意项目命令，生产部署仍需受限系统用户、
 容器/VM、网络策略和资源限制。
