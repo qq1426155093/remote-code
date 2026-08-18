@@ -525,6 +525,7 @@ protobuf 追加兼容；Client 的 `info` 可用于确认双方 API 兼容线。
 - MCP capability 是否遵循最小授权，是否避免默认发布删除类能力；
 - 模板是否避免动态 executable、任意 shell 和可注入的环境加载入口；
 - 是否理解“拥有通用进程启动权限的 token 等同于远程代码执行权限”；
+- 是否理解 MCP capability 只在 gRPC listener 对调用方不可达时构成边界，见[授权模型现状与演进 v1](authorization-model-v1.md)；
 - 是否避免在命令参数、进程输出、模板参数和上传文件中放置不应被持久化或下载的秘密。
 
 ## 12. 常见问题排查
