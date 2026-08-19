@@ -22,7 +22,8 @@ type Service struct {
 }
 
 // NewService creates a controller-log RPC adapter. A fallback logger is valid;
-// in that case Observe returns FailedPrecondition instead of exposing files.
+// in that case Observe returns a structured FailedPrecondition instead of
+// exposing files.
 func NewService(logger *Logger) *Service { return &Service{logger: logger} }
 
 // Capabilities returns the public limits of the underlying durable logger.
@@ -43,12 +44,12 @@ func (s *Service) ObserveControllerLogs(request *codev1.ObserveControllerLogsReq
 		return status.Error(codes.InvalidArgument, "controller log stream is required")
 	}
 	if s == nil || s.logger == nil {
-		return status.Error(codes.FailedPrecondition, "controller runtime logs are unavailable")
+		return rpcerror.Errorf(codes.FailedPrecondition, rpcerror.ControllerLogsUnavailable, "controller runtime logs are unavailable")
 	}
 	logger := s.logger
 	store := logger.Store()
 	if store == nil {
-		return status.Error(codes.FailedPrecondition, "controller runtime logs are unavailable")
+		return rpcerror.Errorf(codes.FailedPrecondition, rpcerror.ControllerLogsUnavailable, "controller runtime logs are unavailable")
 	}
 	if err := store.AcquireObserver(); err != nil {
 		return status.Error(codes.ResourceExhausted, err.Error())

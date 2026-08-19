@@ -173,7 +173,7 @@ func (s *Service) acquireProcessInput(reference *codev1.ProcessReference) (*mana
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closing {
-		return nil, nil, status.Error(codes.Unavailable, "process service is shutting down")
+		return nil, nil, rpcerror.Errorf(codes.Unavailable, rpcerror.ProcessServiceShuttingDown, "process service is shutting down")
 	}
 	record, err := s.lookupLocked(reference)
 	if err != nil {

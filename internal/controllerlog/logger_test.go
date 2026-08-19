@@ -13,6 +13,7 @@ import (
 
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
 	"github.com/qq1426155093/remote-code/internal/logging"
+	"github.com/qq1426155093/remote-code/internal/rpcerror"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -63,6 +64,17 @@ func TestZeroLoggerEmitIsSafe(t *testing.T) {
 	logger.Emit(logging.Event{Component: "test", Name: "zero_value"})
 	if logger.Available() {
 		t.Fatal("zero logger reported durable availability")
+	}
+}
+
+func TestFallbackControllerLogObservationReportsReason(t *testing.T) {
+	service := NewService(NewFallback(io.Discard))
+	err := service.ObserveControllerLogs(&codev1.ObserveControllerLogsRequest{}, &captureControllerLogStream{ctx: context.Background()})
+	if status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("code = %s, want FailedPrecondition", status.Code(err))
+	}
+	if got := rpcerror.ReasonOf(err); got != rpcerror.ControllerLogsUnavailable {
+		t.Fatalf("reason = %q, want %q", got, rpcerror.ControllerLogsUnavailable)
 	}
 }
 
