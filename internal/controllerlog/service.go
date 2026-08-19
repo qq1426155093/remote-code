@@ -10,7 +10,7 @@ import (
 
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
 	processservice "github.com/qq1426155093/remote-code/internal/process"
-	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	"github.com/qq1426155093/remote-code/internal/rpcerror"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -22,7 +22,8 @@ type Service struct {
 }
 
 // NewService creates a controller-log RPC adapter. A fallback logger is valid;
-// in that case Observe returns FailedPrecondition instead of exposing files.
+// in that case Observe returns a structured FailedPrecondition instead of
+// exposing files.
 func NewService(logger *Logger) *Service { return &Service{logger: logger} }
 
 // Capabilities returns the public limits of the underlying durable logger.
@@ -43,12 +44,12 @@ func (s *Service) ObserveControllerLogs(request *codev1.ObserveControllerLogsReq
 		return status.Error(codes.InvalidArgument, "controller log stream is required")
 	}
 	if s == nil || s.logger == nil {
-		return status.Error(codes.FailedPrecondition, "controller runtime logs are unavailable")
+		return rpcerror.Errorf(codes.FailedPrecondition, rpcerror.ControllerLogsUnavailable, "controller runtime logs are unavailable")
 	}
 	logger := s.logger
 	store := logger.Store()
 	if store == nil {
-		return status.Error(codes.FailedPrecondition, "controller runtime logs are unavailable")
+		return rpcerror.Errorf(codes.FailedPrecondition, rpcerror.ControllerLogsUnavailable, "controller runtime logs are unavailable")
 	}
 	if err := store.AcquireObserver(); err != nil {
 		return status.Error(codes.ResourceExhausted, err.Error())
@@ -179,19 +180,10 @@ func finish(stream codev1.ControllerService_ObserveControllerLogsServer, offset 
 
 func controllerLogRangeError(store *processservice.RuntimeLog, cause error) error {
 	current := store.Current()
-	base := status.New(codes.OutOfRange, cause.Error())
-	detail := &errdetails.ErrorInfo{
-		Reason: "CONTROLLER_LOG_OFFSET_OUT_OF_RANGE", Domain: "remote.code.v1",
-		Metadata: map[string]string{
-			"earliest_offset": strconv.FormatUint(current.Earliest, 10),
-			"next_offset":     strconv.FormatUint(current.End, 10),
-		},
-	}
-	withDetails, err := base.WithDetails(detail)
-	if err != nil {
-		return base.Err()
-	}
-	return withDetails.Err()
+	return rpcerror.ErrorfWithMetadata(codes.OutOfRange, rpcerror.ControllerLogOffsetOutOfRange, map[string]string{
+		"earliest_offset": strconv.FormatUint(current.Earliest, 10),
+		"next_offset":     strconv.FormatUint(current.End, 10),
+	}, "%s", cause)
 }
 
 func decodeEvent(data []byte, fallbackTimestamp time.Time) (persistedEvent, error) {

@@ -273,7 +273,7 @@ mkdir -p ./var/workspace ./var/runtime
 
 ## 5. 配置文件
 
-Controller 不会隐式查找配置，必须使用 `--config` 指定 TOML 文件。当前推荐 schema v6；v1-v5
+Controller 不会隐式查找配置，必须使用 `--config` 指定 TOML 文件。当前推荐 schema v7；v1-v6
 继续兼容，但较早版本不能使用后来增加的 MCP、模板、额外参数或断点续传配置。
 
 最终值的覆盖顺序为：
@@ -285,7 +285,7 @@ Controller 不会隐式查找配置，必须使用 `--config` 指定 TOML 文件
 一个适合本机演示的最小配置如下：
 
 ```toml
-version = 6
+version = 7
 workspace = "/absolute/path/to/workspace"
 listen_address = "127.0.0.1:9443"
 runtime_directory = "/absolute/path/to/runtime"

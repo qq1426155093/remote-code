@@ -18,6 +18,7 @@ import (
 	"github.com/expr-lang/expr/parser"
 	"github.com/expr-lang/expr/vm"
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
+	"github.com/qq1426155093/remote-code/internal/rpcerror"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -554,17 +555,17 @@ func (t *compiledProcessTemplate) render(ctx context.Context, parameters *struct
 	}
 	output, err := expr.Run(t.program, templateEnvironment{Parameters: parameterMap, ExtraParameters: t.extraParameters})
 	if err != nil {
-		return nil, status.Errorf(codes.FailedPrecondition, "process template %q could not render a valid process specification", t.summary.GetName())
+		return nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.TemplateRenderFailed, "process template %q could not render a valid process specification", t.summary.GetName())
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, status.FromContextError(err).Err()
 	}
 	if err := validateProcessTemplateValue(output); err != nil {
-		return nil, status.Errorf(codes.FailedPrecondition, "process template %q rendered an unsupported or oversized result", t.summary.GetName())
+		return nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.TemplateRenderFailed, "process template %q rendered an unsupported or oversized result", t.summary.GetName())
 	}
 	arguments, workingDirectory, environment, err := normalizeRenderedProcessTemplate(output)
 	if err != nil {
-		return nil, status.Errorf(codes.FailedPrecondition, "process template %q rendered an invalid process specification", t.summary.GetName())
+		return nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.TemplateRenderFailed, "process template %q rendered an invalid process specification", t.summary.GetName())
 	}
 	return &codev1.StartProcessRequest{
 		Command: t.command, Arguments: arguments, WorkingDirectory: workingDirectory,

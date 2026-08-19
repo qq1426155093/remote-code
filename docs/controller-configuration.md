@@ -22,10 +22,10 @@ remote-code-controller \
 除 `max_processes` 被命令行覆盖外，其它值仍来自 TOML。布尔值可以显式反向覆盖，例如
 `--allow-insecure-remote=false`。
 
-## TOML schema v1、v2、v3、v4、v5 与 v6
+## TOML schema v1、v2、v3、v4、v5、v6 与 v7
 
 ```toml
-version = 6
+version = 7
 workspace = "/srv/remote-code/workspace"
 listen_address = "127.0.0.1:9443"
 runtime_directory = "/var/run/remote-code-controller"
@@ -185,7 +185,7 @@ Schema。它只对 `render` 表达式可见，不能改写静态 `command`、I/O
 返回，也不应写入日志或进程元数据。该字段不应保存 token 等凭据；当前若需要秘密，仍应使用受保护的
 文件，而不是把明文写进 controller TOML。
 
-MCP 字段首版不提供命令行覆盖，以免列表字段产生不明确的替换/追加语义。默认值如下：
+除 `mcp.token_file`（也可通过 `--mcp-token-file` 覆盖）外，MCP 字段首版不提供命令行覆盖，以免列表字段产生不明确的替换/追加语义。默认值如下：
 
 | TOML | 默认值 |
 | --- | --- |
