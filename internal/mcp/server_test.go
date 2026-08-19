@@ -206,3 +206,75 @@ func (t bearerTransport) RoundTrip(request *http.Request) (*http.Response, error
 	clone.Header.Set("Authorization", "Bearer "+t.token)
 	return t.base.RoundTrip(clone)
 }
+
+// The MCP listener authenticates with its own credential. When a deployment
+// configures a separate MCP token, holding the gRPC token must not open the
+// endpoint, which is the property that makes an MCP-only topology meaningful.
+func TestStreamableHTTPAcceptsOnlyTheConfiguredMCPToken(t *testing.T) {
+	workspace := t.TempDir()
+	definition := writeDefinition(t, validDefinition)
+	prepared, err := Prepare(Config{
+		Enabled: true, ListenAddress: "127.0.0.1:0", EndpointPath: "/mcp",
+		DefinitionFiles: []string{definition}, Token: "mcp-token", AllowedHostCapabilities: []string{"files.read"},
+	}, workspace, "127.0.0.1:9443")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fileService, err := files.New(files.Config{Workspace: workspace})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fileService.Close()
+	processService, err := processservice.New(processservice.Config{Workspace: workspace, RuntimeDirectory: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer processService.Close()
+	server, err := NewServer(prepared, fileService, processService)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = server.Serve() }()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = server.Shutdown(ctx)
+	}()
+
+	endpoint := "http://" + server.Address() + "/mcp"
+	tests := []struct {
+		name             string
+		token            string
+		wantUnauthorized bool
+	}{
+		{name: "configured mcp token is accepted", token: "mcp-token"},
+		{name: "grpc token is rejected", token: "grpc-token", wantUnauthorized: true},
+		{name: "missing token is rejected", token: "", wantUnauthorized: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint,
+				strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Accept", "application/json, text/event-stream")
+			if test.token != "" {
+				request.Header.Set("Authorization", "Bearer "+test.token)
+			}
+			response, err := http.DefaultClient.Do(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer response.Body.Close()
+			// Only the authentication outcome is asserted; a request that gets
+			// past the bearer middleware may still fail later for other reasons.
+			if unauthorized := response.StatusCode == http.StatusUnauthorized; unauthorized != test.wantUnauthorized {
+				t.Fatalf("status = %d, want unauthorized = %v", response.StatusCode, test.wantUnauthorized)
+			}
+		})
+	}
+}

@@ -98,7 +98,14 @@ func Prepare(config Config) (*Prepared, error) {
 			return nil, fmt.Errorf("load TLS certificate: %w", err)
 		}
 	}
-	config.MCP.Token = config.Token
+	// The MCP listener authenticates callers with its own credential when one
+	// is configured, and otherwise reuses the gRPC token. Separate credentials
+	// are what make an MCP-only topology meaningful: the MCP token then no
+	// longer grants the full gRPC surface. This is the single place the
+	// fallback is applied.
+	if config.MCP.Token == "" {
+		config.MCP.Token = config.Token
+	}
 	config.MCP.TLSCertificateFile = config.TLSCertificateFile
 	config.MCP.TLSKeyFile = config.TLSKeyFile
 	processTemplates, err := processservice.PrepareTemplates(config.ProcessTemplates, config.Workspace)

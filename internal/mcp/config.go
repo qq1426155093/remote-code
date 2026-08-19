@@ -94,7 +94,7 @@ func ValidateConfig(config Config, grpcAddress string) error {
 		return fmt.Errorf("mcp.definition_files may contain at most %d files", maxDefinitionFiles)
 	}
 	if config.Token == "" {
-		return errors.New("mcp requires a non-empty bearer token")
+		return errors.New("mcp requires a non-empty bearer token; configure mcp.token_file or auth.token_file")
 	}
 	if config.ListenAddress == grpcAddress {
 		return errors.New("mcp and gRPC listen addresses must differ")

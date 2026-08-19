@@ -61,7 +61,8 @@ flowchart LR
 ```
 
 gRPC 与 MCP 使用不同 listener。默认情况下，gRPC 监听 `127.0.0.1:9443`，MCP 监听
-`127.0.0.1:9444` 且保持关闭。TLS 和 bearer token 是两个入口共享的全局安全配置。
+`127.0.0.1:9444` 且保持关闭。TLS 是两个入口共享的全局配置；bearer token 默认共享，也可以通过
+`mcp.token_file` 为 MCP listener 配置独立凭据。
 
 Controller 内部的主要组件如下：
 
@@ -272,7 +273,7 @@ mkdir -p ./var/workspace ./var/runtime
 
 ## 5. 配置文件
 
-Controller 不会隐式查找配置，必须使用 `--config` 指定 TOML 文件。当前推荐 schema v6；v1-v5
+Controller 不会隐式查找配置，必须使用 `--config` 指定 TOML 文件。当前推荐 schema v7；v1-v6
 继续兼容，但较早版本不能使用后来增加的 MCP、模板、额外参数或断点续传配置。
 
 最终值的覆盖顺序为：
@@ -284,7 +285,7 @@ Controller 不会隐式查找配置，必须使用 `--config` 指定 TOML 文件
 一个适合本机演示的最小配置如下：
 
 ```toml
-version = 6
+version = 7
 workspace = "/absolute/path/to/workspace"
 listen_address = "127.0.0.1:9443"
 runtime_directory = "/absolute/path/to/runtime"
@@ -302,9 +303,9 @@ allow_insecure_remote = false
 | `[process_logs]` | 单进程/全局日志容量、segment、保留期和观察者数量 |
 | `[controller_logs]` | Controller 运行事件容量、segment、重启保留期和观察者数量 |
 | `[tls]` | 全局服务端证书和私钥，两项必须同时提供 |
-| `[auth]` | bearer token 文件路径；token 内容不直接写入 TOML |
+| `[auth]` | gRPC bearer token 文件路径；token 内容不直接写入 TOML |
 | `[process_templates]` | workspace 外模板定义文件和只读 `extra_parameters` |
-| `[mcp]` | MCP listener、定义文件、capability、速率、并发、大小和超时 |
+| `[mcp]` | MCP listener、可选独立 token、定义文件、capability、速率、并发、大小和超时 |
 
 完整字段、默认值、版本差异和范围见
 [Controller 配置文件参考](controller-configuration.md)。
@@ -376,6 +377,19 @@ token_file = "/etc/remote-code/controller.token"
 token 文件应是非空文本，建议权限为 `0600`。Controller 会去掉首尾空白，并使用常量时间比较认证值；
 日志和错误不会输出 token。TLS 最低客户端要求由 Go TLS 栈执行，公共 client 使用 TLS 1.2 或更高版本。
 
+`[auth] token_file` 是 gRPC 入口的凭据，MCP 默认复用它。要让 MCP 客户端的凭据不等同于完整 gRPC
+权限，需另外配置 `[mcp] token_file`（或 `--mcp-token-file`）：
+
+```toml
+[mcp]
+token_file = "/etc/remote-code/mcp.token"
+```
+
+两个 token 独立读取、独立比较，写入相同值也不会被特殊处理。启动日志的 `mcp`/`listening` 事件带有
+`credential` 字段（`separate` 或 `shared_with_grpc`），用于确认实际生效的拓扑；该字段只记录模式，
+不记录 token 值。注意即使配置了独立 token，持有 gRPC token 仍等同于完整权限——capability 模型
+不是可依赖的权限边界，取舍见[授权模型现状与演进](authorization-model-v1.md)。
+
 `--allow-insecure-remote` 只适合已有可信加密隧道的受控环境。它允许非 loopback 明文监听，并不会为 token
 提供任何额外保护。
 
@@ -440,7 +454,7 @@ journalctl -u remote-code-controller -f
 
 启用 MCP 必须同时满足：
 
-- 已配置全局 bearer token；
+- 已配置 bearer token，来自 `mcp.token_file` 或回落到 `auth.token_file`；
 - 至少有一个 workspace 外的 `.mcp.yaml` 定义文件；
 - MCP 与 gRPC 使用不同监听地址；
 - 全局 `allowed_host_capabilities` 覆盖每个工具声明的 capability；
@@ -474,11 +488,11 @@ allowed_host_capabilities = [
 启动成功后还会记录一行 MCP 监听事件：
 
 ```text
-{"timestamp":"2026-08-18T00:00:00Z","boot_id":"...","level":"INFO","component":"mcp","event":"listening","message":"MCP Streamable HTTP is listening","fields":{"address":"127.0.0.1:9444","path":"/mcp"}}
+{"timestamp":"2026-08-18T00:00:00Z","boot_id":"...","level":"INFO","component":"mcp","event":"listening","message":"MCP Streamable HTTP is listening","fields":{"address":"127.0.0.1:9444","path":"/mcp","credential":"separate"}}
 ```
 
 MCP 客户端应把 endpoint 配置为 `http://127.0.0.1:9444/mcp`，远程 TLS 部署则使用 `https`，并在每次
-请求中携带同一个 bearer token。详细协议、工具定义格式和兼容版本见
+请求中携带 MCP 的 bearer token——配置了 `mcp.token_file` 时是该文件的内容，否则是 gRPC token。详细协议、工具定义格式和兼容版本见
 [MCP Server 需求](mcp-server-requirements-v1.md)与
 [MCP Server 详细设计](mcp-server-design-v1.md)。
 
@@ -543,6 +557,7 @@ protobuf 追加兼容；Client 的 `info` 可用于确认双方 API 兼容线。
 
 - 非 loopback 部署是否同时启用 TLS 和 token；
 - token、TLS 私钥、Controller TOML、模板和 MCP 定义是否位于 workspace 之外；
+- MCP 客户端不应到达 gRPC listener 时，是否配置了独立的 `mcp.token_file`；
 - Controller 是否使用最小权限的独立系统用户；
 - 是否通过容器、VM、systemd 或其它 OS 机制限制 CPU、内存、网络和非 workspace 文件访问；
 - 是否根据磁盘容量配置上传暂存、单文件大小、日志总量和保留期；

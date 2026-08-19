@@ -25,6 +25,7 @@ const (
 	controllerConfigVersionV4 = 4
 	controllerConfigVersionV5 = 5
 	controllerConfigVersionV6 = 6
+	controllerConfigVersionV7 = 7
 	maxControllerConfigBytes  = 1 << 20
 	maxConfiguredProcesses    = 4096
 )
@@ -32,6 +33,7 @@ const (
 type controllerOptions struct {
 	serverConfig server.Config
 	tokenFile    string
+	mcpTokenFile string
 	configFile   string
 	checkConfig  bool
 	showVersion  bool
@@ -93,6 +95,7 @@ type mcpFileConfig struct {
 	Enabled                 *bool     `toml:"enabled"`
 	ListenAddress           *string   `toml:"listen_address"`
 	EndpointPath            *string   `toml:"endpoint_path"`
+	TokenFile               *string   `toml:"token_file"`
 	DefinitionFiles         *[]string `toml:"definition_files"`
 	AllowedOrigins          *[]string `toml:"allowed_origins"`
 	AllowedHostCapabilities *[]string `toml:"allowed_host_capabilities"`
@@ -178,6 +181,7 @@ func parseControllerOptions(args []string, output io.Writer) (controllerOptions,
 	flags.StringVar(&options.serverConfig.TLSCertificateFile, "tls-cert", options.serverConfig.TLSCertificateFile, "TLS certificate PEM file")
 	flags.StringVar(&options.serverConfig.TLSKeyFile, "tls-key", options.serverConfig.TLSKeyFile, "TLS private key PEM file")
 	flags.StringVar(&options.tokenFile, "token-file", options.tokenFile, "optional bearer token file")
+	flags.StringVar(&options.mcpTokenFile, "mcp-token-file", options.mcpTokenFile, "optional MCP bearer token file; defaults to the gRPC token")
 	flags.BoolVar(&options.serverConfig.AllowInsecureRemote, "allow-insecure-remote", options.serverConfig.AllowInsecureRemote, "allow plaintext gRPC on a non-loopback listener")
 	flags.BoolVar(&options.checkConfig, "check-config", false, "validate configuration and exit")
 	flags.BoolVar(&options.showVersion, "version", false, "print version and exit")
@@ -194,7 +198,8 @@ func findConfigFile(args []string) (string, error) {
 	valueFlags := map[string]bool{
 		"workspace": true, "listen-addr": true, "max-upload-bytes": true,
 		"runtime-dir": true, "max-processes": true, "tls-cert": true,
-		"tls-key": true, "token-file": true, "process-log-max-bytes": true,
+		"tls-key": true, "token-file": true, "mcp-token-file": true,
+		"process-log-max-bytes":       true,
 		"process-log-max-total-bytes": true, "process-log-segment-bytes": true,
 		"process-log-retention": true, "process-log-max-observers": true,
 		"controller-log-max-bytes": true, "controller-log-max-total-bytes": true,
@@ -277,8 +282,8 @@ func loadControllerConfig(name string) (controllerFileConfig, error) {
 		}
 		return controllerFileConfig{}, fmt.Errorf("decode controller config %q: %s", name, details)
 	}
-	if config.Version != controllerConfigVersionV1 && config.Version != controllerConfigVersionV2 && config.Version != controllerConfigVersionV3 && config.Version != controllerConfigVersionV4 && config.Version != controllerConfigVersionV5 && config.Version != controllerConfigVersionV6 {
-		return controllerFileConfig{}, fmt.Errorf("controller config version must be %d, %d, %d, %d, %d, or %d", controllerConfigVersionV1, controllerConfigVersionV2, controllerConfigVersionV3, controllerConfigVersionV4, controllerConfigVersionV5, controllerConfigVersionV6)
+	if config.Version != controllerConfigVersionV1 && config.Version != controllerConfigVersionV2 && config.Version != controllerConfigVersionV3 && config.Version != controllerConfigVersionV4 && config.Version != controllerConfigVersionV5 && config.Version != controllerConfigVersionV6 && config.Version != controllerConfigVersionV7 {
+		return controllerFileConfig{}, fmt.Errorf("controller config version must be %d, %d, %d, %d, %d, %d, or %d", controllerConfigVersionV1, controllerConfigVersionV2, controllerConfigVersionV3, controllerConfigVersionV4, controllerConfigVersionV5, controllerConfigVersionV6, controllerConfigVersionV7)
 	}
 	if config.Version == controllerConfigVersionV1 && config.MCP != nil {
 		return controllerFileConfig{}, errors.New("controller config version 1 does not support the mcp table")
@@ -294,6 +299,9 @@ func loadControllerConfig(name string) (controllerFileConfig, error) {
 	}
 	if config.Version < controllerConfigVersionV6 && config.ControllerLogs != nil {
 		return controllerFileConfig{}, fmt.Errorf("controller config version %d does not support the controller_logs table", config.Version)
+	}
+	if config.Version < controllerConfigVersionV7 && config.MCP != nil && config.MCP.TokenFile != nil {
+		return controllerFileConfig{}, fmt.Errorf("controller config version %d does not support mcp.token_file", config.Version)
 	}
 	return config, nil
 }
@@ -380,6 +388,9 @@ func applyControllerFileConfig(options *controllerOptions, config controllerFile
 		}
 	}
 	if config.MCP != nil {
+		if config.MCP.TokenFile != nil {
+			options.mcpTokenFile = *config.MCP.TokenFile
+		}
 		if err := applyMCPFileConfig(&options.serverConfig.MCP, *config.MCP); err != nil {
 			return err
 		}
@@ -524,7 +535,16 @@ func (o controllerOptions) validatedServerConfig() (server.Config, error) {
 		}
 		config.Token = token
 	}
-	config.MCP.Token = config.Token
+	// An explicit MCP token file separates the two entry points. Leaving it
+	// unset keeps the historical behavior, and server.Prepare applies the
+	// fallback so the resolution rule lives in exactly one place.
+	if o.mcpTokenFile != "" {
+		token, err := auth.ReadTokenFile(o.mcpTokenFile)
+		if err != nil {
+			return server.Config{}, fmt.Errorf("mcp: %w", err)
+		}
+		config.MCP.Token = token
+	}
 	config.MCP.TLSCertificateFile = config.TLSCertificateFile
 	config.MCP.TLSKeyFile = config.TLSKeyFile
 	if err := server.ValidateConfig(config); err != nil {

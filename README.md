@@ -13,6 +13,7 @@ Remote Code 是一个面向远程开发任务的 Code Agent 控制平面。它�
 > 有界文件读取/搜索/补丁、进程快照/偏移日志、进程模板和 binary workspace Resource。
 > controller 自身的生命周期、进程服务和 MCP 诊断也会以脱敏 JSON 事件持久化，并可通过
 > `ControllerService.ObserveControllerLogs` 或 CLI 的 `controller-logs`/`clogs` 回放、续读和 follow。
+> MCP listener 可配置独立于 gRPC 的 bearer token。
 > 进程与日志相关的错误携带机器可读的 reason，客户端不必匹配消息文本即可区分共用同一 status code
 > 的多种条件。
 > Agent 语义仍是后续版本计划。
@@ -86,8 +87,10 @@ remote-code:/> exec-template --attach --params-file ./agent-parameters.json code
 [MCP Server 需求](docs/mcp-server-requirements-v1.md)和
 [MCP Server 详细设计](docs/mcp-server-design-v1.md)。
 
-MCP 默认关闭。启用时使用 TOML schema v2 或 v3，配置独立 HTTP listener、bearer token 和 workspace
-之外的定义文件。仓库提供可直接参考并通过启动期编译检查的
+MCP 默认关闭。启用时使用 TOML schema v2 或更高版本，配置独立 HTTP listener、bearer token 和
+workspace 之外的定义文件。MCP 默认复用 gRPC 的 bearer token；`mcp.token_file`（schema v7，命令行
+`--mcp-token-file`）可为 MCP listener 配置独立凭据，使 MCP 客户端持有的 token 不再等同于完整 gRPC
+权限。取舍与剩余缺口见[授权模型现状与演进](docs/authorization-model-v1.md)。仓库提供可直接参考并通过启动期编译检查的
 [`controller.mcp.yaml`](configs/mcp/controller.mcp.yaml)、[`file.mcp.yaml`](configs/mcp/file.mcp.yaml) 与
 [`process.mcp.yaml`](configs/mcp/process.mcp.yaml)。`--check-config` 会读取严格 YAML、编译 JSON Schema
 与 Expr，但不会绑定端口或执行 host function。示例默认不发布删除、chmod、任意 signal、stdin、PTY attach

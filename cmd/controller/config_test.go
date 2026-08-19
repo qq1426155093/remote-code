@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/qq1426155093/remote-code/internal/server"
 )
 
 func TestParseControllerOptionsLoadsTOMLAndAppliesFlagOverrides(t *testing.T) {
@@ -96,7 +98,7 @@ func TestLoadControllerConfigRejectsInvalidFiles(t *testing.T) {
 		want     string
 	}{
 		{name: "missing version", contents: `workspace = "/work"`, want: "version must be 1"},
-		{name: "future version", contents: "version = 7\n", want: "version must be 1, 2, 3, 4, 5, or 6"},
+		{name: "future version", contents: "version = 8\n", want: "version must be 1, 2, 3, 4, 5, 6, or 7"},
 		{name: "unknown field", contents: "version = 1\nmax_proceses = 2\n", want: "unknown field"},
 		{name: "wrong type", contents: "version = 1\nmax_processes = \"many\"\n", want: "cannot decode"},
 		{name: "duplicate key", contents: "version = 1\nmax_processes = 2\nmax_processes = 3\n", want: "already defined"},
@@ -314,6 +316,8 @@ func TestFindConfigFile(t *testing.T) {
 		{name: "single dash", args: []string{"-config", "three.toml"}, want: "three.toml"},
 		{name: "skip another value", args: []string{"--workspace", "--config", "positional"}},
 		{name: "after normal option", args: []string{"--max-processes", "4", "--config", "four.toml"}, want: "four.toml"},
+		{name: "after mcp token file", args: []string{"--mcp-token-file", "mcp.token", "--config", "five.toml"}, want: "five.toml"},
+		{name: "skip mcp token file value", args: []string{"--mcp-token-file", "--config", "positional"}},
 		{name: "after positional", args: []string{"positional", "--config", "ignored.toml"}},
 		{name: "empty", args: []string{"--config="}, wantErr: true},
 		{name: "missing", args: []string{"--config"}, wantErr: true},
@@ -347,6 +351,7 @@ func TestValidatedServerConfigRejectsInvalidValues(t *testing.T) {
 		{name: "tls pair", mutate: func(o *controllerOptions) { o.serverConfig.TLSCertificateFile = "cert" }, want: "must be provided together"},
 		{name: "insecure remote", mutate: func(o *controllerOptions) { o.serverConfig.ListenAddress = "0.0.0.0:9443" }, want: "refusing insecure non-loopback"},
 		{name: "token", mutate: func(o *controllerOptions) { o.tokenFile = filepath.Join(t.TempDir(), "missing") }, want: "read token file"},
+		{name: "mcp token", mutate: func(o *controllerOptions) { o.mcpTokenFile = filepath.Join(t.TempDir(), "missing") }, want: "mcp: read token file"},
 		{name: "workspace file", mutate: func(o *controllerOptions) {
 			name := filepath.Join(t.TempDir(), "file")
 			if err := os.WriteFile(name, nil, 0o600); err != nil {
@@ -491,6 +496,140 @@ shared_argument = "--checked"
 	}
 	if stdout.String() != "configuration OK\n" {
 		t.Fatalf("output = %q", stdout.String())
+	}
+}
+
+func TestLoadControllerConfigV7MCPTokenFile(t *testing.T) {
+	tokenFile := filepath.Join(t.TempDir(), "mcp.token")
+	configFile := writeControllerConfig(t, `
+version = 7
+workspace = "/work"
+
+[mcp]
+enabled = true
+token_file = "`+tokenFile+`"
+definition_files = ["/etc/remote-code/file.mcp.yaml"]
+`)
+	file, err := loadControllerConfig(configFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := defaultControllerOptions()
+	if err := applyControllerFileConfig(&options, file); err != nil {
+		t.Fatal(err)
+	}
+	if options.mcpTokenFile != tokenFile || options.tokenFile != "" {
+		t.Fatalf("token files = mcp %q, grpc %q", options.mcpTokenFile, options.tokenFile)
+	}
+
+	v6WithMCPToken := writeControllerConfig(t, "version = 6\n[mcp]\ntoken_file = \"/etc/remote-code/mcp.token\"\n")
+	if _, err := loadControllerConfig(v6WithMCPToken); err == nil || !strings.Contains(err.Error(), "does not support mcp.token_file") {
+		t.Fatalf("v6 mcp.token_file error = %v", err)
+	}
+}
+
+func TestParseControllerOptionsMCPTokenFileFlagOverridesConfig(t *testing.T) {
+	fromConfig := filepath.Join(t.TempDir(), "config.token")
+	fromFlag := filepath.Join(t.TempDir(), "flag.token")
+	configFile := writeControllerConfig(t, `
+version = 7
+workspace = "/work"
+
+[mcp]
+token_file = "`+fromConfig+`"
+`)
+	options, err := parseControllerOptions([]string{"--config", configFile}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if options.mcpTokenFile != fromConfig {
+		t.Fatalf("mcp token file from config = %q, want %q", options.mcpTokenFile, fromConfig)
+	}
+	options, err = parseControllerOptions([]string{"--config", configFile, "--mcp-token-file", fromFlag}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if options.mcpTokenFile != fromFlag {
+		t.Fatalf("mcp token file from flag = %q, want %q", options.mcpTokenFile, fromFlag)
+	}
+}
+
+// Resolution is only complete after server.Prepare, which owns the fallback, so
+// this exercises the same sequence runController performs.
+func TestValidatedServerConfigResolvesMCPTokenSeparatelyFromGRPCToken(t *testing.T) {
+	writeToken := func(value string) string {
+		name := filepath.Join(t.TempDir(), "token")
+		if err := os.WriteFile(name, []byte(value+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return name
+	}
+	tests := []struct {
+		name      string
+		grpcToken string
+		mcpToken  string
+		wantGRPC  string
+		wantMCP   string
+	}{
+		{name: "grpc token alone is shared", grpcToken: "grpc-secret", wantGRPC: "grpc-secret", wantMCP: "grpc-secret"},
+		{name: "distinct tokens stay distinct", grpcToken: "grpc-secret", mcpToken: "mcp-secret", wantGRPC: "grpc-secret", wantMCP: "mcp-secret"},
+		{name: "mcp token alone leaves grpc unauthenticated", mcpToken: "mcp-secret", wantMCP: "mcp-secret"},
+		{name: "identical values are not special", grpcToken: "same-secret", mcpToken: "same-secret", wantGRPC: "same-secret", wantMCP: "same-secret"},
+		{name: "no token configured", wantGRPC: "", wantMCP: ""},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			options := defaultControllerOptions()
+			options.serverConfig.Workspace = t.TempDir()
+			if test.grpcToken != "" {
+				options.tokenFile = writeToken(test.grpcToken)
+			}
+			if test.mcpToken != "" {
+				options.mcpTokenFile = writeToken(test.mcpToken)
+			}
+			config, err := options.validatedServerConfig()
+			if err != nil {
+				t.Fatalf("validatedServerConfig() error = %v", err)
+			}
+			prepared, err := server.Prepare(config)
+			if err != nil {
+				t.Fatalf("server.Prepare() error = %v", err)
+			}
+			if prepared.Config.Token != test.wantGRPC || prepared.Config.MCP.Token != test.wantMCP {
+				t.Fatalf("resolved tokens = grpc %q, mcp %q; want grpc %q, mcp %q",
+					prepared.Config.Token, prepared.Config.MCP.Token, test.wantGRPC, test.wantMCP)
+			}
+		})
+	}
+}
+
+func TestRunControllerDoesNotDiscloseTokenValues(t *testing.T) {
+	grpcToken := filepath.Join(t.TempDir(), "grpc.token")
+	if err := os.WriteFile(grpcToken, []byte("grpc-token-value\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mcpToken := filepath.Join(t.TempDir(), "mcp.token")
+	if err := os.WriteFile(mcpToken, []byte("mcp-token-value\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	configFile := writeControllerConfig(t, `
+version = 7
+workspace = "`+t.TempDir()+`"
+runtime_directory = "`+t.TempDir()+`"
+
+[auth]
+token_file = "`+grpcToken+`"
+
+[mcp]
+token_file = "`+mcpToken+`"
+`)
+	var stdout, stderr bytes.Buffer
+	if err := runController([]string{"--config", configFile, "--check-config"}, &stdout, &stderr); err != nil {
+		t.Fatalf("runController() error = %v", err)
+	}
+	combined := stdout.String() + stderr.String()
+	if strings.Contains(combined, "grpc-token-value") || strings.Contains(combined, "mcp-token-value") {
+		t.Fatalf("controller output disclosed a token value: %q", combined)
 	}
 }
 
