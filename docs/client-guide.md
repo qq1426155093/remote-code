@@ -722,6 +722,25 @@ error: <message> (<CODE>)
 | `DEADLINE_EXCEEDED` | 本地命令 context 达到 `--timeout` |
 | `DATA_LOSS` | 哈希、大小、日志记录或响应结构校验失败 |
 
+code 只标识失败类别。上表中 `FAILED_PRECONDITION` 一行就对应四种不同条件，仅凭 code 无法分派。
+需要区分时使用 `client.Reason(err)`，它返回 controller 附带的机器可读 reason：
+
+```go
+_, err := remote.OpenProcessInput(ctx, reference)
+switch client.Reason(err) {
+case client.ReasonProcessInputDisabled:
+    // 启动时未启用输入，需重启进程。
+case client.ReasonProcessInputAttached:
+    // 已有 writer，改为观察日志或稍后重试。
+case client.ReasonProcessNotRunning:
+    // 进程已退出。
+}
+```
+
+message 是给人看的、可能改写，不要匹配它。reason 缺失时返回空字符串——旧 controller 不报告
+reason，纯参数校验错误也不报告——此时回退到 code。完整 reason 目录、稳定性规则和尚未覆盖的路径见
+[错误模型详细设计](error-model-design-v1.md)。
+
 Client 在连接时读取能力，而不是只根据版本字符串猜测功能。可恢复传输能自动回退；新代码仍应检查
 `client.Info()` 中的 API 与 capability，并对新增服务端限制做显式处理。
 

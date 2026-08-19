@@ -4,6 +4,7 @@ import (
 	"context"
 
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
+	"github.com/qq1426155093/remote-code/internal/rpcerror"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -52,7 +53,7 @@ func (s *Service) StartProcessFromTemplate(ctx context.Context, request *codev1.
 			return nil, status.Error(codes.InvalidArgument, "expected template revision must be a lowercase SHA-256 hexadecimal value")
 		}
 		if expectedRevision != template.summary.GetRevision() {
-			return nil, status.Errorf(codes.FailedPrecondition, "process template %q revision does not match the requested revision", request.GetTemplateName())
+			return nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.TemplateRevisionMismatch, "process template %q revision does not match the requested revision", request.GetTemplateName())
 		}
 	}
 	startRequest, err := template.render(ctx, request.GetParameters())

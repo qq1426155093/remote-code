@@ -17,13 +17,13 @@ import (
 	"github.com/qq1426155093/remote-code/internal/logging"
 	mcpserver "github.com/qq1426155093/remote-code/internal/mcp"
 	processservice "github.com/qq1426155093/remote-code/internal/process"
+	"github.com/qq1426155093/remote-code/internal/rpcerror"
 	"github.com/qq1426155093/remote-code/internal/version"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
-	"google.golang.org/grpc/status"
 )
 
 const maxMessageBytes = 16 << 20
@@ -334,7 +334,7 @@ type controllerService struct {
 
 func (s *controllerService) ObserveControllerLogs(request *codev1.ObserveControllerLogsRequest, stream codev1.ControllerService_ObserveControllerLogsServer) error {
 	if s.logs == nil {
-		return status.Error(codes.FailedPrecondition, "controller runtime logs are unavailable")
+		return rpcerror.Errorf(codes.FailedPrecondition, rpcerror.ControllerLogsUnavailable, "controller runtime logs are unavailable")
 	}
 	return s.logs.ObserveControllerLogs(request, stream)
 }

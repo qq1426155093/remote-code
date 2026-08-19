@@ -7,7 +7,7 @@ import (
 	"time"
 
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
-	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	"github.com/qq1426155093/remote-code/internal/rpcerror"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -38,11 +38,11 @@ func (s *Service) ObserveProcessLogs(request *codev1.ObserveProcessLogsRequest, 
 	info := cloneProcessInfo(record.info)
 	if logs == nil {
 		s.mu.Unlock()
-		return status.Error(codes.FailedPrecondition, "process logs are unavailable")
+		return rpcerror.Errorf(codes.FailedPrecondition, rpcerror.ProcessLogsUnavailable, "process logs are unavailable")
 	}
 	if err := logs.acquireObserver(); err != nil {
 		s.mu.Unlock()
-		return status.Error(codes.ResourceExhausted, err.Error())
+		return rpcerror.Errorf(codes.ResourceExhausted, rpcerror.ProcessLogObserverLimitReached, "%s", err)
 	}
 	s.mu.Unlock()
 	defer logs.releaseObserver()
@@ -184,21 +184,11 @@ func (s *Service) finishLogStream(record *managedProcess, stream codev1.ProcessS
 
 func processLogRangeError(id string, logs *processLog, cause error) error {
 	end, earliest, _, _, _ := logs.current(0)
-	base := status.New(codes.OutOfRange, cause.Error())
-	detail := &errdetails.ErrorInfo{
-		Reason: "LOG_OFFSET_OUT_OF_RANGE",
-		Domain: "remote.code.v1",
-		Metadata: map[string]string{
-			"process_id":      id,
-			"earliest_offset": strconv.FormatUint(earliest, 10),
-			"next_offset":     strconv.FormatUint(end, 10),
-		},
-	}
-	withDetails, err := base.WithDetails(detail)
-	if err != nil {
-		return base.Err()
-	}
-	return withDetails.Err()
+	return rpcerror.ErrorfWithMetadata(codes.OutOfRange, rpcerror.LogOffsetOutOfRange, map[string]string{
+		"process_id":      id,
+		"earliest_offset": strconv.FormatUint(earliest, 10),
+		"next_offset":     strconv.FormatUint(end, 10),
+	}, "%s", cause)
 }
 
 func (s *Service) runLogJanitor() {
