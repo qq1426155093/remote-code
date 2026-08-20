@@ -17,9 +17,10 @@
 2. 在 controller 启动前编译 Expr 脚本，并验证脚本所有正常出口都是已声明路由的字符串字面量。
 3. 创建可恢复的 Run、NodeRun、Activity 和 Attempt 状态。
 4. 通过 Activity journal 把长时间 host 调用表示为持久化挂起，而不是阻塞 Expr VM。
-5. 为外部执行器提供认领、开始、心跳、正常完成、系统失败和请求人工介入的内部 Go API。
-6. 通过租约、幂等键、资源声明和事务事件保证重试与恢复安全。
-7. 在 controller 重启后从数据库恢复等待中的运行，并处理已过期租约。
+5. 通过持久化字符串键值 Workflow Context 在成功节点之间传递有界业务状态。
+6. 为外部执行器提供认领、开始、心跳、正常完成、系统失败和请求人工介入的内部 Go API。
+7. 通过租约、幂等键、资源声明和事务事件保证重试与恢复安全。
+8. 在 controller 重启后从数据库恢复等待中的运行，并处理已过期租约。
 
 首版明确不做：
 
@@ -104,6 +105,7 @@ workflows:
         timeout: 2h
         script: |
           let result = activity("review-agent", "manual", {task: "review"});
+          context_set("review.status", string(result.status));
           if result.status == "ok" {
             "accepted"
           } else if parameters.repair {
@@ -123,7 +125,10 @@ workflows:
       - id: repair
         timeout: 4h
         script: |
-          let result = activity("repair-agent", "manual", {task: "repair"});
+          let result = activity("repair-agent", "manual", {
+            task: "repair",
+            review_status: context["review.status"]
+          });
           if result.status == "ok" { "done" } else { "failed" }
         routes:
           done: [done]
@@ -181,9 +186,16 @@ workflows:
 每次执行脚本都会重建只读环境：
 
 - `parameters`：创建 Run 时通过 Schema 校验的参数。
+- `context`：当前 Run 已提交的 `map[string]string` 副本，脚本不能直接修改。
 - `nodes`：已经终止的节点结果摘要。
 - `activities`：当前节点 Activity journal 的只读摘要。
 - `activity(operation_id, executor_kind, input)`：持久 Activity host 函数。
+- `context_set(key, value)`：暂存本次节点的字符串 Context 写入。
+- `context_delete(key)`：暂存本次节点的 Context 删除。
+
+用于 `expr.WithContext` 的 Go `context.Context` 仍以隐藏名称 `__workflow_context` 注入，只负责取消、
+deadline 和 host invocation，不进入持久化快照，也不作为业务 Context 暴露；脚本显式引用该保留标识符
+会在 AST 策略检查阶段失败。
 
 禁用产生非确定性或无界工作的内建函数，包括时间、时区、随机效果、`range`、`repeat` 和 `reduce`。脚本有源码长度、AST 节点数和 AST 深度限制。
 
@@ -213,13 +225,49 @@ Expr VM 不支持保存调用栈。`activity` 的执行规则是：
 
 挂起信号和系统错误不会作为脚本数据暴露，所以脚本不能用业务分支吞掉租约丢失、存储失败、取消或非确定性错误。
 
+### 6.5 Workflow Context
+
+`Run.Context` 是持久化的 `map[string]string`，`Run.ContextVersion` 从 0 开始，只在 Context 发生实际变化
+时递增一次。新 Run 的 Context 为空；启动期输入使用不可变 `parameters`。
+
+`context_set` 和 `context_delete` 通过隐藏的 script invocation 写入临时 change set。`runScript` 给 Expr
+传入 Context 副本，并只在 Expr 正常返回合法 route 且最终 Context 通过容量检查后返回：
+
+```text
+scriptResult
+├── Route
+├── ContextWrites  map[string]string
+└── ContextDeletes set[string]
+```
+
+Activity 挂起或任何错误只返回 error，change set 随 invocation 丢弃。`Service.advance` 在节点进入
+`SUCCEEDED` 前应用 change set，并追加 `context_updated`；Run 快照、Context、route、节点状态和所有事件
+随后由同一个 bbolt 事务写入。因此重启后要么看到完整节点提交，要么从上一个 Context 版本重放。
+
+mutation key 必须是匹配 `[A-Za-z][A-Za-z0-9_.-]{0,127}` 的字符串字面量。AST 策略允许 mutation 出现在
+顺序表达式和普通 `if/else` 分支主体中，拒绝条件、短路表达式和 collection predicate 中的 mutation。
+value 由 Expr 类型检查保证为 string，并在运行时再次检查 UTF-8、NUL 和 byte 上限。
+
+定义编译器保存每个节点的 mutation key 集合。图完成拓扑排序后计算每个节点的保守 must-precede 集合：
+
+- `join: all` 合并全部前驱及其 must-precede 集合；
+- `join: any` 只保留所有前驱闭包的交集；
+- 两个 writer 只有在一个属于另一个的 must-precede 集合时才能修改同一个 key。
+
+该规则会有意拒绝某些运行时互斥、但图上无法证明先后顺序的分支，以避免 Activity 完成顺序决定 Context。
+不同并行节点应使用节点命名空间，汇总 key 由确定有序的 merge 节点写入。
+
+限制固定为：最多 256 个 entry、单 value 最多 16 KiB、完整 JSON 最多 256 KiB。事件 data 只含
+`version`、排序后的 `set_keys` 和 `deleted_keys`，不含 value。
+
 ## 7. 状态模型
 
 ### 7.1 Run
 
 `PENDING -> RUNNING <-> PAUSED -> SUCCEEDED|FAILED|CANCELLED`
 
-Run 保存：ID、幂等键、定义名称和完整快照、参数、状态、节点记录、资源锁、事件序号、时间戳和失败摘要。
+Run 保存：ID、幂等键、定义名称和完整快照、参数、Workflow Context 及其版本、状态、节点记录、资源锁、
+事件序号、时间戳和失败摘要。
 
 ### 7.2 NodeRun
 
@@ -275,7 +323,10 @@ bbolt 数据库包含：
 - `idempotency`：`workflow-name + NUL + key -> run-id`；
 - `events`：`run-id + NUL + big-endian sequence -> event JSON`。
 
-一次状态迁移、事件追加和幂等记录在同一个 bbolt 写事务中提交。事件先分配 Run 内连续序号，再和 Run record 一起写入；因此崩溃后不会出现“状态已变但事件缺失”。数据库只保存 JSON 兼容数据，Expr Program 和 JSON Schema Validator 在加载 Run 快照时重新编译。
+一次状态迁移、事件追加和幂等记录在同一个 bbolt 写事务中提交。事件先分配 Run 内连续序号，再和
+Run record 一起写入；因此崩溃后不会出现“状态已变但事件缺失”。数据库只保存 JSON 兼容数据，
+Expr Program 和 JSON Schema Validator 在加载 Run 快照时重新编译。新增的 Context 字段与 record v1
+向后兼容：旧记录缺失或为 null 时初始化为空 map，恢复时重新执行 key/value/总量校验。
 
 单 controller 进程内由 `Service.mu` 串行化状态迁移；bbolt 文件锁阻止第二个 controller 同时打开同一运行目录。这是首版的单主约束。
 
@@ -320,6 +371,7 @@ bbolt 数据库包含：
 - 定义错误带文件、workflow、node 以及 Expr 行列信息。
 - 未找到、冲突、无效状态、lease 失效、容量耗尽使用可 `errors.Is`/`errors.As` 判断的包级错误或类型。
 - 参数、Activity input/output 和事件都有字节上限；Run、节点、Activity、AST 和观察者都有数量上限。
+- Workflow Context 限制 key 格式、entry 数、单 value 和总 JSON 大小；它进入 Run 快照，不得承载秘密。
 - 定义文件按 operator 配置处理，但仍拒绝符号链接、workspace 内文件、外部 JSON Schema 引用和未知字段。
 - 日志只记录稳定 ID、状态、错误分类和有界摘要；lease token 只存 hash，原 token 仅返回给认领者。
 
@@ -331,6 +383,8 @@ bbolt 数据库包含：
 - 动态路由、未声明路由、不可达节点、环和非法 join；
 - 首次 Activity 调用挂起、完成后确定性重放以及 journal 不一致；
 - 业务失败通过 Expr 降级，系统失败不可被脚本吞掉；
+- Context 读取、暂存 set/delete、Activity 挂起时丢弃和节点成功时原子提交；
+- Context 重启恢复、value 不进入事件以及无序 writer 构建失败；
 - lease 心跳、过期、迟到完成、重试耗尽；
 - 人工 continue/retry/resolve/fail/cancel；
 - fan-out、all/any join、skip 传播和资源互斥；

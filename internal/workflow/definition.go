@@ -28,9 +28,13 @@ const (
 	maxResourcesPerNode    = 32
 	maxDefinitionDescBytes = 16 << 10
 	maxInputOutputBytes    = 1 << 20
+	maxContextEntries      = 256
+	maxContextValueBytes   = 16 << 10
+	maxContextBytes        = 256 << 10
 )
 
 var identifierPattern = regexp.MustCompile(`^[a-z][a-z0-9._-]{0,62}$`)
+var contextKeyPattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9._-]{0,127}$`)
 
 // Config configures the controller-owned workflow service.
 type Config struct {
@@ -150,9 +154,10 @@ type compiledDefinition struct {
 }
 
 type compiledNode struct {
-	definition NodeDefinition
-	program    *vm.Program
-	operations map[string]string
+	definition  NodeDefinition
+	program     *vm.Program
+	operations  map[string]string
+	contextKeys map[string]struct{}
 }
 
 type workflowDocument struct {
@@ -346,11 +351,13 @@ func compileDefinition(definition Definition) (*compiledDefinition, error) {
 		if len(node.Routes) > maxRoutesPerNode {
 			return nil, fmt.Errorf("node %q has more than %d routes", node.ID, maxRoutesPerNode)
 		}
-		program, operations, err := compileScript(node.Script, node.Routes)
+		program, operations, contextKeys, err := compileScript(node.Script, node.Routes)
 		if err != nil {
 			return nil, fmt.Errorf("node %q: %w", node.ID, err)
 		}
-		compiled.nodes[node.ID] = &compiledNode{definition: *node, program: program, operations: operations}
+		compiled.nodes[node.ID] = &compiledNode{
+			definition: *node, program: program, operations: operations, contextKeys: contextKeys,
+		}
 	}
 	if terminalCount == 0 {
 		return nil, errors.New("workflow requires at least one terminal node")
@@ -359,6 +366,9 @@ func compileDefinition(definition Definition) (*compiledDefinition, error) {
 		return nil, fmt.Errorf("entry node %q does not exist", definition.Entry)
 	}
 	if err := compileGraph(compiled); err != nil {
+		return nil, err
+	}
+	if err := validateContextWriteOrdering(compiled); err != nil {
 		return nil, err
 	}
 	return compiled, nil
@@ -456,6 +466,71 @@ func compileGraph(compiled *compiledDefinition) error {
 		sort.Strings(compiled.incoming[id])
 	}
 	return nil
+}
+
+func validateContextWriteOrdering(compiled *compiledDefinition) error {
+	mustPrecede := make(map[string]map[string]struct{}, len(compiled.nodes))
+	for _, nodeID := range compiled.order {
+		incoming := compiled.incoming[nodeID]
+		before := make(map[string]struct{})
+		if len(incoming) > 0 && compiled.nodes[nodeID].definition.Join == JoinAny {
+			for key := range predecessorClosure(incoming[0], mustPrecede) {
+				before[key] = struct{}{}
+			}
+			for _, sourceID := range incoming[1:] {
+				candidate := predecessorClosure(sourceID, mustPrecede)
+				for key := range before {
+					if _, common := candidate[key]; !common {
+						delete(before, key)
+					}
+				}
+			}
+		} else {
+			for _, sourceID := range incoming {
+				for key := range predecessorClosure(sourceID, mustPrecede) {
+					before[key] = struct{}{}
+				}
+			}
+		}
+		mustPrecede[nodeID] = before
+	}
+
+	writers := make(map[string][]string)
+	for _, nodeID := range compiled.order {
+		for key := range compiled.nodes[nodeID].contextKeys {
+			writers[key] = append(writers[key], nodeID)
+		}
+	}
+	keys := make([]string, 0, len(writers))
+	for key := range writers {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		nodes := writers[key]
+		for left := 0; left < len(nodes); left++ {
+			for right := left + 1; right < len(nodes); right++ {
+				_, leftBeforeRight := mustPrecede[nodes[right]][nodes[left]]
+				_, rightBeforeLeft := mustPrecede[nodes[left]][nodes[right]]
+				if !leftBeforeRight && !rightBeforeLeft {
+					return fmt.Errorf(
+						"nodes %q and %q can execute without a deterministic order and both mutate workflow context key %q",
+						nodes[left], nodes[right], key,
+					)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func predecessorClosure(nodeID string, mustPrecede map[string]map[string]struct{}) map[string]struct{} {
+	result := make(map[string]struct{}, len(mustPrecede[nodeID])+1)
+	result[nodeID] = struct{}{}
+	for predecessor := range mustPrecede[nodeID] {
+		result[predecessor] = struct{}{}
+	}
+	return result
 }
 
 func (r *Registry) definition(name string) (*compiledDefinition, bool) {

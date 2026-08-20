@@ -28,6 +28,7 @@ API 设计范围。
 - 在构建流程图时静态验证脚本所有正常返回路径只能选择已声明的下一跳；
 - 使用 Expr 的 `if/else`、三元表达式、`let` 和顺序表达式完成条件与参数计算；
 - 将长时间运行的 host operation 建模为持久化 Activity，而不是长期阻塞 Expr VM；
+- 提供有界、持久化的字符串键值 Workflow Context，在成功节点之间传递小型业务状态；
 - 在 Activity 等待、失败和人工干预期间持久化状态，并在 controller 重启后恢复；
 - 对预期业务失败提供结构化结果，使脚本可以选择重试、降级或失败路线；
 - 为 Run、NodeRun、Activity、Attempt 和人工操作生成递增、可回放的领域事件；
@@ -58,6 +59,7 @@ API 设计范围。
 
 - **WorkflowDefinition**：不可变的工作流定义，包含名称、revision、参数 Schema、入口节点、节点及转移。
 - **WorkflowRun**：某一 definition revision 和一组输入参数的一次运行。
+- **WorkflowContext**：Run 内持久化的 `string -> string` 小型业务状态；与 Go `context.Context` 无关。
 - **NodeDefinition**：静态节点定义，包含 Expr source、出口、超时、重试、资源和执行策略。
 - **NodeRun**：某个节点在一次 Run 中的运行实例。
 - **Activity**：脚本发出的一个可持久化外部操作，例如未来的 `call_process`。
@@ -163,6 +165,7 @@ Route 名称与目标 node ID 分离。脚本返回稳定 route 名称，定义�
 - 节点、边、入度、出度、Expr 大小和全图总大小不超过配置上限；
 - 并行分支、join policy 和资源声明没有结构冲突；
 - 每个非终点节点的 Expr route 集合与其声明出口一致。
+- 所有 Workflow Context 写入 key 都是合法字符串字面量；可能缺少确定先后关系的节点不得修改同一 key。
 
 同一 route 可以映射一个或多个目标节点；多个目标形成静态 fan-out。节点有多个入边时必须显式声明
 join policy：`all` 等待每条声明入边的 activation token，`any` 在首个 token 到达时激活且节点在一次
@@ -245,11 +248,44 @@ Expr 没有 coroutine、Future、`yield` 或 `await`。`WithContext` 只把取�
 - 禁用时间、随机数、环境遍历和其它未记录的非确定性来源；
 - 不允许脚本访问网络、任意文件、shell 或 controller 进程内可变全局状态；
 - 对 AST node/depth、脚本 byte、collection、host call 数量及输入输出设置上限；
-- 只向脚本暴露不可变 Run parameters、已持久化节点结果和 operation journal；
+- 只向脚本暴露不可变 Run parameters、只读 Workflow Context、已持久化节点结果和 operation journal；
 - 对每个 host function 声明 effect、capability、是否可挂起以及输入输出 Schema；
 - 禁止在 `map`、`filter`、`all`、`any` 等动态次数 predicate 中调用有副作用或可挂起 host function；
-- 对所有可挂起或有副作用的调用要求显式、稳定、节点内唯一的 `operation_id` 字符串字面量；
+- 对所有可挂起或具有外部副作用的调用要求显式、稳定、节点内唯一的 `operation_id` 字符串字面量；
 - 在 definition revision 改变时产生新定义，不能让活动 Run 改用新脚本。
+
+### 7.3 持久化 Workflow Context
+
+每个 Run 包含一个初始为空的 `map[string]string` 和单调递增的 `context_version`。它只用于跨节点传递
+小型、非秘密的业务状态；启动输入继续放在不可变 `parameters`，大型或结构化产物继续使用 Activity
+result 或 ArtifactRef。该对象与传递取消和 deadline 的 Go `context.Context` 必须使用不同的内部类型和名称。
+
+Expr 环境提供：
+
+- `context`：当前已提交 Context 的只读快照；
+- `context_set(key, value)`：暂存一个字符串写入；
+- `context_delete(key)`：暂存一个删除。
+
+key 必须是匹配 `[A-Za-z][A-Za-z0-9_.-]{0,127}` 的直接字符串字面量。mutation 不允许出现在条件、
+短路表达式或 collection predicate 中；在普通顺序表达式和 `if/else` 分支主体中允许。同一节点内对同一
+key 的最后一次暂存操作生效。
+
+Context mutation 具有节点事务语义：
+
+1. 每次 Expr 求值从已提交 Context 的副本开始，脚本不能直接修改该 map；
+2. `context_set`/`context_delete` 只写入本次求值的临时 change set；
+3. Activity 挂起、脚本错误、取消或非法 route 会丢弃整个 change set；
+4. 节点成功时，change set、合法 route、节点状态、`context_version` 和事件在同一事务中提交；
+5. 下一节点只能读取已经成功提交的 Context；重放从持久化快照重新计算未提交的 change set。
+
+Context 最多 256 个 key，单个 value 最多 16 KiB，规范化 JSON 总大小最多 256 KiB；value 必须是无
+NUL 的合法 UTF-8。`context_updated` 事件只记录版本和排序后的 set/delete key，不记录 value。Context
+本身会进入 Run 快照和 `GetRun` 结果，因此不得保存 token、凭据、prompt、文件内容或未脱敏进程输出。
+
+为了避免 fan-out 完成顺序影响结果，构建器从 AST 收集每个节点的 mutation key，并进行保守的先后关系
+校验。只有定义图能证明一个 writer 必须在另一个 writer 前完成时，两个节点才允许修改同一个 key；
+否则定义构建失败。operator 应优先使用节点命名空间（例如 `review.status`），需要汇总时由确定有序的
+merge 节点写共享 key。
 
 ## 8. 长时间 Activity 与逻辑挂起
 
@@ -373,7 +409,8 @@ PENDING -> READY -> EVALUATING -> SUCCEEDED
 PENDING/READY -> SKIPPED
 ```
 
-`SUCCEEDED` 必须记录脚本选择的合法 route。ActivityResult 和 ArtifactRef 作为 NodeRun 的独立持久化
+`SUCCEEDED` 必须记录脚本选择的合法 route，并把本次 Workflow Context change set 原子合入 Run。
+ActivityResult 和 ArtifactRef 作为 NodeRun 的独立持久化
 产物供后续节点读取，不与 route 字符串混为一个动态返回对象。节点在挂起、失败或取消时没有 route。
 
 ### 10.3 Attempt 与 lease
@@ -437,6 +474,7 @@ workflow service 启停、恢复计数、存储错误等诊断。两者均不得
 - Run 总数、活动 Run、每 Run 并行 NodeRun 和全局活动 Attempt；
 - Expr source byte、AST node/depth、collection 和 host call 数；
 - parameters、节点输出、Activity input/result 和 event payload byte；
+- Workflow Context key 数、单 value byte 和总 JSON byte；
 - retry 次数、退避上限、Activity deadline、lease 和 heartbeat；
 - 每 Run event 数量、observer 数和历史保留期；
 - 人工干预等待时间和未解决 Run 数量。

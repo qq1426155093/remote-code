@@ -145,6 +145,8 @@ type Run struct {
 	DefinitionDigest string              `json:"definition_digest"`
 	IdempotencyKey   string              `json:"idempotency_key,omitempty"`
 	Parameters       map[string]any      `json:"parameters"`
+	Context          map[string]string   `json:"context"`
+	ContextVersion   uint64              `json:"context_version"`
 	State            RunState            `json:"state"`
 	Nodes            map[string]*NodeRun `json:"nodes"`
 	Error            string              `json:"error,omitempty"`

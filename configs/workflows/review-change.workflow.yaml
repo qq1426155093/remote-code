@@ -3,7 +3,7 @@ language: expr
 workflows:
   - name: review-change
     description: Review a change and optionally schedule a repair activity.
-    revision: 1
+    revision: 2
     entry: review
     max_parallelism: 1
     parameters_schema:
@@ -19,6 +19,7 @@ workflows:
         timeout: 2h
         script: |-
           let result = activity("review-agent", "manual", {task: "review"});
+          context_set("review.status", string(result.status));
           if result.status == "ok" {
             "accepted"
           } else if parameters.repair {
@@ -38,7 +39,10 @@ workflows:
       - id: repair
         timeout: 4h
         script: |-
-          let result = activity("repair-agent", "manual", {task: "repair"});
+          let result = activity("repair-agent", "manual", {
+            task: "repair",
+            review_status: context["review.status"]
+          });
           if result.status == "ok" { "done" } else { "failed" }
         routes:
           done: [done]

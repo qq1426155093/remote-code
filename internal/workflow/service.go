@@ -97,6 +97,9 @@ func initializeRecordMaps(record *runRecord) {
 	if record.Run.Nodes == nil {
 		record.Run.Nodes = make(map[string]*NodeRun)
 	}
+	if record.Run.Context == nil {
+		record.Run.Context = make(map[string]string)
+	}
 	for _, node := range record.Run.Nodes {
 		if node.Activities == nil {
 			node.Activities = make(map[string]*Activity)
@@ -180,7 +183,8 @@ func (s *Service) StartRun(ctx context.Context, workflowName, idempotencyKey str
 			ID: runID, WorkflowName: workflowName, Revision: definition.definition.Revision,
 			DefinitionDigest: definitionDigest(definition.definition),
 			IdempotencyKey:   idempotencyKey, Parameters: clonedParameters, State: RunRunning,
-			Nodes: make(map[string]*NodeRun, len(definition.nodes)), CreatedAt: now, UpdatedAt: now,
+			Context: make(map[string]string), Nodes: make(map[string]*NodeRun, len(definition.nodes)),
+			CreatedAt: now, UpdatedAt: now,
 		},
 	}
 	for id := range definition.nodes {
@@ -938,7 +942,9 @@ func (s *Service) advance(ctx context.Context, record *runRecord, definition *co
 				s.appendEvent(record, events, now, "node_started", nodeID, "", nil)
 				changed = true
 			}
-			route, err := runScript(ctx, node, compiledNode, record.Run.Parameters, nodeSummaries(record.Run.Nodes))
+			result, err := runScript(
+				ctx, node, compiledNode, record.Run.Parameters, record.Run.Context, nodeSummaries(record.Run.Nodes),
+			)
 			if err != nil {
 				var suspension *suspendActivity
 				if errors.As(err, &suspension) {
@@ -969,11 +975,12 @@ func (s *Service) advance(ctx context.Context, record *runRecord, definition *co
 				s.failNode(record, node, boundedMessage(err.Error()), now, events)
 				return nil
 			}
+			s.applyContextChanges(record, nodeID, result.ContextWrites, result.ContextDeletes, now, events)
 			node.State = NodeSucceeded
-			node.SelectedRoute = route
+			node.SelectedRoute = result.Route
 			node.Acquired = false
 			node.FinishedAt = now
-			s.appendEvent(record, events, now, "node_succeeded", nodeID, "", map[string]any{"route": route})
+			s.appendEvent(record, events, now, "node_succeeded", nodeID, "", map[string]any{"route": result.Route})
 			changed = true
 		}
 		if !changed {
@@ -990,6 +997,39 @@ func (s *Service) advance(ctx context.Context, record *runRecord, definition *co
 			return nil
 		}
 	}
+}
+
+func (s *Service) applyContextChanges(
+	record *runRecord,
+	nodeID string,
+	writes map[string]string,
+	deletes map[string]struct{},
+	now time.Time,
+	events *[]Event,
+) {
+	setKeys := make([]string, 0, len(writes))
+	deletedKeys := make([]string, 0, len(deletes))
+	for key := range deletes {
+		if _, exists := record.Run.Context[key]; exists {
+			delete(record.Run.Context, key)
+			deletedKeys = append(deletedKeys, key)
+		}
+	}
+	for key, value := range writes {
+		if current, exists := record.Run.Context[key]; !exists || current != value {
+			record.Run.Context[key] = value
+			setKeys = append(setKeys, key)
+		}
+	}
+	if len(setKeys) == 0 && len(deletedKeys) == 0 {
+		return
+	}
+	sort.Strings(setKeys)
+	sort.Strings(deletedKeys)
+	record.Run.ContextVersion++
+	s.appendEvent(record, events, now, "context_updated", nodeID, "", map[string]any{
+		"version": record.Run.ContextVersion, "set_keys": setKeys, "deleted_keys": deletedKeys,
+	})
 }
 
 func (s *Service) failCurrentAttempt(record *runRecord, node *NodeRun, activity *Activity, state AttemptState, message string, now time.Time, events *[]Event) {
@@ -1295,6 +1335,9 @@ func validateRecoveredRecord(record *runRecord, definition *compiledDefinition, 
 	}
 	if err := definition.validator.Validate(record.Run.Parameters); err != nil {
 		return fmt.Errorf("persisted parameters do not match schema: %w", err)
+	}
+	if err := validateWorkflowContext(record.Run.Context); err != nil {
+		return fmt.Errorf("persisted workflow context is invalid: %w", err)
 	}
 	if len(record.Run.Nodes) != len(definition.nodes) {
 		return errors.New("persisted node set does not match definition")

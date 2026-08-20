@@ -348,6 +348,126 @@ func TestServiceStaticFanOutAndAllJoin(t *testing.T) {
 	}
 }
 
+func TestServiceWorkflowContextIsCommittedAtNodeSuccessAndRecovered(t *testing.T) {
+	runtimeDirectory := t.TempDir()
+	registry := contextTestRegistry(t)
+	service, err := New(testConfig(), runtimeDirectory, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := service.StartRun(t.Context(), "context-handoff", "context-run", map[string]any{"value": "one"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.ContextVersion != 1 || run.Context["handoff.value"] != "one" || run.Context["handoff.secret"] != "do-not-log" {
+		t.Fatalf("context after writer = %#v, version = %d", run.Context, run.ContextVersion)
+	}
+	if _, leaked := run.Context["reader.completed"]; leaked {
+		t.Fatalf("context write before activity suspension was committed: %#v", run.Context)
+	}
+	if err := service.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	service, err = New(testConfig(), runtimeDirectory, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = service.Close() })
+	recovered, err := service.GetRun(run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovered.ContextVersion != 1 || recovered.Context["handoff.value"] != "one" {
+		t.Fatalf("recovered context = %#v, version = %d", recovered.Context, recovered.ContextVersion)
+	}
+	claim, err := service.ClaimActivity("context-reader", []string{"manual"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input, ok := claim.Input.(map[string]any)
+	if !ok || input["value"] != "one" {
+		t.Fatalf("activity input = %#v", claim.Input)
+	}
+	completed, err := service.CompleteActivity(
+		claim.RunID,
+		claim.ActivityID,
+		claim.Attempt,
+		claim.LeaseToken,
+		"complete-context-reader",
+		ActivityResult{Status: "ok"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if completed.State != RunSucceeded || completed.ContextVersion != 2 || completed.Context["reader.completed"] != "yes" {
+		t.Fatalf("completed run = %#v", completed)
+	}
+	if _, exists := completed.Context["handoff.secret"]; exists {
+		t.Fatalf("deleted context key remains: %#v", completed.Context)
+	}
+
+	events, err := service.ListEvents(run.ID, 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contextEvents := 0
+	for _, event := range events {
+		if event.Type != "context_updated" {
+			continue
+		}
+		contextEvents++
+		if strings.Contains(string(event.Data), "do-not-log") {
+			t.Fatalf("context event leaked a value: %s", event.Data)
+		}
+	}
+	if contextEvents != 2 {
+		t.Fatalf("context event count = %d, want 2; events = %#v", contextEvents, events)
+	}
+}
+
+func TestCompileDefinitionRejectsUnorderedWorkflowContextWriters(t *testing.T) {
+	definition := Definition{
+		Name: "context-conflict", Description: "reject unordered context writers", Revision: 1,
+		Entry: "dispatch", MaxParallelism: 2, ParametersSchema: json.RawMessage(`{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "type":"object",
+  "properties":{},
+  "additionalProperties":false
+}`),
+		Nodes: []NodeDefinition{
+			{ID: "dispatch", Script: `"both"`, Routes: map[string][]string{"both": {"left", "right"}}},
+			{ID: "left", Script: `context_set("shared.result", "left"); "done"`, Routes: map[string][]string{"done": {"join"}}},
+			{ID: "right", Script: `context_set("shared.result", "right"); "done"`, Routes: map[string][]string{"done": {"join"}}},
+			{ID: "join", Join: JoinAll, Terminal: TerminalSucceeded},
+		},
+	}
+	_, err := compileDefinition(definition)
+	if err == nil || !strings.Contains(err.Error(), `both mutate workflow context key "shared.result"`) {
+		t.Fatalf("compile error = %v", err)
+	}
+}
+
+func TestCompileDefinitionAllowsOrderedWorkflowContextWriters(t *testing.T) {
+	definition := Definition{
+		Name: "context-ordered", Description: "allow ordered context writers", Revision: 1,
+		Entry: "first", ParametersSchema: json.RawMessage(`{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "type":"object",
+  "properties":{},
+  "additionalProperties":false
+}`),
+		Nodes: []NodeDefinition{
+			{ID: "first", Script: `context_set("shared.result", "first"); "next"`, Routes: map[string][]string{"next": {"second"}}},
+			{ID: "second", Script: `context_set("shared.result", "second"); "done"`, Routes: map[string][]string{"done": {"success"}}},
+			{ID: "success", Terminal: TerminalSucceeded},
+		},
+	}
+	if _, err := compileDefinition(definition); err != nil {
+		t.Fatalf("compile ordered context writers: %v", err)
+	}
+}
+
 func newTestService(t *testing.T) *Service {
 	t.Helper()
 	service, err := New(testConfig(), t.TempDir(), testRegistry(t))
@@ -440,4 +560,38 @@ func integerTestRegistry(t *testing.T) *Registry {
 		t.Fatalf("compile integer definition: %v", err)
 	}
 	return &Registry{byName: map[string]*compiledDefinition{definition.Name: compiled}, ordered: []*compiledDefinition{compiled}}
+}
+
+func contextTestRegistry(t *testing.T) *Registry {
+	t.Helper()
+	definition := Definition{
+		Name: "context-handoff", Description: "persist context between nodes", Revision: 1,
+		Entry: "writer", ParametersSchema: json.RawMessage(`{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "type":"object",
+  "properties":{"value":{"type":"string"}},
+  "required":["value"],
+  "additionalProperties":false
+}`),
+		Nodes: []NodeDefinition{
+			{
+				ID:     "writer",
+				Script: `context_set("handoff.value", parameters.value); context_set("handoff.secret", "do-not-log"); "next"`,
+				Routes: map[string][]string{"next": {"reader"}},
+			},
+			{
+				ID:     "reader",
+				Script: `context_set("reader.completed", "yes"); let result = activity("reader-op", "manual", {value: context["handoff.value"]}); context_delete("handoff.secret"); "done"`,
+				Routes: map[string][]string{"done": {"success"}},
+			},
+			{ID: "success", Terminal: TerminalSucceeded},
+		},
+	}
+	compiled, err := compileDefinition(definition)
+	if err != nil {
+		t.Fatalf("compile context definition: %v", err)
+	}
+	return &Registry{
+		byName: map[string]*compiledDefinition{definition.Name: compiled}, ordered: []*compiledDefinition{compiled},
+	}
 }
