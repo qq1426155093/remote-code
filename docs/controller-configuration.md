@@ -22,10 +22,10 @@ remote-code-controller \
 除 `max_processes` 被命令行覆盖外，其它值仍来自 TOML。布尔值可以显式反向覆盖，例如
 `--allow-insecure-remote=false`。
 
-## TOML schema v1、v2、v3、v4、v5、v6 与 v7
+## TOML schema v1、v2、v3、v4、v5、v6、v7 与 v8
 
 ```toml
-version = 7
+version = 8
 workspace = "/srv/remote-code/workspace"
 listen_address = "127.0.0.1:9443"
 runtime_directory = "/var/run/remote-code-controller"
@@ -74,6 +74,16 @@ default_model = "gpt-5"
 common_arguments = ["--approval-mode", "never"]
 environment = { HTTP_PROXY = "http://proxy.example" }
 
+[workflows]
+enabled = false
+definition_files = []
+max_active_runs = 64
+max_active_attempts = 16
+lease_duration = "30s"
+retry_initial_backoff = "1s"
+retry_max_backoff = "1m"
+reconcile_interval = "1s"
+
 [mcp]
 enabled = true
 listen_address = "127.0.0.1:9444"
@@ -106,7 +116,8 @@ tool_list_page_size = 100
 
 `version` 必须存在。schema v1 继续兼容，但不允许 `[mcp]`；schema v2 增加 MCP；schema v3 增加
 `[process_templates]`；schema v4 增加 `process_templates.extra_parameters`；schema v5 增加
-`[file_transfers]`；schema v6 增加 `[controller_logs]`；schema v7 增加 `mcp.token_file`。v3、v4、v5、v6 均可省略
+`[file_transfers]`；schema v6 增加 `[controller_logs]`；schema v7 增加 `mcp.token_file`；schema v8 增加
+`[workflows]`。v3、v4、v5、v6 均可省略
 `[process_templates]` 或配置空 `definition_files`，此时没有进程模板；v3 不接受
 `extra_parameters`。TLS
 certificate/key 必须同时配置。认证配置只接受 token 文件路径，
@@ -164,6 +175,24 @@ secret、password、authorization、credential 和环境值等敏感 key 做脱�
 | `auth.token_file` | `--token-file` | 空 |
 | `process_templates.definition_files` | 无 | `[]` |
 | `process_templates.extra_parameters` | 无 | `{}` |
+
+`workflows` 字段不提供命令行覆盖。默认值如下：
+
+| TOML | 默认值 |
+| --- | --- |
+| `workflows.enabled` | `false` |
+| `workflows.definition_files` | `[]` |
+| `workflows.max_active_runs` | `64` |
+| `workflows.max_active_attempts` | `16` |
+| `workflows.lease_duration` | `30s` |
+| `workflows.retry_initial_backoff` | `1s` |
+| `workflows.retry_max_backoff` | `1m` |
+| `workflows.reconcile_interval` | `1s` |
+
+启用工作流时，`definition_files` 至少包含一个 workspace 外的 `.workflow.yaml` 普通文件。启动准备阶段
+严格解码 YAML、编译参数 JSON Schema 和 Expr，并校验静态 DAG；运行状态与领域事件保存在
+`<runtime_directory>/workflows/workflows.db`。定义格式、恢复和执行器接口见
+[工作流模块详细设计 v1](workflow-design-v1.md)。
 
 `process_templates` 字段不提供命令行覆盖。每个 definition file 必须以
 `.process-template.yaml` 结尾，是 workspace 外的普通文件，且最终路径不能是符号链接。模板文件使用
@@ -240,6 +269,7 @@ remote-code-controller --config /etc/remote-code/controller.toml --check-config
 成功时输出 `configuration OK`。日志尺寸包含 segment 与索引；segment 和单进程上限不得小于
 256 KiB，总日志上限不得小于单进程上限，保留周期不能为负数，单进程观察者上限为 1–1024。
 校验还包含 schema、字段类型、范围、TLS 配对与证书内容、明文远端监听策略、workspace 目录、token
-文件、全部进程模板 YAML/JSON Schema/Expr，以及全部 MCP YAML/JSON Schema/Expr/capability。listener
+文件、全部进程模板 YAML/JSON Schema/Expr、全部工作流 YAML/JSON Schema/Expr/DAG，以及全部 MCP
+YAML/JSON Schema/Expr/capability。listener
 是否可绑定以及 runtime 目录创建仍在实际启动时验证；检查过程不会渲染模板、执行 tool 或调用 host
 function。

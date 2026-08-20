@@ -16,6 +16,7 @@ Controller 是部署在远程开发机上的长期运行服务，也是远程工
 - 启动、记录、观察和终止通用受管进程；
 - 为 PIPE 与 PTY 进程保留可回放日志和可重连输入；
 - 通过服务端模板固化 Code Agent 等复杂进程的启动约束；
+- 在内部运行可恢复的静态 DAG/Expr 工作流与长时间 Activity；
 - 对传输大小、活动进程、日志、MCP 调用和并发连接实施资源限制；
 - 在进程退出或 Controller 重启后保留必要的历史记录。
 - 将 Controller 自身的生命周期、进程服务和 MCP 诊断写入独立的持久化事件日志，并提供 gRPC 回放/follow。
@@ -29,7 +30,8 @@ Controller 是部署在远程开发机上的长期运行服务，也是远程工
 | 通用进程管理 | 已实现 | PIPE/PTY、输入管理、进程组信号、日志、历史和重启恢复 |
 | 进程模板 | 已实现 | JSON Schema 参数校验、受限 Expr 渲染、启动参数脱敏 |
 | MCP Server | 已实现，默认关闭 | 从严格 `.mcp.yaml` 加载工具，并复用 Controller 内部服务 |
-| Agent 角色与编排 | 尚未实现 | 设计稿中的 `designer`、`implementer`、`reviewer` 等仍属于产品规划 |
+| Workflow core | 已实现，默认关闭 | 内部 Go API、静态 DAG、Expr、Activity lease、人工介入和 bbolt 恢复；暂无公共 RPC/CLI |
+| Agent 角色与执行适配 | 尚未实现 | `designer`、`implementer`、`reviewer` 及真实 Agent 进程启动仍属于后续规划 |
 | 操作系统沙箱 | 不提供 | workspace 边界不能替代容器、虚拟机或受限系统用户 |
 
 ## 2. 总体架构
@@ -50,12 +52,14 @@ flowchart LR
         MCPAuth --> Registry[MCP tool registry]
         Registry --> Files
         Registry --> Processes
+        Workflows[Workflow core]
     end
 
     Files --> Workspace[(Workspace)]
     Files --> TransferState[(Transfer state)]
     Processes --> Runtime[(Process metadata and logs)]
     ControllerLogs --> RuntimeDiagnostics[(controller log segments)]
+    Workflows --> WorkflowState[(workflow bbolt state)]
     Processes --> Groups[Managed process groups]
     Groups --> Workspace
 ```
@@ -73,6 +77,7 @@ Controller 内部的主要组件如下：
 | `ProcessService` | 管理进程注册表、进程组、PIPE/PTY、输入流、日志、模板和持久化历史 |
 | gRPC health service | 提供标准 gRPC 健康状态；启用 token 时健康请求同样需要认证 |
 | MCP registry | 启动时编译工具定义、JSON Schema 和 Expr，并按 capability 调用内部服务 |
+| Workflow core | 启动时编译静态 DAG 和 Expr，以 Activity journal、lease 和事务事件恢复内部编排 |
 
 ## 3. 已实现功能详解
 
@@ -273,7 +278,7 @@ mkdir -p ./var/workspace ./var/runtime
 
 ## 5. 配置文件
 
-Controller 不会隐式查找配置，必须使用 `--config` 指定 TOML 文件。当前推荐 schema v7；v1-v6
+Controller 不会隐式查找配置，必须使用 `--config` 指定 TOML 文件。当前推荐 schema v8；v1-v7
 继续兼容，但较早版本不能使用后来增加的 MCP、模板、额外参数或断点续传配置。
 
 最终值的覆盖顺序为：
@@ -285,7 +290,7 @@ Controller 不会隐式查找配置，必须使用 `--config` 指定 TOML 文件
 一个适合本机演示的最小配置如下：
 
 ```toml
-version = 7
+version = 8
 workspace = "/absolute/path/to/workspace"
 listen_address = "127.0.0.1:9443"
 runtime_directory = "/absolute/path/to/runtime"
@@ -305,6 +310,7 @@ allow_insecure_remote = false
 | `[tls]` | 全局服务端证书和私钥，两项必须同时提供 |
 | `[auth]` | gRPC bearer token 文件路径；token 内容不直接写入 TOML |
 | `[process_templates]` | workspace 外模板定义文件和只读 `extra_parameters` |
+| `[workflows]` | workspace 外静态 DAG、Activity 租约、重试和恢复参数 |
 | `[mcp]` | MCP listener、可选独立 token、定义文件、capability、速率、并发、大小和超时 |
 
 完整字段、默认值、版本差异和范围见
@@ -324,7 +330,7 @@ allow_insecure_remote = false
 configuration OK
 ```
 
-校验会读取 workspace、token、TLS 证书、全部模板和 MCP 定义，并编译 Schema/Expr；不会绑定端口、
+校验会读取 workspace、token、TLS 证书、全部模板、工作流和 MCP 定义，并编译 Schema/Expr/DAG；不会绑定端口、
 渲染模板、执行工具或启动进程。因此可把它放进配置发布和服务重启之前的 CI/CD 步骤。
 
 ### 5.2 常用命令行覆盖
@@ -502,12 +508,12 @@ MCP 客户端应把 endpoint 配置为 `http://127.0.0.1:9444/mcp`，远程 TLS 
 
 收到 `SIGINT` 或 `SIGTERM` 后，Controller：
 
-1. 拒绝新的进程启动；
+1. 拒绝新的进程启动、Workflow Run 和 Activity claim；
 2. 停止 MCP HTTP 服务并等待 gRPC 请求排空；
 3. 向仍在运行的全部进程组发送 `TERM`；
 4. 在主程序的 10 秒关闭期限内等待退出；
 5. 对剩余进程组发送 `KILL`，再进行有界回收；
-6. 关闭 listener、日志和 workspace handle。
+6. 关闭 workflow 数据库、listener、日志和 workspace handle。
 
 因此停止 Controller 会停止它当前管理的活动进程。detach 只断开客户端连接，与停止 Controller 的语义不同。
 
@@ -516,6 +522,9 @@ MCP 客户端应把 endpoint 配置为 `http://127.0.0.1:9444/mcp`，远程 TLS 
 进程 metadata、status 和日志会从 runtime 目录重新加载。若上次退出时记录仍是 `STARTING` 或 `RUNNING`，
 重启后该记录会被标记为 `LOST`，并关闭其 managed input；Controller 不尝试重新托管或自动重启旧 PID。
 已正常退出、失败或丢失的历史及可用日志仍可通过 `ps -a` 和 `logs` 查看。
+
+Workflow Run 使用保存的 definition snapshot 重新编译；已经完成的 Activity 从 journal 返回原结果，
+不会重复调度。过期 lease 被标记为 `LOST` 后按 retry policy 处理，领域事件继续使用 Run 内连续序号。
 
 可恢复上传的 session metadata 与 checkpoint 位于 `runtime_directory/file-transfers/`。只要 runtime
 仍在同一持久磁盘上，已经确认的 checkpoint 可以跨 Controller 进程重启继续使用。

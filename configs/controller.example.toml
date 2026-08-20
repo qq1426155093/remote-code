@@ -1,5 +1,5 @@
-# remote-code-controller configuration, TOML schema version 7.
-version = 7
+# remote-code-controller configuration, TOML schema version 8.
+version = 8
 
 # All file RPCs and relative process working directories are confined here.
 workspace = "/srv/remote-code/workspace"
@@ -62,6 +62,21 @@ definition_files = []
 # default_model = "gpt-5"
 # common_arguments = ["--approval-mode", "never"]
 # environment = { HTTP_PROXY = "http://proxy.example" }
+
+# Durable Expr workflows are disabled by default. Definitions are trusted
+# operator configuration and must live outside the workspace.
+[workflows]
+enabled = false
+definition_files = []
+# definition_files = [
+#   "/etc/remote-code/workflows/review-change.workflow.yaml", # see configs/workflows/
+# ]
+max_active_runs = 64
+max_active_attempts = 16
+lease_duration = "30s"
+retry_initial_backoff = "1s"
+retry_max_backoff = "1m"
+reconcile_interval = "1s"
 
 # MCP is disabled by default. Enabling it requires a bearer token and at least
 # one definition file outside the workspace. It reuses the global TLS.

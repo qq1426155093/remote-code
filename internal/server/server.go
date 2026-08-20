@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -19,6 +20,7 @@ import (
 	processservice "github.com/qq1426155093/remote-code/internal/process"
 	"github.com/qq1426155093/remote-code/internal/rpcerror"
 	"github.com/qq1426155093/remote-code/internal/version"
+	"github.com/qq1426155093/remote-code/internal/workflow"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -44,6 +46,7 @@ type Config struct {
 	ProcessTemplates    processservice.TemplateConfig
 	FileTransfers       files.TransferConfig
 	MCP                 mcpserver.Config
+	Workflows           workflow.Config
 }
 
 // Prepared contains validated controller configuration, compiled process
@@ -53,6 +56,7 @@ type Prepared struct {
 	Config           Config
 	ProcessTemplates *processservice.TemplateRegistry
 	MCP              *mcpserver.Prepared
+	Workflows        *workflow.Registry
 }
 
 // Server owns the listener, gRPC server and workspace handle.
@@ -64,6 +68,7 @@ type Server struct {
 	logger     *controllerlog.Logger
 	logs       *controllerlog.Service
 	mcpServer  *mcpserver.Server
+	workflows  *workflow.Service
 	closeOnce  sync.Once
 }
 
@@ -83,6 +88,7 @@ func Prepare(config Config) (*Prepared, error) {
 		config.ListenAddress = "127.0.0.1:9443"
 	}
 	config.MCP.ApplyDefaults()
+	config.Workflows.ApplyDefaults()
 	if err := ValidateConfig(config); err != nil {
 		return nil, err
 	}
@@ -116,7 +122,11 @@ func Prepare(config Config) (*Prepared, error) {
 	if err != nil {
 		return nil, fmt.Errorf("prepare MCP server: %w", err)
 	}
-	return &Prepared{Config: config, ProcessTemplates: processTemplates, MCP: mcpPrepared}, nil
+	workflowRegistry, err := workflow.Prepare(config.Workflows, config.Workspace)
+	if err != nil {
+		return nil, fmt.Errorf("prepare workflows: %w", err)
+	}
+	return &Prepared{Config: config, ProcessTemplates: processTemplates, MCP: mcpPrepared, Workflows: workflowRegistry}, nil
 }
 
 // NewPrepared creates services and binds listeners from prepared configuration.
@@ -166,8 +176,29 @@ func NewPreparedWithLogger(prepared *Prepared, logger *controllerlog.Logger) (*S
 		_ = logger.Close()
 		return nil, err
 	}
+	var workflowService *workflow.Service
+	if config.Workflows.Enabled {
+		workflowService, err = workflow.New(config.Workflows, config.RuntimeDirectory, prepared.Workflows)
+		if err != nil {
+			_ = processService.Close()
+			_ = fileService.Close()
+			_ = logger.Close()
+			return nil, fmt.Errorf("start workflow service: %w", err)
+		}
+		logging.Emit(logger, logging.Event{
+			Level: logging.LevelInfo, Component: "workflow", Name: "service_started",
+			Message: "workflow service started",
+			Fields: map[string]string{
+				"definitions":    strconv.Itoa(prepared.Workflows.Count()),
+				"recovered_runs": strconv.Itoa(workflowService.RunCount()),
+			},
+		})
+	}
 	listener, err := net.Listen("tcp", config.ListenAddress)
 	if err != nil {
+		if workflowService != nil {
+			_ = workflowService.Close()
+		}
 		_ = processService.Close()
 		_ = fileService.Close()
 		_ = logger.Close()
@@ -182,6 +213,9 @@ func NewPreparedWithLogger(prepared *Prepared, logger *controllerlog.Logger) (*S
 		transportCredentials, err := credentials.NewServerTLSFromFile(config.TLSCertificateFile, config.TLSKeyFile)
 		if err != nil {
 			_ = listener.Close()
+			if workflowService != nil {
+				_ = workflowService.Close()
+			}
 			_ = processService.Close()
 			_ = fileService.Close()
 			_ = logger.Close()
@@ -208,13 +242,16 @@ func NewPreparedWithLogger(prepared *Prepared, logger *controllerlog.Logger) (*S
 		mcpHTTPServer, err = mcpserver.NewServer(prepared.MCP, fileService, processService, logger)
 		if err != nil {
 			_ = listener.Close()
+			if workflowService != nil {
+				_ = workflowService.Close()
+			}
 			_ = processService.Close()
 			_ = fileService.Close()
 			_ = logger.Close()
 			return nil, err
 		}
 	}
-	return &Server{grpcServer: grpcServer, listener: listener, files: fileService, processes: processService, logger: logger, logs: controllerLogs, mcpServer: mcpHTTPServer}, nil
+	return &Server{grpcServer: grpcServer, listener: listener, files: fileService, processes: processService, logger: logger, logs: controllerLogs, mcpServer: mcpHTTPServer, workflows: workflowService}, nil
 }
 
 // ValidateConfig checks transport-level invariants without opening files or a
@@ -244,6 +281,9 @@ func ValidateConfig(config Config) error {
 	}
 	if err := controllerlog.ValidateConfig(config.ControllerLogs); err != nil {
 		return fmt.Errorf("invalid controller log configuration: %w", err)
+	}
+	if err := workflow.ValidateConfig(config.Workflows); err != nil {
+		return fmt.Errorf("invalid workflow configuration: %w", err)
 	}
 	return nil
 }
@@ -281,6 +321,9 @@ func (s *Server) Serve() error {
 func (s *Server) Shutdown(ctx context.Context) error {
 	var shutdownErr error
 	s.processes.BeginShutdown()
+	if s.workflows != nil {
+		s.workflows.BeginShutdown()
+	}
 	logging.Emit(s.logger, logging.Event{
 		Level: logging.LevelInfo, Component: "controller", Name: "shutdown_started",
 		Message: "controller shutdown started",
@@ -292,6 +335,12 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}
 	if err := s.processes.Shutdown(ctx); shutdownErr == nil {
 		shutdownErr = err
+	}
+	if s.workflows != nil {
+		logging.Emit(s.logger, logging.Event{
+			Level: logging.LevelInfo, Component: "workflow", Name: "service_stopping",
+			Message: "workflow service is stopping; durable activities remain recoverable",
+		})
 	}
 	logging.Emit(s.logger, logging.Event{
 		Level: logging.LevelInfo, Component: "controller", Name: "shutdown_draining",
@@ -319,6 +368,11 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}
 	s.closeOnce.Do(func() {
 		_ = s.listener.Close()
+		if s.workflows != nil {
+			if err := s.workflows.Close(); shutdownErr == nil {
+				shutdownErr = err
+			}
+		}
 		if err := s.processes.Close(); shutdownErr == nil {
 			shutdownErr = err
 		}

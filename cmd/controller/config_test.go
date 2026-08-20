@@ -86,7 +86,10 @@ func TestParseControllerOptionsUsesDefaultsWithoutConfig(t *testing.T) {
 		config.ControllerLogs.SegmentBytes != 4<<20 || config.ControllerLogs.RetentionAfterRestart != 7*24*time.Hour || config.ControllerLogs.MaxObservers != 8 ||
 		config.FileTransfers.Disabled || config.FileTransfers.UploadSessionTTL != 24*time.Hour || config.FileTransfers.CompletedSessionTTL != time.Hour ||
 		config.FileTransfers.MaxUploadSessions != 64 || config.FileTransfers.MaxStagingBytes != 4<<30 || config.FileTransfers.CheckpointBytes != 4<<20 ||
-		config.FileTransfers.CheckpointInterval != time.Second || config.FileTransfers.MaxConcurrentDownloads != 16 {
+		config.FileTransfers.CheckpointInterval != time.Second || config.FileTransfers.MaxConcurrentDownloads != 16 ||
+		config.Workflows.Enabled || config.Workflows.MaxActiveRuns != 64 || config.Workflows.MaxActiveAttempts != 16 ||
+		config.Workflows.LeaseDuration != 30*time.Second || config.Workflows.RetryInitialBackoff != time.Second ||
+		config.Workflows.RetryMaxBackoff != time.Minute || config.Workflows.ReconcileInterval != time.Second {
 		t.Fatalf("defaults = %+v", config)
 	}
 }
@@ -98,7 +101,7 @@ func TestLoadControllerConfigRejectsInvalidFiles(t *testing.T) {
 		want     string
 	}{
 		{name: "missing version", contents: `workspace = "/work"`, want: "version must be 1"},
-		{name: "future version", contents: "version = 8\n", want: "version must be 1, 2, 3, 4, 5, 6, or 7"},
+		{name: "future version", contents: "version = 9\n", want: "version must be 1, 2, 3, 4, 5, 6, 7, or 8"},
 		{name: "unknown field", contents: "version = 1\nmax_proceses = 2\n", want: "unknown field"},
 		{name: "wrong type", contents: "version = 1\nmax_processes = \"many\"\n", want: "cannot decode"},
 		{name: "duplicate key", contents: "version = 1\nmax_processes = 2\nmax_processes = 3\n", want: "already defined"},
@@ -525,6 +528,95 @@ definition_files = ["/etc/remote-code/file.mcp.yaml"]
 	v6WithMCPToken := writeControllerConfig(t, "version = 6\n[mcp]\ntoken_file = \"/etc/remote-code/mcp.token\"\n")
 	if _, err := loadControllerConfig(v6WithMCPToken); err == nil || !strings.Contains(err.Error(), "does not support mcp.token_file") {
 		t.Fatalf("v6 mcp.token_file error = %v", err)
+	}
+}
+
+func TestLoadControllerConfigV8Workflows(t *testing.T) {
+	definition := filepath.Join(t.TempDir(), "review.workflow.yaml")
+	configFile := writeControllerConfig(t, `
+version = 8
+workspace = "/work"
+
+[workflows]
+enabled = true
+definition_files = ["`+definition+`"]
+max_active_runs = 12
+max_active_attempts = 3
+lease_duration = "45s"
+retry_initial_backoff = "2s"
+retry_max_backoff = "2m"
+reconcile_interval = "500ms"
+`)
+	file, err := loadControllerConfig(configFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := defaultControllerOptions()
+	if err := applyControllerFileConfig(&options, file); err != nil {
+		t.Fatal(err)
+	}
+	got := options.serverConfig.Workflows
+	if !got.Enabled || len(got.DefinitionFiles) != 1 || got.DefinitionFiles[0] != definition ||
+		got.MaxActiveRuns != 12 || got.MaxActiveAttempts != 3 || got.LeaseDuration != 45*time.Second ||
+		got.RetryInitialBackoff != 2*time.Second || got.RetryMaxBackoff != 2*time.Minute ||
+		got.ReconcileInterval != 500*time.Millisecond {
+		t.Fatalf("workflow config = %+v", got)
+	}
+
+	v7WithWorkflows := writeControllerConfig(t, "version = 7\n[workflows]\nenabled = false\n")
+	if _, err := loadControllerConfig(v7WithWorkflows); err == nil || !strings.Contains(err.Error(), "does not support the workflows table") {
+		t.Fatalf("v7 workflows error = %v", err)
+	}
+}
+
+func TestRunControllerChecksWorkflowDefinitionsWithoutListening(t *testing.T) {
+	workspace := t.TempDir()
+	definition := filepath.Join(t.TempDir(), "check.workflow.yaml")
+	definitionYAML := `
+version: 1
+language: expr
+workflows:
+  - name: check
+    description: Check workflow configuration.
+    revision: 1
+    entry: decide
+    parameters_schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        ok:
+          type: boolean
+      required: [ok]
+      additionalProperties: false
+    nodes:
+      - id: decide
+        script: |-
+          if parameters.ok { "done" } else { "failed" }
+        routes:
+          done: [done]
+          failed: [failed]
+      - id: done
+        terminal: succeeded
+      - id: failed
+        terminal: failed
+`
+	if err := os.WriteFile(definition, []byte(strings.TrimSpace(definitionYAML)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	configFile := writeControllerConfig(t, `
+version = 8
+workspace = "`+workspace+`"
+runtime_directory = "`+t.TempDir()+`"
+[workflows]
+enabled = true
+definition_files = ["`+definition+`"]
+`)
+	var stdout bytes.Buffer
+	if err := runController([]string{"--config", configFile, "--check-config"}, &stdout, &bytes.Buffer{}); err != nil {
+		t.Fatalf("runController() error = %v", err)
+	}
+	if stdout.String() != "configuration OK\n" {
+		t.Fatalf("output = %q", stdout.String())
 	}
 }
 

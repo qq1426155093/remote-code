@@ -14,6 +14,9 @@ Remote Code 是一个面向远程开发任务的 Code Agent 控制平面。它�
 > controller 自身的生命周期、进程服务和 MCP 诊断也会以脱敏 JSON 事件持久化，并可通过
 > `ControllerService.ObserveControllerLogs` 或 CLI 的 `controller-logs`/`clogs` 回放、续读和 follow。
 > MCP listener 可配置独立于 gRPC 的 bearer token。
+> controller 还包含默认关闭的内部 Workflow core：它可在启动期校验静态 DAG/Expr，并通过持久
+> Activity、lease、人工介入和 bbolt 事件存储恢复运行；当前尚未提供 Workflow RPC/CLI 或真实 Agent
+> 执行适配器。
 > 进程与日志相关的错误携带机器可读的 reason，客户端不必匹配消息文本即可区分共用同一 status code
 > 的多种条件。
 > Agent 语义仍是后续版本计划。
@@ -83,7 +86,8 @@ remote-code:/> exec-template --attach --params-file ./agent-parameters.json code
 [Client 多窗口交互详细设计](docs/client-multi-window-design-v1.md)、
 [进程模板详细设计](docs/process-template-design-v1.md)、
 [错误模型详细设计](docs/error-model-design-v1.md)以及
-[Controller 配置文件](docs/controller-configuration.md)。可配置 MCP Server 的契约与实现依据见
+[Controller 配置文件](docs/controller-configuration.md)。工作流内部模块见
+[工作流需求](docs/workflow-requirements-v1.md)与[工作流详细设计](docs/workflow-design-v1.md)。可配置 MCP Server 的契约与实现依据见
 [MCP Server 需求](docs/mcp-server-requirements-v1.md)和
 [MCP Server 详细设计](docs/mcp-server-design-v1.md)。
 

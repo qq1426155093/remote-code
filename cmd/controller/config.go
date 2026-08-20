@@ -16,6 +16,7 @@ import (
 	mcpserver "github.com/qq1426155093/remote-code/internal/mcp"
 	processservice "github.com/qq1426155093/remote-code/internal/process"
 	"github.com/qq1426155093/remote-code/internal/server"
+	"github.com/qq1426155093/remote-code/internal/workflow"
 )
 
 const (
@@ -26,6 +27,7 @@ const (
 	controllerConfigVersionV5 = 5
 	controllerConfigVersionV6 = 6
 	controllerConfigVersionV7 = 7
+	controllerConfigVersionV8 = 8
 	maxControllerConfigBytes  = 1 << 20
 	maxConfiguredProcesses    = 4096
 )
@@ -65,6 +67,7 @@ type controllerFileConfig struct {
 	ProcessTemplates *processTemplateFileConfig `toml:"process_templates"`
 	FileTransfers    *fileTransferFileConfig    `toml:"file_transfers"`
 	MCP              *mcpFileConfig             `toml:"mcp"`
+	Workflows        *workflowFileConfig        `toml:"workflows"`
 }
 
 type controllerLogFileConfig struct {
@@ -109,6 +112,17 @@ type mcpFileConfig struct {
 	ToolListPageSize        *int      `toml:"tool_list_page_size"`
 }
 
+type workflowFileConfig struct {
+	Enabled             *bool     `toml:"enabled"`
+	DefinitionFiles     *[]string `toml:"definition_files"`
+	MaxActiveRuns       *int      `toml:"max_active_runs"`
+	MaxActiveAttempts   *int      `toml:"max_active_attempts"`
+	LeaseDuration       *string   `toml:"lease_duration"`
+	RetryInitialBackoff *string   `toml:"retry_initial_backoff"`
+	RetryMaxBackoff     *string   `toml:"retry_max_backoff"`
+	ReconcileInterval   *string   `toml:"reconcile_interval"`
+}
+
 func defaultControllerOptions() controllerOptions {
 	options := controllerOptions{serverConfig: server.Config{
 		ListenAddress:    "127.0.0.1:9443",
@@ -130,6 +144,7 @@ func defaultControllerOptions() controllerOptions {
 		},
 	}}
 	options.serverConfig.MCP.ApplyDefaults()
+	options.serverConfig.Workflows.ApplyDefaults()
 	return options
 }
 
@@ -282,8 +297,8 @@ func loadControllerConfig(name string) (controllerFileConfig, error) {
 		}
 		return controllerFileConfig{}, fmt.Errorf("decode controller config %q: %s", name, details)
 	}
-	if config.Version != controllerConfigVersionV1 && config.Version != controllerConfigVersionV2 && config.Version != controllerConfigVersionV3 && config.Version != controllerConfigVersionV4 && config.Version != controllerConfigVersionV5 && config.Version != controllerConfigVersionV6 && config.Version != controllerConfigVersionV7 {
-		return controllerFileConfig{}, fmt.Errorf("controller config version must be %d, %d, %d, %d, %d, %d, or %d", controllerConfigVersionV1, controllerConfigVersionV2, controllerConfigVersionV3, controllerConfigVersionV4, controllerConfigVersionV5, controllerConfigVersionV6, controllerConfigVersionV7)
+	if config.Version != controllerConfigVersionV1 && config.Version != controllerConfigVersionV2 && config.Version != controllerConfigVersionV3 && config.Version != controllerConfigVersionV4 && config.Version != controllerConfigVersionV5 && config.Version != controllerConfigVersionV6 && config.Version != controllerConfigVersionV7 && config.Version != controllerConfigVersionV8 {
+		return controllerFileConfig{}, fmt.Errorf("controller config version must be %d, %d, %d, %d, %d, %d, %d, or %d", controllerConfigVersionV1, controllerConfigVersionV2, controllerConfigVersionV3, controllerConfigVersionV4, controllerConfigVersionV5, controllerConfigVersionV6, controllerConfigVersionV7, controllerConfigVersionV8)
 	}
 	if config.Version == controllerConfigVersionV1 && config.MCP != nil {
 		return controllerFileConfig{}, errors.New("controller config version 1 does not support the mcp table")
@@ -302,6 +317,9 @@ func loadControllerConfig(name string) (controllerFileConfig, error) {
 	}
 	if config.Version < controllerConfigVersionV7 && config.MCP != nil && config.MCP.TokenFile != nil {
 		return controllerFileConfig{}, fmt.Errorf("controller config version %d does not support mcp.token_file", config.Version)
+	}
+	if config.Version < controllerConfigVersionV8 && config.Workflows != nil {
+		return controllerFileConfig{}, fmt.Errorf("controller config version %d does not support the workflows table", config.Version)
 	}
 	return config, nil
 }
@@ -394,6 +412,47 @@ func applyControllerFileConfig(options *controllerOptions, config controllerFile
 		if err := applyMCPFileConfig(&options.serverConfig.MCP, *config.MCP); err != nil {
 			return err
 		}
+	}
+	if config.Workflows != nil {
+		if err := applyWorkflowFileConfig(&options.serverConfig.Workflows, *config.Workflows); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func applyWorkflowFileConfig(config *workflow.Config, file workflowFileConfig) error {
+	if file.Enabled != nil {
+		config.Enabled = *file.Enabled
+	}
+	if file.DefinitionFiles != nil {
+		config.DefinitionFiles = append([]string(nil), (*file.DefinitionFiles)...)
+	}
+	if file.MaxActiveRuns != nil {
+		config.MaxActiveRuns = *file.MaxActiveRuns
+	}
+	if file.MaxActiveAttempts != nil {
+		config.MaxActiveAttempts = *file.MaxActiveAttempts
+	}
+	durations := []struct {
+		name   string
+		source *string
+		target *time.Duration
+	}{
+		{name: "lease_duration", source: file.LeaseDuration, target: &config.LeaseDuration},
+		{name: "retry_initial_backoff", source: file.RetryInitialBackoff, target: &config.RetryInitialBackoff},
+		{name: "retry_max_backoff", source: file.RetryMaxBackoff, target: &config.RetryMaxBackoff},
+		{name: "reconcile_interval", source: file.ReconcileInterval, target: &config.ReconcileInterval},
+	}
+	for _, duration := range durations {
+		if duration.source == nil {
+			continue
+		}
+		value, err := time.ParseDuration(*duration.source)
+		if err != nil {
+			return fmt.Errorf("invalid workflows.%s: %w", duration.name, err)
+		}
+		*duration.target = value
 	}
 	return nil
 }
