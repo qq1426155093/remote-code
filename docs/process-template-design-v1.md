@@ -80,7 +80,7 @@ controller 准备失败。配置在启动期完成深拷贝，此后不会从原
 
 - 后缀必须为 `.process-template.yaml`；
 - 必须是 1 byte–1 MiB 的普通文件，全部文件总计不超过 8 MiB；
-- Linux 使用 `O_NOFOLLOW` 打开并以 device/inode 去重；
+- Linux 和 macOS 使用 `O_NOFOLLOW` 打开并以 device/inode 去重；
 - 物理路径必须在 workspace 外；
 - 只接受单个 YAML document；
 - 拒绝 alias、anchor、merge key、显式 tag、directive、重复 key 和非 JSON scalar；

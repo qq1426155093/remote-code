@@ -255,8 +255,8 @@ workspace 内普通文件，内容以 binary resource 返回；原始文件字�
 JSON-RPC/base64 开销后计算，因此不会依赖响应中间件截断。`file.read_text`、`file.read_range` 和
 `process.logs*` 示例也使用较低的 tool 参数上限，最终 structured/text 双份结果仍会在发送前按实际编码大小校验。
 
-首版安全 definition opener 使用 Linux `O_NOFOLLOW` 与 fd identity；在非 Linux 平台启用 MCP 会
-fail closed，普通 gRPC controller 在 MCP 关闭时不受影响。
+安全 definition opener 在 Linux 和 macOS 上使用 `O_NOFOLLOW`、fd identity 与内核报告的物理路径；
+在其它平台启用 MCP 会 fail closed，普通 gRPC controller 在 MCP 关闭时不受影响。
 
 ## 校验
 

@@ -12,7 +12,7 @@ ProcessService
     ├── validator       请求大小、name/env/cwd 校验
     ├── workspace root  使用 os.Root 固定工作区并阻止 symlink 逃逸
     ├── registry        UUID/name/PID 索引、状态机、并发限额
-    ├── runner          Linux pipe/PTY、独立进程组、signal、Wait
+    ├── runner          Linux/macOS pipe/PTY、独立进程组、signal、Wait
     └── record store    JSON 状态、v2 tagged segment/index、启动恢复
 ```
 
@@ -40,9 +40,9 @@ server 对 `command` 和每个参数只做结构及大小校验，不使用 shel
 Go `exec.Command` 按 controller PATH 查找；含 `/` 的相对命令在已固定的工作目录中执行；
 绝对命令按原路径执行。
 
-工作目录先进行纯词法校验，再通过 `os.Root.Open` 打开目录句柄。runner 将 child cwd
-设置为 `/proc/self/fd/<fd>`，从而固定已经校验的目录对象，避免校验后替换目录或符号
-链接的竞态。
+工作目录先进行纯词法校验，再通过 `os.Root.Open` 打开目录句柄。Linux runner 将 child cwd
+设置为 `/proc/self/fd/<fd>`；macOS runner 把目录作为 fd 3 传给同一可执行文件中的启动跳板，
+由跳板执行 `fchdir + exec`。两者都固定已经校验的目录对象，避免校验后替换目录或符号链接的竞态。
 
 环境变量先从 `os.Environ()` 建立 map，再应用请求覆盖，最后按 key 排序生成 child env。
 key 必须匹配 `[A-Za-z_][A-Za-z0-9_]*`。只把排序后的覆盖 key 放入 ProcessInfo 和
@@ -76,6 +76,10 @@ PIPE：创建 stdin/stdout/stderr pipe，设置 `Setpgid`，启动后分别用 g
 PTY：使用 `creack/pty` 创建 session/controlling terminal；PTY master 的合并输出复制到
 stdout frame writer，stderr 文件保持空。缺失时补充 `TERM=xterm-256color`。`MANAGED` 输入
 复用 PTY master 的写方向，但不提供独立 close。
+
+macOS 启动跳板另继承一个 close-on-exec 状态 fd：目标 `exec` 成功时父进程读到 EOF，失败时
+读到有界错误并保持步骤 5 的 FAILED 事务语义。跳板随后不留在进程树中，因此记录的 PID、
+进程组和 PTY session leader 都是最终目标进程。
 
 runner 提供 `wait()`：先调用 `cmd.Wait()`。PIPE 等两个 copier 完成；PTY 在 leader 退出
 后关闭 master 使 copier 结束，再等待 copier。然后关闭日志文件。这样 status 的 EXITED

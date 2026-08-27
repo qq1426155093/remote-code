@@ -218,7 +218,7 @@ annotations 使用 pointer bool 区分“未写”与 false，四个字段都必
 ### 6.2 文件打开
 
 loader 先要求配置路径以 `.mcp.yaml` 结尾，不接受 `.mcp.yml`、裸 `.mcp` 或内容探测。随后按 controller
-配置中的顺序打开文件，但最终 registry 不依赖该顺序。Linux 实现使用
+配置中的顺序打开文件，但最终 registry 不依赖该顺序。Linux 和 macOS 实现使用
 `O_RDONLY|O_CLOEXEC|O_NOFOLLOW` 打开最后一个路径分量，再通过 fd `Stat` 确认普通文件、大小和
 device/inode。这样既拒绝最终 symlink，也能识别同一物理文件的重复配置。错误中可以包含配置路径，
 但不得包含文件内容。

@@ -1,4 +1,4 @@
-//go:build linux
+//go:build linux || darwin
 
 package process
 
@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -25,10 +24,24 @@ type runningCommand struct {
 	copyDone chan struct{}
 }
 
+type commandLaunch struct {
+	command     *exec.Cmd
+	finishStart func(error) error
+}
+
+func (l *commandLaunch) started(startErr error) error {
+	if l.finishStart != nil {
+		return l.finishStart(startErr)
+	}
+	return startErr
+}
+
 func startCommand(directory *os.File, executable string, arguments, environment []string, ioMode codev1.ProcessIOMode, inputMode codev1.ProcessInputMode, terminalSize *codev1.TerminalSize, output *recordOutput) (*runningCommand, error) {
-	command := exec.Command(executable, arguments...)
-	command.Dir = "/proc/self/fd/" + strconv.FormatUint(uint64(directory.Fd()), 10)
-	command.Env = append([]string(nil), environment...)
+	launch, err := newProcessCommand(directory, executable, arguments, environment)
+	if err != nil {
+		return nil, err
+	}
+	command := launch.command
 	switch ioMode {
 	case codev1.ProcessIOMode_PROCESS_IO_MODE_PTY:
 		window := &pty.Winsize{Rows: 24, Cols: 80}
@@ -36,8 +49,14 @@ func startCommand(directory *os.File, executable string, arguments, environment 
 			window.Rows = uint16(terminalSize.GetRows())
 			window.Cols = uint16(terminalSize.GetColumns())
 		}
-		terminal, err := pty.StartWithSize(command, window)
-		if err != nil {
+		terminal, startErr := pty.StartWithSize(command, window)
+		if err := launch.started(startErr); err != nil {
+			if terminal != nil {
+				_ = terminal.Close()
+			}
+			if startErr == nil {
+				discardStartedCommand(command)
+			}
 			return nil, err
 		}
 		copyDone := make(chan struct{})
@@ -56,10 +75,14 @@ func startCommand(directory *os.File, executable string, arguments, environment 
 		command.Stderr = output.stderr
 		stdin, err := command.StdinPipe()
 		if err != nil {
-			return nil, err
+			return nil, launch.started(err)
 		}
-		if err := command.Start(); err != nil {
+		startErr := command.Start()
+		if err := launch.started(startErr); err != nil {
 			_ = stdin.Close()
+			if startErr == nil {
+				discardStartedCommand(command)
+			}
 			return nil, err
 		}
 		running := &runningCommand{cmd: command}
@@ -72,8 +95,17 @@ func startCommand(directory *os.File, executable string, arguments, environment 
 		}
 		return running, nil
 	default:
-		return nil, fmt.Errorf("%w: I/O mode %s", errUnsupportedPlatform, ioMode)
+		err := fmt.Errorf("%w: I/O mode %s", errUnsupportedPlatform, ioMode)
+		return nil, launch.started(err)
 	}
+}
+
+func discardStartedCommand(command *exec.Cmd) {
+	if command == nil || command.Process == nil {
+		return
+	}
+	_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
+	_ = command.Wait()
 }
 
 func (c *runningCommand) resize(rows, columns uint32) error {

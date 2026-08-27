@@ -189,6 +189,24 @@ func TestServiceStartsPipeAndPTYProcesses(t *testing.T) {
 	}
 }
 
+func TestServiceRecordsRelativeExecutableStartFailure(t *testing.T) {
+	service := newTestProcessService(t, t.TempDir(), 1)
+	_, err := service.StartProcess(context.Background(), &codev1.StartProcessRequest{
+		Name: "missing-relative", Command: "./remote-code-missing-executable",
+		IoMode: codev1.ProcessIOMode_PROCESS_IO_MODE_PIPE,
+	})
+	if status.Code(err) != codes.Internal {
+		t.Fatalf("StartProcess(missing relative executable) code = %s, error = %v", status.Code(err), err)
+	}
+	listed, err := service.ListProcesses(context.Background(), &codev1.ListProcessesRequest{All: true})
+	if err != nil || len(listed.GetProcesses()) != 1 {
+		t.Fatalf("ListProcesses() = %+v, %v", listed, err)
+	}
+	if got := listed.GetProcesses()[0]; got.GetState() != codev1.ProcessState_PROCESS_STATE_FAILED || got.GetName() != "missing-relative" {
+		t.Fatalf("failed process = %+v, want FAILED missing-relative", got)
+	}
+}
+
 func TestDisabledPipeInputStillReceivesImmediateEOF(t *testing.T) {
 	t.Setenv(helperEnvironment, "1")
 	service := newTestProcessService(t, t.TempDir(), 1)

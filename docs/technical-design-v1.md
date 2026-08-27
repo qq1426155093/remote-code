@@ -27,7 +27,7 @@ CLI 的“当前目录”只是本地 REPL 状态。发送 RPC 前，CLI 将当�
 - `google.golang.org/protobuf` `v1.36.10`：protobuf runtime 与代码生成器。
 - `github.com/chzyer/readline` `v1.5.1`：交互提示符、历史、Ctrl-C/EOF 处理。
 - `github.com/google/shlex` `v0.0.0-20191202100458-e7afc7fbc510`：按 shell 引号规则拆分命令，但不执行 shell。
-- `github.com/creack/pty` `v1.1.24`：在 Linux 上创建 PTY、独立 session 和控制终端。
+- `github.com/creack/pty` `v1.1.24`：在 Linux 和 macOS 上创建 PTY、独立 session 和控制终端。
 - `github.com/pelletier/go-toml/v2` `v2.4.3`：严格解析 controller TOML 配置并提供带源码位置的错误。
 - `github.com/bufbuild/buf` `v1.57.2`：无需系统 `protoc` 的可复现 protobuf 生成入口。
 - `protoc-gen-go` `v1.36.10`、`protoc-gen-go-grpc` `v1.5.1`：生成 Go message 与 service stub。
@@ -161,12 +161,12 @@ checkpoint 继续，最终响应丢失时也能通过 session 终态确认成功
 进入 `os.Root` 前执行协议级校验：
 
 1. 拒绝空字节与绝对路径。
-2. 将反斜杠视为普通 Linux 文件名字符，不替用户转换平台语义。
+2. 将反斜杠视为普通 Unix 文件名字符，不替用户转换平台语义。
 3. 使用 slash/path 规则清理路径；如果清理前存在 `..` 分量则直接拒绝，不允许“先出界再回来”。
 4. 协议根统一表示为 `.`；响应路径统一转为 `/` 分隔。
 5. destructive RPC 显式拒绝 `.`。
 
-所有真实操作通过 `os.OpenRoot(workspace)` 返回的 `*os.Root` 完成。该 API 在 Linux 上以目录句柄逐分量解析，并拒绝指向根外的绝对或相对符号链接，因此安全性不依赖 `filepath.Join` 后的字符串前缀判断。
+所有真实操作通过 `os.OpenRoot(workspace)` 返回的 `*os.Root` 完成。该 API 在 Linux 和 macOS 上以目录句柄逐分量解析，并拒绝指向根外的绝对或相对符号链接，因此安全性不依赖 `filepath.Join` 后的字符串前缀判断。
 
 ### 5.2 上传
 
@@ -243,14 +243,14 @@ configuration。
 
 进程服务以 mutex 保护 UUID/name/PID 索引、活动计数、输入 attachment 和有界历史。启动时先预留名称与活动名额，再创建持久化记录并调用 `exec.Start`；每个成功启动的命令立即建立唯一 reaper goroutine 调用 `Wait` 并原子记录退出结果。pipe 的 stdout/stderr 写入独立 frame log，PTY master 的合并输出写入 stdout frame log，防止子进程因输出缓冲写满而停住。MANAGED 输入使用每进程串行 writer pump，操作系统写入期间不持有 registry mutex。
 
-工作目录先通过 `os.Root` 安全打开并验证为目录；Linux 启动器使用 `/proc/self/fd/<fd>` 对已打开目录执行 child chdir，避免校验后符号链接替换。pipe 模式使用 `Setpgid`，PTY 模式使用 `setsid + controlling tty`，两者均以 PID 为进程组 ID。`SignalProcess` 只解析已注册且仍运行的记录，并对负 PGID 调用 `kill`。controller 关闭时注册表先拒绝新启动并发送 `TERM`，context 到期后发送 `KILL`；gRPC 随后停止，最后释放工作区句柄。
+工作目录先通过 `os.Root` 安全打开并验证为目录；Linux 启动器使用 `/proc/self/fd/<fd>` 对已打开目录执行 child chdir，macOS 启动器把目录 fd 传给同一可执行文件中的短生命周期跳板，由跳板执行 `fchdir + exec`。两种实现都避免校验后符号链接替换。pipe 模式使用 `Setpgid`，PTY 模式使用 `setsid + controlling tty`，两者均以 PID 为进程组 ID。`SignalProcess` 只解析已注册且仍运行的记录，并对负 PGID 调用 `kill`。controller 关闭时注册表先拒绝新启动并发送 `TERM`，context 到期后发送 `KILL`；gRPC 随后停止，最后释放工作区句柄。
 
 客户端传具体 executable、参数和环境覆盖，server 不调用 shell。该接口本身是通用远程代码执行能力，必须使用 TLS、认证、受限系统用户或额外隔离来保护。
 
 ## 10. 测试方案
 
 - `internal/files` 单元测试：正常 CRUD、排序、权限、绝对路径、所有位置的 `..`、根删除、符号链接逃逸、内部符号链接、大小限制、摘要不一致、no-overwrite 和临时文件清理。
-- `internal/process` 单元测试：真实 pipe/PTY、UUID/PID/name、工作目录边界、活动上限、多种信号、自动回收、强制关闭和并发注册/列表/终止。
+- `internal/process` 单元测试：在 Linux 和 macOS 上验证真实 pipe/PTY、UUID/PID/name、工作目录边界、活动上限、多种信号、自动回收、强制关闭和并发注册/列表/终止。
 - `pkg/client`/transport 集成测试：使用 loopback listener 和真实 gRPC server 完成文件与进程闭环，验证摘要、状态码和退出结果。
 - `internal/cli` 单元测试：引号解析、虚拟 cwd 边界、mode、进程参数/引用/信号和补全。
 - 全量执行 `go test ./...`、`go test -race ./...`、`go vet ./...` 与 `go build ./...`。

@@ -223,7 +223,7 @@ stdin、PTY attach 或日志 follow。
 ### 4.1 环境要求
 
 - Go 1.26；
-- Linux 是完整进程组、PTY、受保护定义文件读取和 MCP 能力的首要目标平台；
+- Linux 或 macOS；两者都支持完整进程组、PTY、受保护定义文件读取和 MCP 能力；
 - 若运行 race test，需要可用的 C 编译器。
 
 在仓库根目录执行：
