@@ -3,6 +3,7 @@
 package process
 
 import (
+	"io"
 	"os"
 	"os/exec"
 
@@ -16,6 +17,10 @@ type runningCommand struct {
 
 func startCommand(*os.File, string, []string, []string, codev1.ProcessIOMode, codev1.ProcessInputMode, *codev1.TerminalSize, *recordOutput) (*runningCommand, error) {
 	return nil, errUnsupportedPlatform
+}
+
+func startRawCommand(*os.File, string, []string, []string, *recordOutput) (*runningCommand, io.WriteCloser, io.ReadCloser, error) {
+	return nil, nil, nil, errUnsupportedPlatform
 }
 
 func (c *runningCommand) wait() error                 { return errUnsupportedPlatform }

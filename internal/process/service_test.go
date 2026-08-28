@@ -87,6 +87,11 @@ func TestProcessHelper(t *testing.T) {
 			os.Exit(110)
 		}
 		os.Exit(0)
+	case "echo":
+		if _, err := io.Copy(os.Stdout, os.Stdin); err != nil {
+			os.Exit(111)
+		}
+		os.Exit(0)
 	case "sleep":
 		for {
 			time.Sleep(time.Second)

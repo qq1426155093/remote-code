@@ -179,6 +179,9 @@ func (s *Service) acquireProcessInput(reference *codev1.ProcessReference) (*mana
 	if err != nil {
 		return nil, nil, err
 	}
+	if record.rawStdio {
+		return nil, nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.ProcessInputRaw, "process %q reserves its stdio for an internal protocol handler", record.info.GetName())
+	}
 	if record.info.GetState() != codev1.ProcessState_PROCESS_STATE_RUNNING || record.command == nil {
 		return nil, nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.ProcessNotRunning, "process %q is %s", record.info.GetName(), processStateName(record.info.GetState()))
 	}

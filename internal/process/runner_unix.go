@@ -18,10 +18,12 @@ import (
 const ptyDrainWait = 250 * time.Millisecond
 
 type runningCommand struct {
-	cmd      *exec.Cmd
-	terminal *os.File
-	input    *processInput
-	copyDone chan struct{}
+	cmd       *exec.Cmd
+	terminal  *os.File
+	input     *processInput
+	copyDone  chan struct{}
+	rawStdin  io.WriteCloser
+	rawStdout io.ReadCloser
 }
 
 type commandLaunch struct {
@@ -148,6 +150,9 @@ func (c *runningCommand) closeIO() {
 	}
 	if c.terminal != nil {
 		_ = c.terminal.Close()
+	}
+	if c.rawStdin != nil || c.rawStdout != nil {
+		c.closeRawPipes()
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -93,6 +94,9 @@ type managedProcess struct {
 	logs          *processLog
 	done          chan struct{}
 	inputAttached bool
+	rawStdio      bool
+	rawStdin      io.WriteCloser
+	rawStdout     io.ReadCloser
 }
 
 type validatedStart struct {
@@ -213,10 +217,18 @@ func (s *Service) ProcessTemplateCount() int {
 
 // StartProcess launches a concrete command in its own process group.
 func (s *Service) StartProcess(ctx context.Context, request *codev1.StartProcessRequest) (*codev1.StartProcessResponse, error) {
-	return s.startProcess(ctx, request, startOrigin{})
+	record, err := s.launchProcess(ctx, request, startOrigin{}, false)
+	if err != nil {
+		return nil, err
+	}
+	return &codev1.StartProcessResponse{Process: s.snapshot(record)}, nil
 }
 
-func (s *Service) startProcess(ctx context.Context, request *codev1.StartProcessRequest, origin startOrigin) (*codev1.StartProcessResponse, error) {
+// launchProcess validates and starts one managed process. The raw flag
+// reserves the child's stdio for an internal caller (see StartRawProcess):
+// stdout becomes an exclusive pipe instead of the segmented log and the gRPC
+// input stream refuses to attach.
+func (s *Service) launchProcess(ctx context.Context, request *codev1.StartProcessRequest, origin startOrigin, raw bool) (*managedProcess, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, status.FromContextError(err).Err()
 	}
@@ -241,6 +253,7 @@ func (s *Service) startProcess(ctx context.Context, request *codev1.StartProcess
 		publicArguments = nil
 	}
 	record := &managedProcess{
+		rawStdio: raw,
 		info: &codev1.ProcessInfo{
 			Id: id, Name: start.name, IoMode: start.ioMode, State: codev1.ProcessState_PROCESS_STATE_STARTING,
 			Command: start.command, Arguments: publicArguments,
@@ -299,7 +312,18 @@ func (s *Service) startProcess(ctx context.Context, request *codev1.StartProcess
 	}
 	record.output = output
 	record.logs = output.log
-	running, startErr := startCommand(directory, start.command, start.arguments, start.environment, start.ioMode, start.inputMode, start.terminalSize, output)
+	var running *runningCommand
+	var startErr error
+	if raw {
+		var stdin io.WriteCloser
+		var stdout io.ReadCloser
+		running, stdin, stdout, startErr = startRawCommand(directory, start.command, start.arguments, start.environment, output)
+		if startErr == nil {
+			record.rawStdin, record.rawStdout = stdin, stdout
+		}
+	} else {
+		running, startErr = startCommand(directory, start.command, start.arguments, start.environment, start.ioMode, start.inputMode, start.terminalSize, output)
+	}
 	if startErr != nil {
 		output.close()
 		s.mu.Lock()
@@ -357,9 +381,10 @@ func (s *Service) startProcess(ctx context.Context, request *codev1.StartProcess
 		Level: logging.LevelInfo, Component: "process", Name: "started",
 		Message: "managed process started", Fields: map[string]string{
 			"process_id": id, "name": start.name, "pid": fmt.Sprintf("%d", runningInfo.GetPid()),
+			"raw": fmt.Sprintf("%t", raw),
 		},
 	})
-	return &codev1.StartProcessResponse{Process: runningInfo}, nil
+	return record, nil
 }
 
 // ListProcesses returns active processes unless all history was requested.

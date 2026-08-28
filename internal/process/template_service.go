@@ -64,11 +64,11 @@ func (s *Service) StartProcessFromTemplate(ctx context.Context, request *codev1.
 	if size := request.GetTerminalSize(); size != nil {
 		startRequest.TerminalSize = &codev1.TerminalSize{Rows: size.GetRows(), Columns: size.GetColumns()}
 	}
-	response, err := s.startProcess(ctx, startRequest, startOrigin{
+	record, err := s.launchProcess(ctx, startRequest, startOrigin{
 		templateName: request.GetTemplateName(), templateRevision: template.summary.GetRevision(), redactArguments: true,
-	})
+	}, false)
 	if err != nil {
 		return nil, err
 	}
-	return &codev1.StartProcessFromTemplateResponse{Process: response.GetProcess()}, nil
+	return &codev1.StartProcessFromTemplateResponse{Process: s.snapshot(record)}, nil
 }

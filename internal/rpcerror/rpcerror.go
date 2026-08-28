@@ -43,6 +43,7 @@ const (
 	ProcessInputDisabled     Reason = "PROCESS_INPUT_DISABLED"
 	ProcessInputClosed       Reason = "PROCESS_INPUT_CLOSED"
 	ProcessInputAttached     Reason = "PROCESS_INPUT_ATTACHED"
+	ProcessInputRaw          Reason = "PROCESS_INPUT_RAW"
 
 	// Process logs. The two offset reasons predate this package and are already
 	// on the wire, so their values are kept verbatim.
