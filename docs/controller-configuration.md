@@ -22,10 +22,10 @@ remote-code-controller \
 除 `max_processes` 被命令行覆盖外，其它值仍来自 TOML。布尔值可以显式反向覆盖，例如
 `--allow-insecure-remote=false`。
 
-## TOML schema v1、v2、v3、v4、v5、v6、v7 与 v8
+## TOML schema v1、v2、v3、v4、v5、v6、v7、v8 与 v9
 
 ```toml
-version = 8
+version = 9
 workspace = "/srv/remote-code/workspace"
 listen_address = "127.0.0.1:9443"
 runtime_directory = "/var/run/remote-code-controller"
@@ -74,6 +74,12 @@ default_model = "gpt-5"
 common_arguments = ["--approval-mode", "never"]
 environment = { HTTP_PROXY = "http://proxy.example" }
 
+[agent]
+enabled = true
+command = "npx"
+arguments = ["@agentclientprotocol/claude-agent-acp"]
+# environment = { NO_COLOR = "1" }
+
 [workflows]
 enabled = false
 definition_files = []
@@ -117,7 +123,7 @@ tool_list_page_size = 100
 `version` 必须存在。schema v1 继续兼容，但不允许 `[mcp]`；schema v2 增加 MCP；schema v3 增加
 `[process_templates]`；schema v4 增加 `process_templates.extra_parameters`；schema v5 增加
 `[file_transfers]`；schema v6 增加 `[controller_logs]`；schema v7 增加 `mcp.token_file`；schema v8 增加
-`[workflows]`。v3、v4、v5、v6 均可省略
+`[workflows]`；schema v9 增加 `[agent]`。v3、v4、v5、v6 均可省略
 `[process_templates]` 或配置空 `definition_files`，此时没有进程模板；v3 不接受
 `extra_parameters`。TLS
 certificate/key 必须同时配置。认证配置只接受 token 文件路径，
@@ -175,6 +181,23 @@ secret、password、authorization、credential 和环境值等敏感 key 做脱�
 | `auth.token_file` | `--token-file` | 空 |
 | `process_templates.definition_files` | 无 | `[]` |
 | `process_templates.extra_parameters` | 无 | `{}` |
+
+`agent` 字段不提供命令行覆盖。默认值如下：
+
+| TOML | 默认值 |
+| --- | --- |
+| `agent.enabled` | `true` |
+| `agent.command` | `npx` |
+| `agent.arguments` | `["@agentclientprotocol/claude-agent-acp"]` |
+| `agent.environment` | `{}` |
+
+agent 桥接把 gRPC `AgentService.Query` 翻译成与一个共享 `claude-agent-acp` 子进程的 ACP 对话；子进程在
+首次查询时懒启动，通过进程注册表的 raw-pipe 入口运行（保留进程观测与信号语义，协议 stdout 落盘被
+禁止），会话工作目录被限制在 workspace 内。`command` 存在性不做启动期校验：缺失时首次查询返回
+`AGENT_START_FAILED`。凭证建议通过 controller 进程环境继承，`environment` 表只用于非敏感启动变量；
+该表以及任何日志都不会记录环境值。进程崩溃后由下一次查询自动重启，崩溃代的会话以
+`AGENT_SESSION_LOST` 拒绝复用。设计细节见
+[Agent 服务设计 v1](agent-service-design-v1.md)。
 
 `workflows` 字段不提供命令行覆盖。默认值如下：
 

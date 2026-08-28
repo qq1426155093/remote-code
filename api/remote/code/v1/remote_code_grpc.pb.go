@@ -1193,3 +1193,155 @@ var ProcessService_ServiceDesc = grpc.ServiceDesc{
 	},
 	Metadata: "remote/code/v1/remote_code.proto",
 }
+
+const (
+	AgentService_Query_FullMethodName        = "/remote.code.v1.AgentService/Query"
+	AgentService_CloseSession_FullMethodName = "/remote.code.v1.AgentService/CloseSession"
+)
+
+// AgentServiceClient is the client API for AgentService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// AgentService bridges queries to an ACP agent child process. One turn streams
+// every agent observation until the turn settles; a caller that stops reading
+// cancels the turn.
+type AgentServiceClient interface {
+	Query(ctx context.Context, in *QueryRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[QueryResponse], error)
+	CloseSession(ctx context.Context, in *CloseSessionRequest, opts ...grpc.CallOption) (*CloseSessionResponse, error)
+}
+
+type agentServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewAgentServiceClient(cc grpc.ClientConnInterface) AgentServiceClient {
+	return &agentServiceClient{cc}
+}
+
+func (c *agentServiceClient) Query(ctx context.Context, in *QueryRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[QueryResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &AgentService_ServiceDesc.Streams[0], AgentService_Query_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[QueryRequest, QueryResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type AgentService_QueryClient = grpc.ServerStreamingClient[QueryResponse]
+
+func (c *agentServiceClient) CloseSession(ctx context.Context, in *CloseSessionRequest, opts ...grpc.CallOption) (*CloseSessionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CloseSessionResponse)
+	err := c.cc.Invoke(ctx, AgentService_CloseSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// AgentServiceServer is the server API for AgentService service.
+// All implementations must embed UnimplementedAgentServiceServer
+// for forward compatibility.
+//
+// AgentService bridges queries to an ACP agent child process. One turn streams
+// every agent observation until the turn settles; a caller that stops reading
+// cancels the turn.
+type AgentServiceServer interface {
+	Query(*QueryRequest, grpc.ServerStreamingServer[QueryResponse]) error
+	CloseSession(context.Context, *CloseSessionRequest) (*CloseSessionResponse, error)
+	mustEmbedUnimplementedAgentServiceServer()
+}
+
+// UnimplementedAgentServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedAgentServiceServer struct{}
+
+func (UnimplementedAgentServiceServer) Query(*QueryRequest, grpc.ServerStreamingServer[QueryResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method Query not implemented")
+}
+func (UnimplementedAgentServiceServer) CloseSession(context.Context, *CloseSessionRequest) (*CloseSessionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CloseSession not implemented")
+}
+func (UnimplementedAgentServiceServer) mustEmbedUnimplementedAgentServiceServer() {}
+func (UnimplementedAgentServiceServer) testEmbeddedByValue()                      {}
+
+// UnsafeAgentServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to AgentServiceServer will
+// result in compilation errors.
+type UnsafeAgentServiceServer interface {
+	mustEmbedUnimplementedAgentServiceServer()
+}
+
+func RegisterAgentServiceServer(s grpc.ServiceRegistrar, srv AgentServiceServer) {
+	// If the following call pancis, it indicates UnimplementedAgentServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&AgentService_ServiceDesc, srv)
+}
+
+func _AgentService_Query_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(QueryRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(AgentServiceServer).Query(m, &grpc.GenericServerStream[QueryRequest, QueryResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type AgentService_QueryServer = grpc.ServerStreamingServer[QueryResponse]
+
+func _AgentService_CloseSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CloseSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).CloseSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_CloseSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).CloseSession(ctx, req.(*CloseSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// AgentService_ServiceDesc is the grpc.ServiceDesc for AgentService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var AgentService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "remote.code.v1.AgentService",
+	HandlerType: (*AgentServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "CloseSession",
+			Handler:    _AgentService_CloseSession_Handler,
+		},
+	},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "Query",
+			Handler:       _AgentService_Query_Handler,
+			ServerStreams: true,
+		},
+	},
+	Metadata: "remote/code/v1/remote_code.proto",
+}

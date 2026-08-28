@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/qq1426155093/remote-code/internal/agent"
 	"github.com/qq1426155093/remote-code/internal/server"
 )
 
@@ -101,7 +102,7 @@ func TestLoadControllerConfigRejectsInvalidFiles(t *testing.T) {
 		want     string
 	}{
 		{name: "missing version", contents: `workspace = "/work"`, want: "version must be 1"},
-		{name: "future version", contents: "version = 9\n", want: "version must be 1, 2, 3, 4, 5, 6, 7, or 8"},
+		{name: "future version", contents: "version = 10\n", want: "version must be 1, 2, 3, 4, 5, 6, 7, 8, or 9"},
 		{name: "unknown field", contents: "version = 1\nmax_proceses = 2\n", want: "unknown field"},
 		{name: "wrong type", contents: "version = 1\nmax_processes = \"many\"\n", want: "cannot decode"},
 		{name: "duplicate key", contents: "version = 1\nmax_processes = 2\nmax_processes = 3\n", want: "already defined"},
@@ -732,4 +733,65 @@ func writeControllerConfig(t *testing.T, contents string) string {
 		t.Fatal(err)
 	}
 	return name
+}
+
+func TestLoadControllerConfigV9Agent(t *testing.T) {
+	configFile := writeControllerConfig(t, `
+version = 9
+workspace = "/work"
+[agent]
+enabled = false
+command = "/opt/claude-agent-acp"
+arguments = ["--verbose"]
+environment = { NO_COLOR = "1" }
+`)
+	file, err := loadControllerConfig(configFile)
+	if err != nil {
+		t.Fatalf("loadControllerConfig() error = %v", err)
+	}
+	options := defaultControllerOptions()
+	if err := applyControllerFileConfig(&options, file); err != nil {
+		t.Fatal(err)
+	}
+	agentConfig := options.serverConfig.Agent
+	if agentConfig.Enabled || agentConfig.Command != "/opt/claude-agent-acp" ||
+		len(agentConfig.Arguments) != 1 || agentConfig.Arguments[0] != "--verbose" ||
+		agentConfig.Environment["NO_COLOR"] != "1" {
+		t.Fatalf("agent config = %+v", agentConfig)
+	}
+
+	v8WithAgent := writeControllerConfig(t, "version = 8\n[agent]\nenabled = false\n")
+	if _, err := loadControllerConfig(v8WithAgent); err == nil || !strings.Contains(err.Error(), "does not support the agent table") {
+		t.Fatalf("v8 agent error = %v", err)
+	}
+}
+
+func TestAgentConfigDefaults(t *testing.T) {
+	options := defaultControllerOptions()
+	if !options.serverConfig.Agent.Enabled {
+		t.Fatal("the agent service must be enabled by default")
+	}
+	options.serverConfig.Agent.ApplyDefaults()
+	if options.serverConfig.Agent.Command != "npx" ||
+		len(options.serverConfig.Agent.Arguments) != 1 || options.serverConfig.Agent.Arguments[0] != "@agentclientprotocol/claude-agent-acp" {
+		t.Fatalf("default agent command = %+v", options.serverConfig.Agent)
+	}
+
+	// An explicit command never inherits the npx arguments.
+	options = defaultControllerOptions()
+	options.serverConfig.Agent.Command = "/opt/claude-agent-acp"
+	options.serverConfig.Agent.ApplyDefaults()
+	if options.serverConfig.Agent.Command != "/opt/claude-agent-acp" || len(options.serverConfig.Agent.Arguments) != 0 {
+		t.Fatalf("explicit command defaults = %+v", options.serverConfig.Agent)
+	}
+
+	if err := agent.ValidateConfig(agent.Config{Enabled: false, Command: ""}); err != nil {
+		t.Fatalf("disabled agent with no command = %v", err)
+	}
+	if err := agent.ValidateConfig(agent.Config{Enabled: true, Command: " "}); err == nil {
+		t.Fatal("blank command accepted")
+	}
+	if err := agent.ValidateConfig(agent.Config{Enabled: true, Command: "npx", Environment: map[string]string{"BAD KEY": "1"}}); err == nil {
+		t.Fatal("invalid environment key accepted")
+	}
 }

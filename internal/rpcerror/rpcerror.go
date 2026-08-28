@@ -58,6 +58,19 @@ const (
 	TemplateRenderFailed     Reason = "TEMPLATE_RENDER_FAILED"
 	TemplateRevisionMismatch Reason = "TEMPLATE_REVISION_MISMATCH"
 
+	// Agent service. The agent bridges gRPC queries to an ACP agent child
+	// process; these reasons describe that bridge, not the child's own errors.
+	AgentDisabled         Reason = "AGENT_DISABLED"
+	AgentStartFailed      Reason = "AGENT_START_FAILED"
+	AgentSessionNotFound  Reason = "AGENT_SESSION_NOT_FOUND"
+	AgentSessionLost      Reason = "AGENT_SESSION_LOST"
+	AgentTurnActive       Reason = "AGENT_TURN_ACTIVE"
+	AgentProcessLost      Reason = "AGENT_PROCESS_LOST"
+	AgentWorkingDirectory Reason = "AGENT_WORKING_DIRECTORY"
+	// AgentRequestError wraps a JSON-RPC error the agent itself returned; the
+	// metadata carries the raw jsonrpc_code.
+	AgentRequestError Reason = "AGENT_REQUEST_ERROR"
+
 	// File transfers. These mirror FileTransferErrorReason, which stays on the
 	// wire for clients that already read it.
 	TransferOffsetMismatch Reason = "TRANSFER_OFFSET_MISMATCH"

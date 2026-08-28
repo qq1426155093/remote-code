@@ -1,5 +1,5 @@
-# remote-code-controller configuration, TOML schema version 8.
-version = 8
+# remote-code-controller configuration, TOML schema version 9.
+version = 9
 
 # All file RPCs and relative process working directories are confined here.
 workspace = "/srv/remote-code/workspace"
@@ -62,6 +62,16 @@ definition_files = []
 # default_model = "gpt-5"
 # common_arguments = ["--approval-mode", "never"]
 # environment = { HTTP_PROXY = "http://proxy.example" }
+
+# The agent bridge speaks ACP to one shared claude-agent-acp child process,
+# started lazily by the first query and confined to the workspace. Prefer
+# inheriting credentials from the controller process environment; the optional
+# environment table is for non-secret launch variables only.
+[agent]
+enabled = true
+command = "npx"
+arguments = ["@agentclientprotocol/claude-agent-acp"]
+# environment = { NO_COLOR = "1" }
 
 # Durable Expr workflows are disabled by default. Definitions are trusted
 # operator configuration and must live outside the workspace.

@@ -43,6 +43,14 @@ service ProcessService {
   rpc StreamProcessInput(stream StreamProcessInputRequest) returns (stream StreamProcessInputResponse);
 }
 
+// AgentService bridges queries to an ACP agent child process. One turn streams
+// every agent observation until the turn settles; a caller that stops reading
+// cancels the turn.
+service AgentService {
+  rpc Query(QueryRequest) returns (stream QueryResponse);
+  rpc CloseSession(CloseSessionRequest) returns (CloseSessionResponse);
+}
+
 message GetInfoRequest {}
 
 message GetInfoResponse {
@@ -55,6 +63,8 @@ message GetInfoResponse {
   uint32 process_template_count = 7;
   FileTransferCapabilities file_transfers = 8;
   ControllerLogCapabilities controller_logs = 9;
+  // Absent when the agent service is disabled in controller configuration.
+  AgentInfo agent = 10;
 }
 
 message ControllerLogCapabilities {
@@ -769,4 +779,106 @@ message BatchDeleteProcessesResponse {
   repeated BatchDeleteSelectorResult selectors = 1;
   // Exactly one result for each unique UUID selected by the request.
   repeated BatchDeleteProcessResult processes = 2;
+}
+
+message QueryRequest {
+  // Required; plain text in v1.
+  string prompt = 1;
+  // Empty starts a new session in the workspace.
+  optional string session_id = 2;
+  // Workspace-relative session directory; only consulted when session_id is empty.
+  optional string working_directory = 3;
+}
+
+message CloseSessionRequest {
+  string session_id = 1;
+}
+
+message CloseSessionResponse {}
+
+// Exactly one event per message, selected by the oneof. The stream ends with
+// completed when the turn settled; a failed turn ends the stream with a status
+// error instead.
+message QueryResponse {
+  oneof event {
+    AgentSessionStarted session_started = 1;
+    AgentMessage message = 2;
+    AgentThought thought = 3;
+    AgentToolCall tool_call = 4;
+    AgentPlan plan = 5;
+    AgentUsage usage = 6;
+    AgentTurnCompleted completed = 7;
+  }
+}
+
+// First frame of a turn that created a session; carries the id to reuse for
+// follow-up turns.
+message AgentSessionStarted {
+  string session_id = 1;
+}
+
+message AgentMessage {
+  string text = 1;
+}
+
+message AgentThought {
+  string text = 1;
+}
+
+// A tool call creation (update false) or a later update of the same call
+// (update true) identified by tool_call_id.
+message AgentToolCall {
+  string tool_call_id = 1;
+  string title = 2;
+  // ACP tool kind: read, edit, delete, move, search, execute, think, fetch, other.
+  string kind = 3;
+  // ACP tool call status: pending, in_progress, completed, failed.
+  string status = 4;
+  bool update = 5;
+  repeated AgentToolCallLocation locations = 6;
+}
+
+message AgentToolCallLocation {
+  string path = 1;
+  optional int32 line = 2;
+}
+
+// Full-plan replacement: the agent resends the complete entry list on every
+// update and the client swaps its copy wholesale.
+message AgentPlan {
+  repeated AgentPlanEntry entries = 1;
+}
+
+message AgentPlanEntry {
+  string content = 1;
+  string priority = 2;
+  string status = 3;
+}
+
+message AgentUsage {
+  int64 context_size = 1;
+  int64 context_used = 2;
+  optional AgentCost cost = 3;
+}
+
+message AgentCost {
+  double amount = 1;
+  string currency = 2;
+}
+
+// Last frame of a settled turn. stop_reason carries the ACP value verbatim:
+// end_turn, max_tokens, max_turn_requests, refusal, cancelled.
+message AgentTurnCompleted {
+  string stop_reason = 1;
+}
+
+// Agent bridge status reported through GetInfo. started is false until the
+// first query lazily spawns the child process.
+message AgentInfo {
+  bool enabled = 1;
+  bool started = 2;
+  string process_id = 3;
+  uint64 generation = 4;
+  bool close_supported = 5;
+  uint32 sessions = 6;
 }

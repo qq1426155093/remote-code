@@ -123,10 +123,19 @@ case client.ReasonProcessNotRunning:
 | `TRANSFER_PREFIX_MISMATCH` | `FailedPrecondition` | 已下载前缀的摘要与远端文件不一致 |
 | `TRANSFER_SESSION_STATE` | 随原因变化 | 上传 session 状态不允许该操作 |
 | `TRANSFER_ACTIVE_TRANSFER` | `FailedPrecondition` | 路径上存在活动传输 |
+| `AGENT_DISABLED` | `FailedPrecondition` | 配置未启用 Agent 服务 |
+| `AGENT_START_FAILED` | `Unavailable` | Agent 子进程启动或 ACP 初始化失败 |
+| `AGENT_SESSION_NOT_FOUND` | `NotFound` | 会话 id 不存在 |
+| `AGENT_SESSION_LOST` | `FailedPrecondition` | Agent 进程重启导致会话丢失 |
+| `AGENT_TURN_ACTIVE` | `FailedPrecondition` | 同一会话已有进行中的 turn |
+| `AGENT_PROCESS_LOST` | `Unavailable` | turn 进行中 Agent 进程退出 |
+| `AGENT_WORKING_DIRECTORY` | `InvalidArgument` | 会话工作目录越出 workspace 或不可访问 |
+| `AGENT_REQUEST_ERROR` | `Unknown` | Agent 本身返回 JSON-RPC 错误；`metadata.jsonrpc_code` 给出原始码 |
 
 ## 7. 覆盖范围
 
-本版本覆盖 `ProcessService`、`ControllerService` 的运行日志入口，以及文件传输的双 detail。
+本版本覆盖 `ProcessService`、`ControllerService` 的运行日志入口，文件传输的双 detail，以及
+`AgentService` 的会话与 turn 失败路径。
 
 **尚未覆盖**：`internal/files` 中 `service.go`、`patch.go`、`range.go`、`text.go`、`resource.go`、
 `transfer_download.go` 的非传输错误（约 30 处，含上传/写入目标已存在、目标不是普通文件、

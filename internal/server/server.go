@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
+	"github.com/qq1426155093/remote-code/internal/agent"
 	"github.com/qq1426155093/remote-code/internal/auth"
 	"github.com/qq1426155093/remote-code/internal/controllerlog"
 	"github.com/qq1426155093/remote-code/internal/files"
@@ -47,6 +48,7 @@ type Config struct {
 	FileTransfers       files.TransferConfig
 	MCP                 mcpserver.Config
 	Workflows           workflow.Config
+	Agent               agent.Config
 }
 
 // Prepared contains validated controller configuration, compiled process
@@ -69,6 +71,7 @@ type Server struct {
 	logs       *controllerlog.Service
 	mcpServer  *mcpserver.Server
 	workflows  *workflow.Service
+	agent      *agent.RPC
 	closeOnce  sync.Once
 }
 
@@ -89,6 +92,7 @@ func Prepare(config Config) (*Prepared, error) {
 	}
 	config.MCP.ApplyDefaults()
 	config.Workflows.ApplyDefaults()
+	config.Agent.ApplyDefaults()
 	if err := ValidateConfig(config); err != nil {
 		return nil, err
 	}
@@ -176,6 +180,20 @@ func NewPreparedWithLogger(prepared *Prepared, logger *controllerlog.Logger) (*S
 		_ = logger.Close()
 		return nil, err
 	}
+	// The agent bridge owns no resources until its first query spawns the
+	// child, so it cannot fail construction; the disabled surface stays
+	// registered and answers AGENT_DISABLED.
+	agentRPC := agent.NewRPC(nil)
+	if config.Agent.Enabled {
+		agentRPC = agent.NewRPC(agent.New(agent.Config{
+			Command:       config.Agent.Command,
+			Arguments:     config.Agent.Arguments,
+			Environment:   config.Agent.Environment,
+			WorkspaceRoot: config.Workspace,
+			Processes:     processService,
+			Logger:        newAgentLogHandler(logger),
+		}))
+	}
 	var workflowService *workflow.Service
 	if config.Workflows.Enabled {
 		workflowService, err = workflow.New(config.Workflows, config.RuntimeDirectory, prepared.Workflows)
@@ -231,9 +249,10 @@ func NewPreparedWithLogger(prepared *Prepared, logger *controllerlog.Logger) (*S
 	}
 	grpcServer := grpc.NewServer(options...)
 	controllerLogs := controllerlog.NewService(logger)
-	codev1.RegisterControllerServiceServer(grpcServer, &controllerService{files: fileService, processes: processService, logs: controllerLogs})
+	codev1.RegisterControllerServiceServer(grpcServer, &controllerService{files: fileService, processes: processService, logs: controllerLogs, agent: agentRPC})
 	codev1.RegisterFileServiceServer(grpcServer, fileService)
 	codev1.RegisterProcessServiceServer(grpcServer, processService)
+	codev1.RegisterAgentServiceServer(grpcServer, agentRPC)
 	healthServer := health.NewServer()
 	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
@@ -251,7 +270,7 @@ func NewPreparedWithLogger(prepared *Prepared, logger *controllerlog.Logger) (*S
 			return nil, err
 		}
 	}
-	return &Server{grpcServer: grpcServer, listener: listener, files: fileService, processes: processService, logger: logger, logs: controllerLogs, mcpServer: mcpHTTPServer, workflows: workflowService}, nil
+	return &Server{grpcServer: grpcServer, listener: listener, files: fileService, processes: processService, logger: logger, logs: controllerLogs, mcpServer: mcpHTTPServer, workflows: workflowService, agent: agentRPC}, nil
 }
 
 // ValidateConfig checks transport-level invariants without opening files or a
@@ -284,6 +303,9 @@ func ValidateConfig(config Config) error {
 	}
 	if err := workflow.ValidateConfig(config.Workflows); err != nil {
 		return fmt.Errorf("invalid workflow configuration: %w", err)
+	}
+	if err := agent.ValidateConfig(config.Agent); err != nil {
+		return fmt.Errorf("invalid agent configuration: %w", err)
 	}
 	return nil
 }
@@ -332,6 +354,11 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		if err := s.mcpServer.Shutdown(ctx); err != nil {
 			shutdownErr = err
 		}
+	}
+	// The agent child exits cleanly on stdin EOF and settles its turns; it
+	// must stop before the registry terminates every remaining process group.
+	if err := s.agent.Shutdown(ctx); shutdownErr == nil {
+		shutdownErr = err
 	}
 	if err := s.processes.Shutdown(ctx); shutdownErr == nil {
 		shutdownErr = err
@@ -391,6 +418,7 @@ type controllerService struct {
 	files     *files.Service
 	processes *processservice.Service
 	logs      *controllerlog.Service
+	agent     *agent.RPC
 }
 
 func (s *controllerService) ObserveControllerLogs(request *codev1.ObserveControllerLogsRequest, stream codev1.ControllerService_ObserveControllerLogsServer) error {
@@ -410,6 +438,7 @@ func (s *controllerService) GetInfo(context.Context, *codev1.GetInfoRequest) (*c
 		ProcessTemplateCount: uint32(s.processes.ProcessTemplateCount()),
 		FileTransfers:        s.files.FileTransferCapabilities(),
 		ControllerLogs:       s.logsCapabilities(),
+		Agent:                s.agent.Info(),
 	}, nil
 }
 

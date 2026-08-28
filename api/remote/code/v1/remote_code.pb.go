@@ -787,8 +787,10 @@ type GetInfoResponse struct {
 	ProcessTemplateCount uint32                     `protobuf:"varint,7,opt,name=process_template_count,json=processTemplateCount,proto3" json:"process_template_count,omitempty"`
 	FileTransfers        *FileTransferCapabilities  `protobuf:"bytes,8,opt,name=file_transfers,json=fileTransfers,proto3" json:"file_transfers,omitempty"`
 	ControllerLogs       *ControllerLogCapabilities `protobuf:"bytes,9,opt,name=controller_logs,json=controllerLogs,proto3" json:"controller_logs,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// Absent when the agent service is disabled in controller configuration.
+	Agent         *AgentInfo `protobuf:"bytes,10,opt,name=agent,proto3" json:"agent,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetInfoResponse) Reset() {
@@ -873,6 +875,13 @@ func (x *GetInfoResponse) GetFileTransfers() *FileTransferCapabilities {
 func (x *GetInfoResponse) GetControllerLogs() *ControllerLogCapabilities {
 	if x != nil {
 		return x.ControllerLogs
+	}
+	return nil
+}
+
+func (x *GetInfoResponse) GetAgent() *AgentInfo {
+	if x != nil {
+		return x.Agent
 	}
 	return nil
 }
@@ -6906,12 +6915,944 @@ func (x *BatchDeleteProcessesResponse) GetProcesses() []*BatchDeleteProcessResul
 	return nil
 }
 
+type QueryRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Required; plain text in v1.
+	Prompt string `protobuf:"bytes,1,opt,name=prompt,proto3" json:"prompt,omitempty"`
+	// Empty starts a new session in the workspace.
+	SessionId *string `protobuf:"bytes,2,opt,name=session_id,json=sessionId,proto3,oneof" json:"session_id,omitempty"`
+	// Workspace-relative session directory; only consulted when session_id is empty.
+	WorkingDirectory *string `protobuf:"bytes,3,opt,name=working_directory,json=workingDirectory,proto3,oneof" json:"working_directory,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *QueryRequest) Reset() {
+	*x = QueryRequest{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[96]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QueryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QueryRequest) ProtoMessage() {}
+
+func (x *QueryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[96]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QueryRequest.ProtoReflect.Descriptor instead.
+func (*QueryRequest) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{96}
+}
+
+func (x *QueryRequest) GetPrompt() string {
+	if x != nil {
+		return x.Prompt
+	}
+	return ""
+}
+
+func (x *QueryRequest) GetSessionId() string {
+	if x != nil && x.SessionId != nil {
+		return *x.SessionId
+	}
+	return ""
+}
+
+func (x *QueryRequest) GetWorkingDirectory() string {
+	if x != nil && x.WorkingDirectory != nil {
+		return *x.WorkingDirectory
+	}
+	return ""
+}
+
+type CloseSessionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CloseSessionRequest) Reset() {
+	*x = CloseSessionRequest{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[97]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CloseSessionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CloseSessionRequest) ProtoMessage() {}
+
+func (x *CloseSessionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[97]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CloseSessionRequest.ProtoReflect.Descriptor instead.
+func (*CloseSessionRequest) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{97}
+}
+
+func (x *CloseSessionRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+type CloseSessionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CloseSessionResponse) Reset() {
+	*x = CloseSessionResponse{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[98]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CloseSessionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CloseSessionResponse) ProtoMessage() {}
+
+func (x *CloseSessionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[98]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CloseSessionResponse.ProtoReflect.Descriptor instead.
+func (*CloseSessionResponse) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{98}
+}
+
+// Exactly one event per message, selected by the oneof. The stream ends with
+// completed when the turn settled; a failed turn ends the stream with a status
+// error instead.
+type QueryResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Event:
+	//
+	//	*QueryResponse_SessionStarted
+	//	*QueryResponse_Message
+	//	*QueryResponse_Thought
+	//	*QueryResponse_ToolCall
+	//	*QueryResponse_Plan
+	//	*QueryResponse_Usage
+	//	*QueryResponse_Completed
+	Event         isQueryResponse_Event `protobuf_oneof:"event"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QueryResponse) Reset() {
+	*x = QueryResponse{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[99]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QueryResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QueryResponse) ProtoMessage() {}
+
+func (x *QueryResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[99]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QueryResponse.ProtoReflect.Descriptor instead.
+func (*QueryResponse) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{99}
+}
+
+func (x *QueryResponse) GetEvent() isQueryResponse_Event {
+	if x != nil {
+		return x.Event
+	}
+	return nil
+}
+
+func (x *QueryResponse) GetSessionStarted() *AgentSessionStarted {
+	if x != nil {
+		if x, ok := x.Event.(*QueryResponse_SessionStarted); ok {
+			return x.SessionStarted
+		}
+	}
+	return nil
+}
+
+func (x *QueryResponse) GetMessage() *AgentMessage {
+	if x != nil {
+		if x, ok := x.Event.(*QueryResponse_Message); ok {
+			return x.Message
+		}
+	}
+	return nil
+}
+
+func (x *QueryResponse) GetThought() *AgentThought {
+	if x != nil {
+		if x, ok := x.Event.(*QueryResponse_Thought); ok {
+			return x.Thought
+		}
+	}
+	return nil
+}
+
+func (x *QueryResponse) GetToolCall() *AgentToolCall {
+	if x != nil {
+		if x, ok := x.Event.(*QueryResponse_ToolCall); ok {
+			return x.ToolCall
+		}
+	}
+	return nil
+}
+
+func (x *QueryResponse) GetPlan() *AgentPlan {
+	if x != nil {
+		if x, ok := x.Event.(*QueryResponse_Plan); ok {
+			return x.Plan
+		}
+	}
+	return nil
+}
+
+func (x *QueryResponse) GetUsage() *AgentUsage {
+	if x != nil {
+		if x, ok := x.Event.(*QueryResponse_Usage); ok {
+			return x.Usage
+		}
+	}
+	return nil
+}
+
+func (x *QueryResponse) GetCompleted() *AgentTurnCompleted {
+	if x != nil {
+		if x, ok := x.Event.(*QueryResponse_Completed); ok {
+			return x.Completed
+		}
+	}
+	return nil
+}
+
+type isQueryResponse_Event interface {
+	isQueryResponse_Event()
+}
+
+type QueryResponse_SessionStarted struct {
+	SessionStarted *AgentSessionStarted `protobuf:"bytes,1,opt,name=session_started,json=sessionStarted,proto3,oneof"`
+}
+
+type QueryResponse_Message struct {
+	Message *AgentMessage `protobuf:"bytes,2,opt,name=message,proto3,oneof"`
+}
+
+type QueryResponse_Thought struct {
+	Thought *AgentThought `protobuf:"bytes,3,opt,name=thought,proto3,oneof"`
+}
+
+type QueryResponse_ToolCall struct {
+	ToolCall *AgentToolCall `protobuf:"bytes,4,opt,name=tool_call,json=toolCall,proto3,oneof"`
+}
+
+type QueryResponse_Plan struct {
+	Plan *AgentPlan `protobuf:"bytes,5,opt,name=plan,proto3,oneof"`
+}
+
+type QueryResponse_Usage struct {
+	Usage *AgentUsage `protobuf:"bytes,6,opt,name=usage,proto3,oneof"`
+}
+
+type QueryResponse_Completed struct {
+	Completed *AgentTurnCompleted `protobuf:"bytes,7,opt,name=completed,proto3,oneof"`
+}
+
+func (*QueryResponse_SessionStarted) isQueryResponse_Event() {}
+
+func (*QueryResponse_Message) isQueryResponse_Event() {}
+
+func (*QueryResponse_Thought) isQueryResponse_Event() {}
+
+func (*QueryResponse_ToolCall) isQueryResponse_Event() {}
+
+func (*QueryResponse_Plan) isQueryResponse_Event() {}
+
+func (*QueryResponse_Usage) isQueryResponse_Event() {}
+
+func (*QueryResponse_Completed) isQueryResponse_Event() {}
+
+// First frame of a turn that created a session; carries the id to reuse for
+// follow-up turns.
+type AgentSessionStarted struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AgentSessionStarted) Reset() {
+	*x = AgentSessionStarted{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[100]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AgentSessionStarted) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AgentSessionStarted) ProtoMessage() {}
+
+func (x *AgentSessionStarted) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[100]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AgentSessionStarted.ProtoReflect.Descriptor instead.
+func (*AgentSessionStarted) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{100}
+}
+
+func (x *AgentSessionStarted) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+type AgentMessage struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Text          string                 `protobuf:"bytes,1,opt,name=text,proto3" json:"text,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AgentMessage) Reset() {
+	*x = AgentMessage{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[101]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AgentMessage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AgentMessage) ProtoMessage() {}
+
+func (x *AgentMessage) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[101]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AgentMessage.ProtoReflect.Descriptor instead.
+func (*AgentMessage) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{101}
+}
+
+func (x *AgentMessage) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
+type AgentThought struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Text          string                 `protobuf:"bytes,1,opt,name=text,proto3" json:"text,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AgentThought) Reset() {
+	*x = AgentThought{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[102]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AgentThought) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AgentThought) ProtoMessage() {}
+
+func (x *AgentThought) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[102]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AgentThought.ProtoReflect.Descriptor instead.
+func (*AgentThought) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{102}
+}
+
+func (x *AgentThought) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
+// A tool call creation (update false) or a later update of the same call
+// (update true) identified by tool_call_id.
+type AgentToolCall struct {
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	ToolCallId string                 `protobuf:"bytes,1,opt,name=tool_call_id,json=toolCallId,proto3" json:"tool_call_id,omitempty"`
+	Title      string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	// ACP tool kind: read, edit, delete, move, search, execute, think, fetch, other.
+	Kind string `protobuf:"bytes,3,opt,name=kind,proto3" json:"kind,omitempty"`
+	// ACP tool call status: pending, in_progress, completed, failed.
+	Status        string                   `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
+	Update        bool                     `protobuf:"varint,5,opt,name=update,proto3" json:"update,omitempty"`
+	Locations     []*AgentToolCallLocation `protobuf:"bytes,6,rep,name=locations,proto3" json:"locations,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AgentToolCall) Reset() {
+	*x = AgentToolCall{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[103]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AgentToolCall) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AgentToolCall) ProtoMessage() {}
+
+func (x *AgentToolCall) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[103]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AgentToolCall.ProtoReflect.Descriptor instead.
+func (*AgentToolCall) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{103}
+}
+
+func (x *AgentToolCall) GetToolCallId() string {
+	if x != nil {
+		return x.ToolCallId
+	}
+	return ""
+}
+
+func (x *AgentToolCall) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *AgentToolCall) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *AgentToolCall) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *AgentToolCall) GetUpdate() bool {
+	if x != nil {
+		return x.Update
+	}
+	return false
+}
+
+func (x *AgentToolCall) GetLocations() []*AgentToolCallLocation {
+	if x != nil {
+		return x.Locations
+	}
+	return nil
+}
+
+type AgentToolCallLocation struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	Line          *int32                 `protobuf:"varint,2,opt,name=line,proto3,oneof" json:"line,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AgentToolCallLocation) Reset() {
+	*x = AgentToolCallLocation{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[104]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AgentToolCallLocation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AgentToolCallLocation) ProtoMessage() {}
+
+func (x *AgentToolCallLocation) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[104]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AgentToolCallLocation.ProtoReflect.Descriptor instead.
+func (*AgentToolCallLocation) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{104}
+}
+
+func (x *AgentToolCallLocation) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *AgentToolCallLocation) GetLine() int32 {
+	if x != nil && x.Line != nil {
+		return *x.Line
+	}
+	return 0
+}
+
+// Full-plan replacement: the agent resends the complete entry list on every
+// update and the client swaps its copy wholesale.
+type AgentPlan struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Entries       []*AgentPlanEntry      `protobuf:"bytes,1,rep,name=entries,proto3" json:"entries,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AgentPlan) Reset() {
+	*x = AgentPlan{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[105]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AgentPlan) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AgentPlan) ProtoMessage() {}
+
+func (x *AgentPlan) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[105]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AgentPlan.ProtoReflect.Descriptor instead.
+func (*AgentPlan) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{105}
+}
+
+func (x *AgentPlan) GetEntries() []*AgentPlanEntry {
+	if x != nil {
+		return x.Entries
+	}
+	return nil
+}
+
+type AgentPlanEntry struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Content       string                 `protobuf:"bytes,1,opt,name=content,proto3" json:"content,omitempty"`
+	Priority      string                 `protobuf:"bytes,2,opt,name=priority,proto3" json:"priority,omitempty"`
+	Status        string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AgentPlanEntry) Reset() {
+	*x = AgentPlanEntry{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[106]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AgentPlanEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AgentPlanEntry) ProtoMessage() {}
+
+func (x *AgentPlanEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[106]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AgentPlanEntry.ProtoReflect.Descriptor instead.
+func (*AgentPlanEntry) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{106}
+}
+
+func (x *AgentPlanEntry) GetContent() string {
+	if x != nil {
+		return x.Content
+	}
+	return ""
+}
+
+func (x *AgentPlanEntry) GetPriority() string {
+	if x != nil {
+		return x.Priority
+	}
+	return ""
+}
+
+func (x *AgentPlanEntry) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+type AgentUsage struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ContextSize   int64                  `protobuf:"varint,1,opt,name=context_size,json=contextSize,proto3" json:"context_size,omitempty"`
+	ContextUsed   int64                  `protobuf:"varint,2,opt,name=context_used,json=contextUsed,proto3" json:"context_used,omitempty"`
+	Cost          *AgentCost             `protobuf:"bytes,3,opt,name=cost,proto3,oneof" json:"cost,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AgentUsage) Reset() {
+	*x = AgentUsage{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[107]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AgentUsage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AgentUsage) ProtoMessage() {}
+
+func (x *AgentUsage) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[107]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AgentUsage.ProtoReflect.Descriptor instead.
+func (*AgentUsage) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{107}
+}
+
+func (x *AgentUsage) GetContextSize() int64 {
+	if x != nil {
+		return x.ContextSize
+	}
+	return 0
+}
+
+func (x *AgentUsage) GetContextUsed() int64 {
+	if x != nil {
+		return x.ContextUsed
+	}
+	return 0
+}
+
+func (x *AgentUsage) GetCost() *AgentCost {
+	if x != nil {
+		return x.Cost
+	}
+	return nil
+}
+
+type AgentCost struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Amount        float64                `protobuf:"fixed64,1,opt,name=amount,proto3" json:"amount,omitempty"`
+	Currency      string                 `protobuf:"bytes,2,opt,name=currency,proto3" json:"currency,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AgentCost) Reset() {
+	*x = AgentCost{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[108]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AgentCost) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AgentCost) ProtoMessage() {}
+
+func (x *AgentCost) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[108]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AgentCost.ProtoReflect.Descriptor instead.
+func (*AgentCost) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{108}
+}
+
+func (x *AgentCost) GetAmount() float64 {
+	if x != nil {
+		return x.Amount
+	}
+	return 0
+}
+
+func (x *AgentCost) GetCurrency() string {
+	if x != nil {
+		return x.Currency
+	}
+	return ""
+}
+
+// Last frame of a settled turn. stop_reason carries the ACP value verbatim:
+// end_turn, max_tokens, max_turn_requests, refusal, cancelled.
+type AgentTurnCompleted struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	StopReason    string                 `protobuf:"bytes,1,opt,name=stop_reason,json=stopReason,proto3" json:"stop_reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AgentTurnCompleted) Reset() {
+	*x = AgentTurnCompleted{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[109]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AgentTurnCompleted) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AgentTurnCompleted) ProtoMessage() {}
+
+func (x *AgentTurnCompleted) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[109]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AgentTurnCompleted.ProtoReflect.Descriptor instead.
+func (*AgentTurnCompleted) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{109}
+}
+
+func (x *AgentTurnCompleted) GetStopReason() string {
+	if x != nil {
+		return x.StopReason
+	}
+	return ""
+}
+
+// Agent bridge status reported through GetInfo. started is false until the
+// first query lazily spawns the child process.
+type AgentInfo struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Enabled        bool                   `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	Started        bool                   `protobuf:"varint,2,opt,name=started,proto3" json:"started,omitempty"`
+	ProcessId      string                 `protobuf:"bytes,3,opt,name=process_id,json=processId,proto3" json:"process_id,omitempty"`
+	Generation     uint64                 `protobuf:"varint,4,opt,name=generation,proto3" json:"generation,omitempty"`
+	CloseSupported bool                   `protobuf:"varint,5,opt,name=close_supported,json=closeSupported,proto3" json:"close_supported,omitempty"`
+	Sessions       uint32                 `protobuf:"varint,6,opt,name=sessions,proto3" json:"sessions,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *AgentInfo) Reset() {
+	*x = AgentInfo{}
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[110]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AgentInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AgentInfo) ProtoMessage() {}
+
+func (x *AgentInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_remote_code_v1_remote_code_proto_msgTypes[110]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AgentInfo.ProtoReflect.Descriptor instead.
+func (*AgentInfo) Descriptor() ([]byte, []int) {
+	return file_remote_code_v1_remote_code_proto_rawDescGZIP(), []int{110}
+}
+
+func (x *AgentInfo) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *AgentInfo) GetStarted() bool {
+	if x != nil {
+		return x.Started
+	}
+	return false
+}
+
+func (x *AgentInfo) GetProcessId() string {
+	if x != nil {
+		return x.ProcessId
+	}
+	return ""
+}
+
+func (x *AgentInfo) GetGeneration() uint64 {
+	if x != nil {
+		return x.Generation
+	}
+	return 0
+}
+
+func (x *AgentInfo) GetCloseSupported() bool {
+	if x != nil {
+		return x.CloseSupported
+	}
+	return false
+}
+
+func (x *AgentInfo) GetSessions() uint32 {
+	if x != nil {
+		return x.Sessions
+	}
+	return 0
+}
+
 var File_remote_code_v1_remote_code_proto protoreflect.FileDescriptor
 
 const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	"\n" +
 	" remote/code/v1/remote_code.proto\x12\x0eremote.code.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x17google/rpc/status.proto\"\x10\n" +
-	"\x0eGetInfoRequest\"\xb8\x03\n" +
+	"\x0eGetInfoRequest\"\xe9\x03\n" +
 	"\x0fGetInfoResponse\x12-\n" +
 	"\x12controller_version\x18\x01 \x01(\tR\x11controllerVersion\x12\x1f\n" +
 	"\vapi_version\x18\x02 \x01(\tR\n" +
@@ -6921,7 +7862,9 @@ const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	"\rmax_processes\x18\x06 \x01(\rR\fmaxProcesses\x124\n" +
 	"\x16process_template_count\x18\a \x01(\rR\x14processTemplateCount\x12O\n" +
 	"\x0efile_transfers\x18\b \x01(\v2(.remote.code.v1.FileTransferCapabilitiesR\rfileTransfers\x12R\n" +
-	"\x0fcontroller_logs\x18\t \x01(\v2).remote.code.v1.ControllerLogCapabilitiesR\x0econtrollerLogsJ\x04\b\x05\x10\x06\"\xab\x01\n" +
+	"\x0fcontroller_logs\x18\t \x01(\v2).remote.code.v1.ControllerLogCapabilitiesR\x0econtrollerLogs\x12/\n" +
+	"\x05agent\x18\n" +
+	" \x01(\v2\x19.remote.code.v1.AgentInfoR\x05agentJ\x04\b\x05\x10\x06\"\xab\x01\n" +
 	"\x19ControllerLogCapabilities\x12\x1c\n" +
 	"\tavailable\x18\x01 \x01(\bR\tavailable\x12%\n" +
 	"\x0eformat_version\x18\x02 \x01(\rR\rformatVersion\x12$\n" +
@@ -7339,7 +8282,74 @@ const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	"\x06status\x18\x03 \x01(\v2\x12.google.rpc.StatusR\x06status\"\xaf\x01\n" +
 	"\x1cBatchDeleteProcessesResponse\x12G\n" +
 	"\tselectors\x18\x01 \x03(\v2).remote.code.v1.BatchDeleteSelectorResultR\tselectors\x12F\n" +
-	"\tprocesses\x18\x02 \x03(\v2(.remote.code.v1.BatchDeleteProcessResultR\tprocesses*\xb8\x01\n" +
+	"\tprocesses\x18\x02 \x03(\v2(.remote.code.v1.BatchDeleteProcessResultR\tprocesses\"\xa1\x01\n" +
+	"\fQueryRequest\x12\x16\n" +
+	"\x06prompt\x18\x01 \x01(\tR\x06prompt\x12\"\n" +
+	"\n" +
+	"session_id\x18\x02 \x01(\tH\x00R\tsessionId\x88\x01\x01\x120\n" +
+	"\x11working_directory\x18\x03 \x01(\tH\x01R\x10workingDirectory\x88\x01\x01B\r\n" +
+	"\v_session_idB\x14\n" +
+	"\x12_working_directory\"4\n" +
+	"\x13CloseSessionRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\"\x16\n" +
+	"\x14CloseSessionResponse\"\xc3\x03\n" +
+	"\rQueryResponse\x12N\n" +
+	"\x0fsession_started\x18\x01 \x01(\v2#.remote.code.v1.AgentSessionStartedH\x00R\x0esessionStarted\x128\n" +
+	"\amessage\x18\x02 \x01(\v2\x1c.remote.code.v1.AgentMessageH\x00R\amessage\x128\n" +
+	"\athought\x18\x03 \x01(\v2\x1c.remote.code.v1.AgentThoughtH\x00R\athought\x12<\n" +
+	"\ttool_call\x18\x04 \x01(\v2\x1d.remote.code.v1.AgentToolCallH\x00R\btoolCall\x12/\n" +
+	"\x04plan\x18\x05 \x01(\v2\x19.remote.code.v1.AgentPlanH\x00R\x04plan\x122\n" +
+	"\x05usage\x18\x06 \x01(\v2\x1a.remote.code.v1.AgentUsageH\x00R\x05usage\x12B\n" +
+	"\tcompleted\x18\a \x01(\v2\".remote.code.v1.AgentTurnCompletedH\x00R\tcompletedB\a\n" +
+	"\x05event\"4\n" +
+	"\x13AgentSessionStarted\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\"\"\n" +
+	"\fAgentMessage\x12\x12\n" +
+	"\x04text\x18\x01 \x01(\tR\x04text\"\"\n" +
+	"\fAgentThought\x12\x12\n" +
+	"\x04text\x18\x01 \x01(\tR\x04text\"\xd0\x01\n" +
+	"\rAgentToolCall\x12 \n" +
+	"\ftool_call_id\x18\x01 \x01(\tR\n" +
+	"toolCallId\x12\x14\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\x12\x12\n" +
+	"\x04kind\x18\x03 \x01(\tR\x04kind\x12\x16\n" +
+	"\x06status\x18\x04 \x01(\tR\x06status\x12\x16\n" +
+	"\x06update\x18\x05 \x01(\bR\x06update\x12C\n" +
+	"\tlocations\x18\x06 \x03(\v2%.remote.code.v1.AgentToolCallLocationR\tlocations\"M\n" +
+	"\x15AgentToolCallLocation\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x17\n" +
+	"\x04line\x18\x02 \x01(\x05H\x00R\x04line\x88\x01\x01B\a\n" +
+	"\x05_line\"E\n" +
+	"\tAgentPlan\x128\n" +
+	"\aentries\x18\x01 \x03(\v2\x1e.remote.code.v1.AgentPlanEntryR\aentries\"^\n" +
+	"\x0eAgentPlanEntry\x12\x18\n" +
+	"\acontent\x18\x01 \x01(\tR\acontent\x12\x1a\n" +
+	"\bpriority\x18\x02 \x01(\tR\bpriority\x12\x16\n" +
+	"\x06status\x18\x03 \x01(\tR\x06status\"\x8f\x01\n" +
+	"\n" +
+	"AgentUsage\x12!\n" +
+	"\fcontext_size\x18\x01 \x01(\x03R\vcontextSize\x12!\n" +
+	"\fcontext_used\x18\x02 \x01(\x03R\vcontextUsed\x122\n" +
+	"\x04cost\x18\x03 \x01(\v2\x19.remote.code.v1.AgentCostH\x00R\x04cost\x88\x01\x01B\a\n" +
+	"\x05_cost\"?\n" +
+	"\tAgentCost\x12\x16\n" +
+	"\x06amount\x18\x01 \x01(\x01R\x06amount\x12\x1a\n" +
+	"\bcurrency\x18\x02 \x01(\tR\bcurrency\"5\n" +
+	"\x12AgentTurnCompleted\x12\x1f\n" +
+	"\vstop_reason\x18\x01 \x01(\tR\n" +
+	"stopReason\"\xc3\x01\n" +
+	"\tAgentInfo\x12\x18\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x18\n" +
+	"\astarted\x18\x02 \x01(\bR\astarted\x12\x1d\n" +
+	"\n" +
+	"process_id\x18\x03 \x01(\tR\tprocessId\x12\x1e\n" +
+	"\n" +
+	"generation\x18\x04 \x01(\x04R\n" +
+	"generation\x12'\n" +
+	"\x0fclose_supported\x18\x05 \x01(\bR\x0ecloseSupported\x12\x1a\n" +
+	"\bsessions\x18\x06 \x01(\rR\bsessions*\xb8\x01\n" +
 	"\x12ControllerLogLevel\x12$\n" +
 	" CONTROLLER_LOG_LEVEL_UNSPECIFIED\x10\x00\x12\x1e\n" +
 	"\x1aCONTROLLER_LOG_LEVEL_DEBUG\x10\x01\x12\x1d\n" +
@@ -7445,7 +8455,10 @@ const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	"\rDeleteProcess\x12$.remote.code.v1.DeleteProcessRequest\x1a%.remote.code.v1.DeleteProcessResponse\x12q\n" +
 	"\x14BatchDeleteProcesses\x12+.remote.code.v1.BatchDeleteProcessesRequest\x1a,.remote.code.v1.BatchDeleteProcessesResponse\x12m\n" +
 	"\x12ObserveProcessLogs\x12).remote.code.v1.ObserveProcessLogsRequest\x1a*.remote.code.v1.ObserveProcessLogsResponse0\x01\x12o\n" +
-	"\x12StreamProcessInput\x12).remote.code.v1.StreamProcessInputRequest\x1a*.remote.code.v1.StreamProcessInputResponse(\x010\x01B?Z=github.com/qq1426155093/remote-code/api/remote/code/v1;codev1b\x06proto3"
+	"\x12StreamProcessInput\x12).remote.code.v1.StreamProcessInputRequest\x1a*.remote.code.v1.StreamProcessInputResponse(\x010\x012\xb1\x01\n" +
+	"\fAgentService\x12F\n" +
+	"\x05Query\x12\x1c.remote.code.v1.QueryRequest\x1a\x1d.remote.code.v1.QueryResponse0\x01\x12Y\n" +
+	"\fCloseSession\x12#.remote.code.v1.CloseSessionRequest\x1a$.remote.code.v1.CloseSessionResponseB?Z=github.com/qq1426155093/remote-code/api/remote/code/v1;codev1b\x06proto3"
 
 var (
 	file_remote_code_v1_remote_code_proto_rawDescOnce sync.Once
@@ -7460,7 +8473,7 @@ func file_remote_code_v1_remote_code_proto_rawDescGZIP() []byte {
 }
 
 var file_remote_code_v1_remote_code_proto_enumTypes = make([]protoimpl.EnumInfo, 13)
-var file_remote_code_v1_remote_code_proto_msgTypes = make([]protoimpl.MessageInfo, 98)
+var file_remote_code_v1_remote_code_proto_msgTypes = make([]protoimpl.MessageInfo, 113)
 var file_remote_code_v1_remote_code_proto_goTypes = []any{
 	(ControllerLogLevel)(0),                  // 0: remote.code.v1.ControllerLogLevel
 	(ControllerLogEndReason)(0),              // 1: remote.code.v1.ControllerLogEndReason
@@ -7571,174 +8584,204 @@ var file_remote_code_v1_remote_code_proto_goTypes = []any{
 	(*ProcessDeleteTarget)(nil),              // 106: remote.code.v1.ProcessDeleteTarget
 	(*BatchDeleteProcessResult)(nil),         // 107: remote.code.v1.BatchDeleteProcessResult
 	(*BatchDeleteProcessesResponse)(nil),     // 108: remote.code.v1.BatchDeleteProcessesResponse
-	nil,                                      // 109: remote.code.v1.ControllerLogEntry.FieldsEntry
-	nil,                                      // 110: remote.code.v1.StartProcessRequest.EnvironmentEntry
-	(*timestamppb.Timestamp)(nil),            // 111: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),                  // 112: google.protobuf.Struct
-	(*status.Status)(nil),                    // 113: google.rpc.Status
+	(*QueryRequest)(nil),                     // 109: remote.code.v1.QueryRequest
+	(*CloseSessionRequest)(nil),              // 110: remote.code.v1.CloseSessionRequest
+	(*CloseSessionResponse)(nil),             // 111: remote.code.v1.CloseSessionResponse
+	(*QueryResponse)(nil),                    // 112: remote.code.v1.QueryResponse
+	(*AgentSessionStarted)(nil),              // 113: remote.code.v1.AgentSessionStarted
+	(*AgentMessage)(nil),                     // 114: remote.code.v1.AgentMessage
+	(*AgentThought)(nil),                     // 115: remote.code.v1.AgentThought
+	(*AgentToolCall)(nil),                    // 116: remote.code.v1.AgentToolCall
+	(*AgentToolCallLocation)(nil),            // 117: remote.code.v1.AgentToolCallLocation
+	(*AgentPlan)(nil),                        // 118: remote.code.v1.AgentPlan
+	(*AgentPlanEntry)(nil),                   // 119: remote.code.v1.AgentPlanEntry
+	(*AgentUsage)(nil),                       // 120: remote.code.v1.AgentUsage
+	(*AgentCost)(nil),                        // 121: remote.code.v1.AgentCost
+	(*AgentTurnCompleted)(nil),               // 122: remote.code.v1.AgentTurnCompleted
+	(*AgentInfo)(nil),                        // 123: remote.code.v1.AgentInfo
+	nil,                                      // 124: remote.code.v1.ControllerLogEntry.FieldsEntry
+	nil,                                      // 125: remote.code.v1.StartProcessRequest.EnvironmentEntry
+	(*timestamppb.Timestamp)(nil),            // 126: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),                  // 127: google.protobuf.Struct
+	(*status.Status)(nil),                    // 128: google.rpc.Status
 }
 var file_remote_code_v1_remote_code_proto_depIdxs = []int32{
 	22,  // 0: remote.code.v1.GetInfoResponse.file_transfers:type_name -> remote.code.v1.FileTransferCapabilities
 	15,  // 1: remote.code.v1.GetInfoResponse.controller_logs:type_name -> remote.code.v1.ControllerLogCapabilities
-	111, // 2: remote.code.v1.ControllerLogEntry.timestamp:type_name -> google.protobuf.Timestamp
-	0,   // 3: remote.code.v1.ControllerLogEntry.level:type_name -> remote.code.v1.ControllerLogLevel
-	109, // 4: remote.code.v1.ControllerLogEntry.fields:type_name -> remote.code.v1.ControllerLogEntry.FieldsEntry
-	1,   // 5: remote.code.v1.ControllerLogEnd.reason:type_name -> remote.code.v1.ControllerLogEndReason
-	17,  // 6: remote.code.v1.ObserveControllerLogsResponse.header:type_name -> remote.code.v1.ControllerLogHeader
-	18,  // 7: remote.code.v1.ObserveControllerLogsResponse.entry:type_name -> remote.code.v1.ControllerLogEntry
-	19,  // 8: remote.code.v1.ObserveControllerLogsResponse.checkpoint:type_name -> remote.code.v1.ControllerLogCheckpoint
-	20,  // 9: remote.code.v1.ObserveControllerLogsResponse.end:type_name -> remote.code.v1.ControllerLogEnd
-	2,   // 10: remote.code.v1.FileInfo.type:type_name -> remote.code.v1.FileType
-	111, // 11: remote.code.v1.FileInfo.modified_at:type_name -> google.protobuf.Timestamp
-	23,  // 12: remote.code.v1.StatResponse.file:type_name -> remote.code.v1.FileInfo
-	23,  // 13: remote.code.v1.ListResponse.files:type_name -> remote.code.v1.FileInfo
-	23,  // 14: remote.code.v1.TreeNode.file:type_name -> remote.code.v1.FileInfo
-	28,  // 15: remote.code.v1.TreeNode.children:type_name -> remote.code.v1.TreeNode
-	28,  // 16: remote.code.v1.TreeResponse.root:type_name -> remote.code.v1.TreeNode
-	31,  // 17: remote.code.v1.UploadRequest.metadata:type_name -> remote.code.v1.UploadMetadata
-	23,  // 18: remote.code.v1.UploadResponse.file:type_name -> remote.code.v1.FileInfo
-	23,  // 19: remote.code.v1.DownloadMetadata.file:type_name -> remote.code.v1.FileInfo
-	35,  // 20: remote.code.v1.DownloadResponse.metadata:type_name -> remote.code.v1.DownloadMetadata
-	36,  // 21: remote.code.v1.DownloadResponse.summary:type_name -> remote.code.v1.DownloadSummary
-	3,   // 22: remote.code.v1.UploadSession.state:type_name -> remote.code.v1.UploadSessionState
-	111, // 23: remote.code.v1.UploadSession.expires_at:type_name -> google.protobuf.Timestamp
-	33,  // 24: remote.code.v1.UploadSession.result:type_name -> remote.code.v1.UploadResponse
-	39,  // 25: remote.code.v1.CreateUploadSessionResponse.session:type_name -> remote.code.v1.UploadSession
-	41,  // 26: remote.code.v1.TransferUploadRequest.open:type_name -> remote.code.v1.TransferUploadOpen
-	42,  // 27: remote.code.v1.TransferUploadRequest.chunk:type_name -> remote.code.v1.TransferUploadChunk
-	43,  // 28: remote.code.v1.TransferUploadRequest.finish:type_name -> remote.code.v1.TransferUploadFinish
-	33,  // 29: remote.code.v1.TransferUploadComplete.result:type_name -> remote.code.v1.UploadResponse
-	45,  // 30: remote.code.v1.TransferUploadResponse.ready:type_name -> remote.code.v1.TransferUploadReady
-	46,  // 31: remote.code.v1.TransferUploadResponse.checkpoint:type_name -> remote.code.v1.TransferUploadCheckpoint
-	47,  // 32: remote.code.v1.TransferUploadResponse.complete:type_name -> remote.code.v1.TransferUploadComplete
-	39,  // 33: remote.code.v1.GetUploadSessionResponse.session:type_name -> remote.code.v1.UploadSession
-	39,  // 34: remote.code.v1.AbortUploadSessionResponse.session:type_name -> remote.code.v1.UploadSession
-	23,  // 35: remote.code.v1.DownloadRangeMetadata.file:type_name -> remote.code.v1.FileInfo
-	54,  // 36: remote.code.v1.DownloadRangeResponse.metadata:type_name -> remote.code.v1.DownloadRangeMetadata
-	55,  // 37: remote.code.v1.DownloadRangeResponse.chunk:type_name -> remote.code.v1.DownloadRangeChunk
-	56,  // 38: remote.code.v1.DownloadRangeResponse.summary:type_name -> remote.code.v1.DownloadRangeSummary
-	4,   // 39: remote.code.v1.FileTransferError.reason:type_name -> remote.code.v1.FileTransferErrorReason
-	23,  // 40: remote.code.v1.MoveResponse.file:type_name -> remote.code.v1.FileInfo
-	23,  // 41: remote.code.v1.ChmodResponse.file:type_name -> remote.code.v1.FileInfo
-	23,  // 42: remote.code.v1.MkdirResponse.file:type_name -> remote.code.v1.FileInfo
-	5,   // 43: remote.code.v1.ProcessInfo.io_mode:type_name -> remote.code.v1.ProcessIOMode
-	6,   // 44: remote.code.v1.ProcessInfo.state:type_name -> remote.code.v1.ProcessState
-	111, // 45: remote.code.v1.ProcessInfo.started_at:type_name -> google.protobuf.Timestamp
-	111, // 46: remote.code.v1.ProcessInfo.exited_at:type_name -> google.protobuf.Timestamp
-	111, // 47: remote.code.v1.ProcessInfo.created_at:type_name -> google.protobuf.Timestamp
-	10,  // 48: remote.code.v1.ProcessInfo.input_mode:type_name -> remote.code.v1.ProcessInputMode
-	11,  // 49: remote.code.v1.ProcessInfo.input_state:type_name -> remote.code.v1.ProcessInputState
-	5,   // 50: remote.code.v1.StartProcessRequest.io_mode:type_name -> remote.code.v1.ProcessIOMode
-	110, // 51: remote.code.v1.StartProcessRequest.environment:type_name -> remote.code.v1.StartProcessRequest.EnvironmentEntry
-	10,  // 52: remote.code.v1.StartProcessRequest.input_mode:type_name -> remote.code.v1.ProcessInputMode
-	91,  // 53: remote.code.v1.StartProcessRequest.terminal_size:type_name -> remote.code.v1.TerminalSize
-	67,  // 54: remote.code.v1.StartProcessResponse.process:type_name -> remote.code.v1.ProcessInfo
-	5,   // 55: remote.code.v1.ProcessTemplateSummary.io_mode:type_name -> remote.code.v1.ProcessIOMode
-	10,  // 56: remote.code.v1.ProcessTemplateSummary.input_mode:type_name -> remote.code.v1.ProcessInputMode
-	71,  // 57: remote.code.v1.ProcessTemplate.summary:type_name -> remote.code.v1.ProcessTemplateSummary
-	112, // 58: remote.code.v1.ProcessTemplate.parameters_schema:type_name -> google.protobuf.Struct
-	71,  // 59: remote.code.v1.ListProcessTemplatesResponse.templates:type_name -> remote.code.v1.ProcessTemplateSummary
-	72,  // 60: remote.code.v1.GetProcessTemplateResponse.template:type_name -> remote.code.v1.ProcessTemplate
-	112, // 61: remote.code.v1.StartProcessFromTemplateRequest.parameters:type_name -> google.protobuf.Struct
-	91,  // 62: remote.code.v1.StartProcessFromTemplateRequest.terminal_size:type_name -> remote.code.v1.TerminalSize
-	67,  // 63: remote.code.v1.StartProcessFromTemplateResponse.process:type_name -> remote.code.v1.ProcessInfo
-	67,  // 64: remote.code.v1.ListProcessesResponse.processes:type_name -> remote.code.v1.ProcessInfo
-	68,  // 65: remote.code.v1.SignalProcessRequest.process:type_name -> remote.code.v1.ProcessReference
-	7,   // 66: remote.code.v1.SignalProcessRequest.signal:type_name -> remote.code.v1.ProcessSignal
-	67,  // 67: remote.code.v1.SignalProcessResponse.process:type_name -> remote.code.v1.ProcessInfo
-	8,   // 68: remote.code.v1.ObserveProcessLogsRequest.streams:type_name -> remote.code.v1.ProcessLogStream
-	5,   // 69: remote.code.v1.ProcessLogHeader.io_mode:type_name -> remote.code.v1.ProcessIOMode
-	8,   // 70: remote.code.v1.ProcessLogHeader.streams:type_name -> remote.code.v1.ProcessLogStream
-	111, // 71: remote.code.v1.ProcessLogChunk.timestamp:type_name -> google.protobuf.Timestamp
-	8,   // 72: remote.code.v1.ProcessLogChunk.stream:type_name -> remote.code.v1.ProcessLogStream
-	9,   // 73: remote.code.v1.ProcessLogEnd.reason:type_name -> remote.code.v1.ProcessLogEndReason
-	6,   // 74: remote.code.v1.ProcessLogEnd.state:type_name -> remote.code.v1.ProcessState
-	84,  // 75: remote.code.v1.ObserveProcessLogsResponse.header:type_name -> remote.code.v1.ProcessLogHeader
-	85,  // 76: remote.code.v1.ObserveProcessLogsResponse.chunk:type_name -> remote.code.v1.ProcessLogChunk
-	86,  // 77: remote.code.v1.ObserveProcessLogsResponse.checkpoint:type_name -> remote.code.v1.ProcessLogCheckpoint
-	87,  // 78: remote.code.v1.ObserveProcessLogsResponse.end:type_name -> remote.code.v1.ProcessLogEnd
-	68,  // 79: remote.code.v1.ProcessInputOpen.process:type_name -> remote.code.v1.ProcessReference
-	91,  // 80: remote.code.v1.ProcessTerminalResize.size:type_name -> remote.code.v1.TerminalSize
-	89,  // 81: remote.code.v1.StreamProcessInputRequest.open:type_name -> remote.code.v1.ProcessInputOpen
-	90,  // 82: remote.code.v1.StreamProcessInputRequest.data:type_name -> remote.code.v1.ProcessInputData
-	93,  // 83: remote.code.v1.StreamProcessInputRequest.close_input:type_name -> remote.code.v1.ProcessInputClose
-	94,  // 84: remote.code.v1.StreamProcessInputRequest.detach:type_name -> remote.code.v1.ProcessInputDetach
-	92,  // 85: remote.code.v1.StreamProcessInputRequest.resize:type_name -> remote.code.v1.ProcessTerminalResize
-	67,  // 86: remote.code.v1.ProcessInputOpened.process:type_name -> remote.code.v1.ProcessInfo
-	91,  // 87: remote.code.v1.ProcessTerminalResizeAck.size:type_name -> remote.code.v1.TerminalSize
-	12,  // 88: remote.code.v1.ProcessInputEnd.reason:type_name -> remote.code.v1.ProcessInputEndReason
-	67,  // 89: remote.code.v1.ProcessInputEnd.process:type_name -> remote.code.v1.ProcessInfo
-	96,  // 90: remote.code.v1.StreamProcessInputResponse.opened:type_name -> remote.code.v1.ProcessInputOpened
-	97,  // 91: remote.code.v1.StreamProcessInputResponse.ack:type_name -> remote.code.v1.ProcessInputAck
-	99,  // 92: remote.code.v1.StreamProcessInputResponse.end:type_name -> remote.code.v1.ProcessInputEnd
-	98,  // 93: remote.code.v1.StreamProcessInputResponse.resize_ack:type_name -> remote.code.v1.ProcessTerminalResizeAck
-	68,  // 94: remote.code.v1.DeleteProcessRequest.process:type_name -> remote.code.v1.ProcessReference
-	67,  // 95: remote.code.v1.DeleteProcessResponse.process:type_name -> remote.code.v1.ProcessInfo
-	68,  // 96: remote.code.v1.ProcessSelector.reference:type_name -> remote.code.v1.ProcessReference
-	103, // 97: remote.code.v1.BatchDeleteProcessesRequest.selectors:type_name -> remote.code.v1.ProcessSelector
-	113, // 98: remote.code.v1.BatchDeleteSelectorResult.status:type_name -> google.rpc.Status
-	6,   // 99: remote.code.v1.ProcessDeleteTarget.state:type_name -> remote.code.v1.ProcessState
-	106, // 100: remote.code.v1.BatchDeleteProcessResult.process:type_name -> remote.code.v1.ProcessDeleteTarget
-	113, // 101: remote.code.v1.BatchDeleteProcessResult.status:type_name -> google.rpc.Status
-	105, // 102: remote.code.v1.BatchDeleteProcessesResponse.selectors:type_name -> remote.code.v1.BatchDeleteSelectorResult
-	107, // 103: remote.code.v1.BatchDeleteProcessesResponse.processes:type_name -> remote.code.v1.BatchDeleteProcessResult
-	13,  // 104: remote.code.v1.ControllerService.GetInfo:input_type -> remote.code.v1.GetInfoRequest
-	16,  // 105: remote.code.v1.ControllerService.ObserveControllerLogs:input_type -> remote.code.v1.ObserveControllerLogsRequest
-	24,  // 106: remote.code.v1.FileService.Stat:input_type -> remote.code.v1.StatRequest
-	26,  // 107: remote.code.v1.FileService.List:input_type -> remote.code.v1.ListRequest
-	29,  // 108: remote.code.v1.FileService.Tree:input_type -> remote.code.v1.TreeRequest
-	32,  // 109: remote.code.v1.FileService.Upload:input_type -> remote.code.v1.UploadRequest
-	34,  // 110: remote.code.v1.FileService.Download:input_type -> remote.code.v1.DownloadRequest
-	38,  // 111: remote.code.v1.FileService.CreateUploadSession:input_type -> remote.code.v1.CreateUploadSessionRequest
-	44,  // 112: remote.code.v1.FileService.TransferUpload:input_type -> remote.code.v1.TransferUploadRequest
-	49,  // 113: remote.code.v1.FileService.GetUploadSession:input_type -> remote.code.v1.GetUploadSessionRequest
-	51,  // 114: remote.code.v1.FileService.AbortUploadSession:input_type -> remote.code.v1.AbortUploadSessionRequest
-	53,  // 115: remote.code.v1.FileService.DownloadRange:input_type -> remote.code.v1.DownloadRangeRequest
-	59,  // 116: remote.code.v1.FileService.Remove:input_type -> remote.code.v1.RemoveRequest
-	61,  // 117: remote.code.v1.FileService.Move:input_type -> remote.code.v1.MoveRequest
-	63,  // 118: remote.code.v1.FileService.Chmod:input_type -> remote.code.v1.ChmodRequest
-	65,  // 119: remote.code.v1.FileService.Mkdir:input_type -> remote.code.v1.MkdirRequest
-	69,  // 120: remote.code.v1.ProcessService.StartProcess:input_type -> remote.code.v1.StartProcessRequest
-	73,  // 121: remote.code.v1.ProcessService.ListProcessTemplates:input_type -> remote.code.v1.ListProcessTemplatesRequest
-	75,  // 122: remote.code.v1.ProcessService.GetProcessTemplate:input_type -> remote.code.v1.GetProcessTemplateRequest
-	77,  // 123: remote.code.v1.ProcessService.StartProcessFromTemplate:input_type -> remote.code.v1.StartProcessFromTemplateRequest
-	79,  // 124: remote.code.v1.ProcessService.ListProcesses:input_type -> remote.code.v1.ListProcessesRequest
-	81,  // 125: remote.code.v1.ProcessService.SignalProcess:input_type -> remote.code.v1.SignalProcessRequest
-	101, // 126: remote.code.v1.ProcessService.DeleteProcess:input_type -> remote.code.v1.DeleteProcessRequest
-	104, // 127: remote.code.v1.ProcessService.BatchDeleteProcesses:input_type -> remote.code.v1.BatchDeleteProcessesRequest
-	83,  // 128: remote.code.v1.ProcessService.ObserveProcessLogs:input_type -> remote.code.v1.ObserveProcessLogsRequest
-	95,  // 129: remote.code.v1.ProcessService.StreamProcessInput:input_type -> remote.code.v1.StreamProcessInputRequest
-	14,  // 130: remote.code.v1.ControllerService.GetInfo:output_type -> remote.code.v1.GetInfoResponse
-	21,  // 131: remote.code.v1.ControllerService.ObserveControllerLogs:output_type -> remote.code.v1.ObserveControllerLogsResponse
-	25,  // 132: remote.code.v1.FileService.Stat:output_type -> remote.code.v1.StatResponse
-	27,  // 133: remote.code.v1.FileService.List:output_type -> remote.code.v1.ListResponse
-	30,  // 134: remote.code.v1.FileService.Tree:output_type -> remote.code.v1.TreeResponse
-	33,  // 135: remote.code.v1.FileService.Upload:output_type -> remote.code.v1.UploadResponse
-	37,  // 136: remote.code.v1.FileService.Download:output_type -> remote.code.v1.DownloadResponse
-	40,  // 137: remote.code.v1.FileService.CreateUploadSession:output_type -> remote.code.v1.CreateUploadSessionResponse
-	48,  // 138: remote.code.v1.FileService.TransferUpload:output_type -> remote.code.v1.TransferUploadResponse
-	50,  // 139: remote.code.v1.FileService.GetUploadSession:output_type -> remote.code.v1.GetUploadSessionResponse
-	52,  // 140: remote.code.v1.FileService.AbortUploadSession:output_type -> remote.code.v1.AbortUploadSessionResponse
-	57,  // 141: remote.code.v1.FileService.DownloadRange:output_type -> remote.code.v1.DownloadRangeResponse
-	60,  // 142: remote.code.v1.FileService.Remove:output_type -> remote.code.v1.RemoveResponse
-	62,  // 143: remote.code.v1.FileService.Move:output_type -> remote.code.v1.MoveResponse
-	64,  // 144: remote.code.v1.FileService.Chmod:output_type -> remote.code.v1.ChmodResponse
-	66,  // 145: remote.code.v1.FileService.Mkdir:output_type -> remote.code.v1.MkdirResponse
-	70,  // 146: remote.code.v1.ProcessService.StartProcess:output_type -> remote.code.v1.StartProcessResponse
-	74,  // 147: remote.code.v1.ProcessService.ListProcessTemplates:output_type -> remote.code.v1.ListProcessTemplatesResponse
-	76,  // 148: remote.code.v1.ProcessService.GetProcessTemplate:output_type -> remote.code.v1.GetProcessTemplateResponse
-	78,  // 149: remote.code.v1.ProcessService.StartProcessFromTemplate:output_type -> remote.code.v1.StartProcessFromTemplateResponse
-	80,  // 150: remote.code.v1.ProcessService.ListProcesses:output_type -> remote.code.v1.ListProcessesResponse
-	82,  // 151: remote.code.v1.ProcessService.SignalProcess:output_type -> remote.code.v1.SignalProcessResponse
-	102, // 152: remote.code.v1.ProcessService.DeleteProcess:output_type -> remote.code.v1.DeleteProcessResponse
-	108, // 153: remote.code.v1.ProcessService.BatchDeleteProcesses:output_type -> remote.code.v1.BatchDeleteProcessesResponse
-	88,  // 154: remote.code.v1.ProcessService.ObserveProcessLogs:output_type -> remote.code.v1.ObserveProcessLogsResponse
-	100, // 155: remote.code.v1.ProcessService.StreamProcessInput:output_type -> remote.code.v1.StreamProcessInputResponse
-	130, // [130:156] is the sub-list for method output_type
-	104, // [104:130] is the sub-list for method input_type
-	104, // [104:104] is the sub-list for extension type_name
-	104, // [104:104] is the sub-list for extension extendee
-	0,   // [0:104] is the sub-list for field type_name
+	123, // 2: remote.code.v1.GetInfoResponse.agent:type_name -> remote.code.v1.AgentInfo
+	126, // 3: remote.code.v1.ControllerLogEntry.timestamp:type_name -> google.protobuf.Timestamp
+	0,   // 4: remote.code.v1.ControllerLogEntry.level:type_name -> remote.code.v1.ControllerLogLevel
+	124, // 5: remote.code.v1.ControllerLogEntry.fields:type_name -> remote.code.v1.ControllerLogEntry.FieldsEntry
+	1,   // 6: remote.code.v1.ControllerLogEnd.reason:type_name -> remote.code.v1.ControllerLogEndReason
+	17,  // 7: remote.code.v1.ObserveControllerLogsResponse.header:type_name -> remote.code.v1.ControllerLogHeader
+	18,  // 8: remote.code.v1.ObserveControllerLogsResponse.entry:type_name -> remote.code.v1.ControllerLogEntry
+	19,  // 9: remote.code.v1.ObserveControllerLogsResponse.checkpoint:type_name -> remote.code.v1.ControllerLogCheckpoint
+	20,  // 10: remote.code.v1.ObserveControllerLogsResponse.end:type_name -> remote.code.v1.ControllerLogEnd
+	2,   // 11: remote.code.v1.FileInfo.type:type_name -> remote.code.v1.FileType
+	126, // 12: remote.code.v1.FileInfo.modified_at:type_name -> google.protobuf.Timestamp
+	23,  // 13: remote.code.v1.StatResponse.file:type_name -> remote.code.v1.FileInfo
+	23,  // 14: remote.code.v1.ListResponse.files:type_name -> remote.code.v1.FileInfo
+	23,  // 15: remote.code.v1.TreeNode.file:type_name -> remote.code.v1.FileInfo
+	28,  // 16: remote.code.v1.TreeNode.children:type_name -> remote.code.v1.TreeNode
+	28,  // 17: remote.code.v1.TreeResponse.root:type_name -> remote.code.v1.TreeNode
+	31,  // 18: remote.code.v1.UploadRequest.metadata:type_name -> remote.code.v1.UploadMetadata
+	23,  // 19: remote.code.v1.UploadResponse.file:type_name -> remote.code.v1.FileInfo
+	23,  // 20: remote.code.v1.DownloadMetadata.file:type_name -> remote.code.v1.FileInfo
+	35,  // 21: remote.code.v1.DownloadResponse.metadata:type_name -> remote.code.v1.DownloadMetadata
+	36,  // 22: remote.code.v1.DownloadResponse.summary:type_name -> remote.code.v1.DownloadSummary
+	3,   // 23: remote.code.v1.UploadSession.state:type_name -> remote.code.v1.UploadSessionState
+	126, // 24: remote.code.v1.UploadSession.expires_at:type_name -> google.protobuf.Timestamp
+	33,  // 25: remote.code.v1.UploadSession.result:type_name -> remote.code.v1.UploadResponse
+	39,  // 26: remote.code.v1.CreateUploadSessionResponse.session:type_name -> remote.code.v1.UploadSession
+	41,  // 27: remote.code.v1.TransferUploadRequest.open:type_name -> remote.code.v1.TransferUploadOpen
+	42,  // 28: remote.code.v1.TransferUploadRequest.chunk:type_name -> remote.code.v1.TransferUploadChunk
+	43,  // 29: remote.code.v1.TransferUploadRequest.finish:type_name -> remote.code.v1.TransferUploadFinish
+	33,  // 30: remote.code.v1.TransferUploadComplete.result:type_name -> remote.code.v1.UploadResponse
+	45,  // 31: remote.code.v1.TransferUploadResponse.ready:type_name -> remote.code.v1.TransferUploadReady
+	46,  // 32: remote.code.v1.TransferUploadResponse.checkpoint:type_name -> remote.code.v1.TransferUploadCheckpoint
+	47,  // 33: remote.code.v1.TransferUploadResponse.complete:type_name -> remote.code.v1.TransferUploadComplete
+	39,  // 34: remote.code.v1.GetUploadSessionResponse.session:type_name -> remote.code.v1.UploadSession
+	39,  // 35: remote.code.v1.AbortUploadSessionResponse.session:type_name -> remote.code.v1.UploadSession
+	23,  // 36: remote.code.v1.DownloadRangeMetadata.file:type_name -> remote.code.v1.FileInfo
+	54,  // 37: remote.code.v1.DownloadRangeResponse.metadata:type_name -> remote.code.v1.DownloadRangeMetadata
+	55,  // 38: remote.code.v1.DownloadRangeResponse.chunk:type_name -> remote.code.v1.DownloadRangeChunk
+	56,  // 39: remote.code.v1.DownloadRangeResponse.summary:type_name -> remote.code.v1.DownloadRangeSummary
+	4,   // 40: remote.code.v1.FileTransferError.reason:type_name -> remote.code.v1.FileTransferErrorReason
+	23,  // 41: remote.code.v1.MoveResponse.file:type_name -> remote.code.v1.FileInfo
+	23,  // 42: remote.code.v1.ChmodResponse.file:type_name -> remote.code.v1.FileInfo
+	23,  // 43: remote.code.v1.MkdirResponse.file:type_name -> remote.code.v1.FileInfo
+	5,   // 44: remote.code.v1.ProcessInfo.io_mode:type_name -> remote.code.v1.ProcessIOMode
+	6,   // 45: remote.code.v1.ProcessInfo.state:type_name -> remote.code.v1.ProcessState
+	126, // 46: remote.code.v1.ProcessInfo.started_at:type_name -> google.protobuf.Timestamp
+	126, // 47: remote.code.v1.ProcessInfo.exited_at:type_name -> google.protobuf.Timestamp
+	126, // 48: remote.code.v1.ProcessInfo.created_at:type_name -> google.protobuf.Timestamp
+	10,  // 49: remote.code.v1.ProcessInfo.input_mode:type_name -> remote.code.v1.ProcessInputMode
+	11,  // 50: remote.code.v1.ProcessInfo.input_state:type_name -> remote.code.v1.ProcessInputState
+	5,   // 51: remote.code.v1.StartProcessRequest.io_mode:type_name -> remote.code.v1.ProcessIOMode
+	125, // 52: remote.code.v1.StartProcessRequest.environment:type_name -> remote.code.v1.StartProcessRequest.EnvironmentEntry
+	10,  // 53: remote.code.v1.StartProcessRequest.input_mode:type_name -> remote.code.v1.ProcessInputMode
+	91,  // 54: remote.code.v1.StartProcessRequest.terminal_size:type_name -> remote.code.v1.TerminalSize
+	67,  // 55: remote.code.v1.StartProcessResponse.process:type_name -> remote.code.v1.ProcessInfo
+	5,   // 56: remote.code.v1.ProcessTemplateSummary.io_mode:type_name -> remote.code.v1.ProcessIOMode
+	10,  // 57: remote.code.v1.ProcessTemplateSummary.input_mode:type_name -> remote.code.v1.ProcessInputMode
+	71,  // 58: remote.code.v1.ProcessTemplate.summary:type_name -> remote.code.v1.ProcessTemplateSummary
+	127, // 59: remote.code.v1.ProcessTemplate.parameters_schema:type_name -> google.protobuf.Struct
+	71,  // 60: remote.code.v1.ListProcessTemplatesResponse.templates:type_name -> remote.code.v1.ProcessTemplateSummary
+	72,  // 61: remote.code.v1.GetProcessTemplateResponse.template:type_name -> remote.code.v1.ProcessTemplate
+	127, // 62: remote.code.v1.StartProcessFromTemplateRequest.parameters:type_name -> google.protobuf.Struct
+	91,  // 63: remote.code.v1.StartProcessFromTemplateRequest.terminal_size:type_name -> remote.code.v1.TerminalSize
+	67,  // 64: remote.code.v1.StartProcessFromTemplateResponse.process:type_name -> remote.code.v1.ProcessInfo
+	67,  // 65: remote.code.v1.ListProcessesResponse.processes:type_name -> remote.code.v1.ProcessInfo
+	68,  // 66: remote.code.v1.SignalProcessRequest.process:type_name -> remote.code.v1.ProcessReference
+	7,   // 67: remote.code.v1.SignalProcessRequest.signal:type_name -> remote.code.v1.ProcessSignal
+	67,  // 68: remote.code.v1.SignalProcessResponse.process:type_name -> remote.code.v1.ProcessInfo
+	8,   // 69: remote.code.v1.ObserveProcessLogsRequest.streams:type_name -> remote.code.v1.ProcessLogStream
+	5,   // 70: remote.code.v1.ProcessLogHeader.io_mode:type_name -> remote.code.v1.ProcessIOMode
+	8,   // 71: remote.code.v1.ProcessLogHeader.streams:type_name -> remote.code.v1.ProcessLogStream
+	126, // 72: remote.code.v1.ProcessLogChunk.timestamp:type_name -> google.protobuf.Timestamp
+	8,   // 73: remote.code.v1.ProcessLogChunk.stream:type_name -> remote.code.v1.ProcessLogStream
+	9,   // 74: remote.code.v1.ProcessLogEnd.reason:type_name -> remote.code.v1.ProcessLogEndReason
+	6,   // 75: remote.code.v1.ProcessLogEnd.state:type_name -> remote.code.v1.ProcessState
+	84,  // 76: remote.code.v1.ObserveProcessLogsResponse.header:type_name -> remote.code.v1.ProcessLogHeader
+	85,  // 77: remote.code.v1.ObserveProcessLogsResponse.chunk:type_name -> remote.code.v1.ProcessLogChunk
+	86,  // 78: remote.code.v1.ObserveProcessLogsResponse.checkpoint:type_name -> remote.code.v1.ProcessLogCheckpoint
+	87,  // 79: remote.code.v1.ObserveProcessLogsResponse.end:type_name -> remote.code.v1.ProcessLogEnd
+	68,  // 80: remote.code.v1.ProcessInputOpen.process:type_name -> remote.code.v1.ProcessReference
+	91,  // 81: remote.code.v1.ProcessTerminalResize.size:type_name -> remote.code.v1.TerminalSize
+	89,  // 82: remote.code.v1.StreamProcessInputRequest.open:type_name -> remote.code.v1.ProcessInputOpen
+	90,  // 83: remote.code.v1.StreamProcessInputRequest.data:type_name -> remote.code.v1.ProcessInputData
+	93,  // 84: remote.code.v1.StreamProcessInputRequest.close_input:type_name -> remote.code.v1.ProcessInputClose
+	94,  // 85: remote.code.v1.StreamProcessInputRequest.detach:type_name -> remote.code.v1.ProcessInputDetach
+	92,  // 86: remote.code.v1.StreamProcessInputRequest.resize:type_name -> remote.code.v1.ProcessTerminalResize
+	67,  // 87: remote.code.v1.ProcessInputOpened.process:type_name -> remote.code.v1.ProcessInfo
+	91,  // 88: remote.code.v1.ProcessTerminalResizeAck.size:type_name -> remote.code.v1.TerminalSize
+	12,  // 89: remote.code.v1.ProcessInputEnd.reason:type_name -> remote.code.v1.ProcessInputEndReason
+	67,  // 90: remote.code.v1.ProcessInputEnd.process:type_name -> remote.code.v1.ProcessInfo
+	96,  // 91: remote.code.v1.StreamProcessInputResponse.opened:type_name -> remote.code.v1.ProcessInputOpened
+	97,  // 92: remote.code.v1.StreamProcessInputResponse.ack:type_name -> remote.code.v1.ProcessInputAck
+	99,  // 93: remote.code.v1.StreamProcessInputResponse.end:type_name -> remote.code.v1.ProcessInputEnd
+	98,  // 94: remote.code.v1.StreamProcessInputResponse.resize_ack:type_name -> remote.code.v1.ProcessTerminalResizeAck
+	68,  // 95: remote.code.v1.DeleteProcessRequest.process:type_name -> remote.code.v1.ProcessReference
+	67,  // 96: remote.code.v1.DeleteProcessResponse.process:type_name -> remote.code.v1.ProcessInfo
+	68,  // 97: remote.code.v1.ProcessSelector.reference:type_name -> remote.code.v1.ProcessReference
+	103, // 98: remote.code.v1.BatchDeleteProcessesRequest.selectors:type_name -> remote.code.v1.ProcessSelector
+	128, // 99: remote.code.v1.BatchDeleteSelectorResult.status:type_name -> google.rpc.Status
+	6,   // 100: remote.code.v1.ProcessDeleteTarget.state:type_name -> remote.code.v1.ProcessState
+	106, // 101: remote.code.v1.BatchDeleteProcessResult.process:type_name -> remote.code.v1.ProcessDeleteTarget
+	128, // 102: remote.code.v1.BatchDeleteProcessResult.status:type_name -> google.rpc.Status
+	105, // 103: remote.code.v1.BatchDeleteProcessesResponse.selectors:type_name -> remote.code.v1.BatchDeleteSelectorResult
+	107, // 104: remote.code.v1.BatchDeleteProcessesResponse.processes:type_name -> remote.code.v1.BatchDeleteProcessResult
+	113, // 105: remote.code.v1.QueryResponse.session_started:type_name -> remote.code.v1.AgentSessionStarted
+	114, // 106: remote.code.v1.QueryResponse.message:type_name -> remote.code.v1.AgentMessage
+	115, // 107: remote.code.v1.QueryResponse.thought:type_name -> remote.code.v1.AgentThought
+	116, // 108: remote.code.v1.QueryResponse.tool_call:type_name -> remote.code.v1.AgentToolCall
+	118, // 109: remote.code.v1.QueryResponse.plan:type_name -> remote.code.v1.AgentPlan
+	120, // 110: remote.code.v1.QueryResponse.usage:type_name -> remote.code.v1.AgentUsage
+	122, // 111: remote.code.v1.QueryResponse.completed:type_name -> remote.code.v1.AgentTurnCompleted
+	117, // 112: remote.code.v1.AgentToolCall.locations:type_name -> remote.code.v1.AgentToolCallLocation
+	119, // 113: remote.code.v1.AgentPlan.entries:type_name -> remote.code.v1.AgentPlanEntry
+	121, // 114: remote.code.v1.AgentUsage.cost:type_name -> remote.code.v1.AgentCost
+	13,  // 115: remote.code.v1.ControllerService.GetInfo:input_type -> remote.code.v1.GetInfoRequest
+	16,  // 116: remote.code.v1.ControllerService.ObserveControllerLogs:input_type -> remote.code.v1.ObserveControllerLogsRequest
+	24,  // 117: remote.code.v1.FileService.Stat:input_type -> remote.code.v1.StatRequest
+	26,  // 118: remote.code.v1.FileService.List:input_type -> remote.code.v1.ListRequest
+	29,  // 119: remote.code.v1.FileService.Tree:input_type -> remote.code.v1.TreeRequest
+	32,  // 120: remote.code.v1.FileService.Upload:input_type -> remote.code.v1.UploadRequest
+	34,  // 121: remote.code.v1.FileService.Download:input_type -> remote.code.v1.DownloadRequest
+	38,  // 122: remote.code.v1.FileService.CreateUploadSession:input_type -> remote.code.v1.CreateUploadSessionRequest
+	44,  // 123: remote.code.v1.FileService.TransferUpload:input_type -> remote.code.v1.TransferUploadRequest
+	49,  // 124: remote.code.v1.FileService.GetUploadSession:input_type -> remote.code.v1.GetUploadSessionRequest
+	51,  // 125: remote.code.v1.FileService.AbortUploadSession:input_type -> remote.code.v1.AbortUploadSessionRequest
+	53,  // 126: remote.code.v1.FileService.DownloadRange:input_type -> remote.code.v1.DownloadRangeRequest
+	59,  // 127: remote.code.v1.FileService.Remove:input_type -> remote.code.v1.RemoveRequest
+	61,  // 128: remote.code.v1.FileService.Move:input_type -> remote.code.v1.MoveRequest
+	63,  // 129: remote.code.v1.FileService.Chmod:input_type -> remote.code.v1.ChmodRequest
+	65,  // 130: remote.code.v1.FileService.Mkdir:input_type -> remote.code.v1.MkdirRequest
+	69,  // 131: remote.code.v1.ProcessService.StartProcess:input_type -> remote.code.v1.StartProcessRequest
+	73,  // 132: remote.code.v1.ProcessService.ListProcessTemplates:input_type -> remote.code.v1.ListProcessTemplatesRequest
+	75,  // 133: remote.code.v1.ProcessService.GetProcessTemplate:input_type -> remote.code.v1.GetProcessTemplateRequest
+	77,  // 134: remote.code.v1.ProcessService.StartProcessFromTemplate:input_type -> remote.code.v1.StartProcessFromTemplateRequest
+	79,  // 135: remote.code.v1.ProcessService.ListProcesses:input_type -> remote.code.v1.ListProcessesRequest
+	81,  // 136: remote.code.v1.ProcessService.SignalProcess:input_type -> remote.code.v1.SignalProcessRequest
+	101, // 137: remote.code.v1.ProcessService.DeleteProcess:input_type -> remote.code.v1.DeleteProcessRequest
+	104, // 138: remote.code.v1.ProcessService.BatchDeleteProcesses:input_type -> remote.code.v1.BatchDeleteProcessesRequest
+	83,  // 139: remote.code.v1.ProcessService.ObserveProcessLogs:input_type -> remote.code.v1.ObserveProcessLogsRequest
+	95,  // 140: remote.code.v1.ProcessService.StreamProcessInput:input_type -> remote.code.v1.StreamProcessInputRequest
+	109, // 141: remote.code.v1.AgentService.Query:input_type -> remote.code.v1.QueryRequest
+	110, // 142: remote.code.v1.AgentService.CloseSession:input_type -> remote.code.v1.CloseSessionRequest
+	14,  // 143: remote.code.v1.ControllerService.GetInfo:output_type -> remote.code.v1.GetInfoResponse
+	21,  // 144: remote.code.v1.ControllerService.ObserveControllerLogs:output_type -> remote.code.v1.ObserveControllerLogsResponse
+	25,  // 145: remote.code.v1.FileService.Stat:output_type -> remote.code.v1.StatResponse
+	27,  // 146: remote.code.v1.FileService.List:output_type -> remote.code.v1.ListResponse
+	30,  // 147: remote.code.v1.FileService.Tree:output_type -> remote.code.v1.TreeResponse
+	33,  // 148: remote.code.v1.FileService.Upload:output_type -> remote.code.v1.UploadResponse
+	37,  // 149: remote.code.v1.FileService.Download:output_type -> remote.code.v1.DownloadResponse
+	40,  // 150: remote.code.v1.FileService.CreateUploadSession:output_type -> remote.code.v1.CreateUploadSessionResponse
+	48,  // 151: remote.code.v1.FileService.TransferUpload:output_type -> remote.code.v1.TransferUploadResponse
+	50,  // 152: remote.code.v1.FileService.GetUploadSession:output_type -> remote.code.v1.GetUploadSessionResponse
+	52,  // 153: remote.code.v1.FileService.AbortUploadSession:output_type -> remote.code.v1.AbortUploadSessionResponse
+	57,  // 154: remote.code.v1.FileService.DownloadRange:output_type -> remote.code.v1.DownloadRangeResponse
+	60,  // 155: remote.code.v1.FileService.Remove:output_type -> remote.code.v1.RemoveResponse
+	62,  // 156: remote.code.v1.FileService.Move:output_type -> remote.code.v1.MoveResponse
+	64,  // 157: remote.code.v1.FileService.Chmod:output_type -> remote.code.v1.ChmodResponse
+	66,  // 158: remote.code.v1.FileService.Mkdir:output_type -> remote.code.v1.MkdirResponse
+	70,  // 159: remote.code.v1.ProcessService.StartProcess:output_type -> remote.code.v1.StartProcessResponse
+	74,  // 160: remote.code.v1.ProcessService.ListProcessTemplates:output_type -> remote.code.v1.ListProcessTemplatesResponse
+	76,  // 161: remote.code.v1.ProcessService.GetProcessTemplate:output_type -> remote.code.v1.GetProcessTemplateResponse
+	78,  // 162: remote.code.v1.ProcessService.StartProcessFromTemplate:output_type -> remote.code.v1.StartProcessFromTemplateResponse
+	80,  // 163: remote.code.v1.ProcessService.ListProcesses:output_type -> remote.code.v1.ListProcessesResponse
+	82,  // 164: remote.code.v1.ProcessService.SignalProcess:output_type -> remote.code.v1.SignalProcessResponse
+	102, // 165: remote.code.v1.ProcessService.DeleteProcess:output_type -> remote.code.v1.DeleteProcessResponse
+	108, // 166: remote.code.v1.ProcessService.BatchDeleteProcesses:output_type -> remote.code.v1.BatchDeleteProcessesResponse
+	88,  // 167: remote.code.v1.ProcessService.ObserveProcessLogs:output_type -> remote.code.v1.ObserveProcessLogsResponse
+	100, // 168: remote.code.v1.ProcessService.StreamProcessInput:output_type -> remote.code.v1.StreamProcessInputResponse
+	112, // 169: remote.code.v1.AgentService.Query:output_type -> remote.code.v1.QueryResponse
+	111, // 170: remote.code.v1.AgentService.CloseSession:output_type -> remote.code.v1.CloseSessionResponse
+	143, // [143:171] is the sub-list for method output_type
+	115, // [115:143] is the sub-list for method input_type
+	115, // [115:115] is the sub-list for extension type_name
+	115, // [115:115] is the sub-list for extension extendee
+	0,   // [0:115] is the sub-list for field type_name
 }
 
 func init() { file_remote_code_v1_remote_code_proto_init() }
@@ -7814,15 +8857,27 @@ func file_remote_code_v1_remote_code_proto_init() {
 		(*ProcessSelector_Reference)(nil),
 		(*ProcessSelector_NameGlob)(nil),
 	}
+	file_remote_code_v1_remote_code_proto_msgTypes[96].OneofWrappers = []any{}
+	file_remote_code_v1_remote_code_proto_msgTypes[99].OneofWrappers = []any{
+		(*QueryResponse_SessionStarted)(nil),
+		(*QueryResponse_Message)(nil),
+		(*QueryResponse_Thought)(nil),
+		(*QueryResponse_ToolCall)(nil),
+		(*QueryResponse_Plan)(nil),
+		(*QueryResponse_Usage)(nil),
+		(*QueryResponse_Completed)(nil),
+	}
+	file_remote_code_v1_remote_code_proto_msgTypes[104].OneofWrappers = []any{}
+	file_remote_code_v1_remote_code_proto_msgTypes[107].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_remote_code_v1_remote_code_proto_rawDesc), len(file_remote_code_v1_remote_code_proto_rawDesc)),
 			NumEnums:      13,
-			NumMessages:   98,
+			NumMessages:   113,
 			NumExtensions: 0,
-			NumServices:   3,
+			NumServices:   4,
 		},
 		GoTypes:           file_remote_code_v1_remote_code_proto_goTypes,
 		DependencyIndexes: file_remote_code_v1_remote_code_proto_depIdxs,

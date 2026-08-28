@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/pelletier/go-toml/v2"
+	"github.com/qq1426155093/remote-code/internal/agent"
 	"github.com/qq1426155093/remote-code/internal/auth"
 	controllerlog "github.com/qq1426155093/remote-code/internal/controllerlog"
 	fileservice "github.com/qq1426155093/remote-code/internal/files"
@@ -28,6 +29,7 @@ const (
 	controllerConfigVersionV6 = 6
 	controllerConfigVersionV7 = 7
 	controllerConfigVersionV8 = 8
+	controllerConfigVersionV9 = 9
 	maxControllerConfigBytes  = 1 << 20
 	maxConfiguredProcesses    = 4096
 )
@@ -68,6 +70,7 @@ type controllerFileConfig struct {
 	FileTransfers    *fileTransferFileConfig    `toml:"file_transfers"`
 	MCP              *mcpFileConfig             `toml:"mcp"`
 	Workflows        *workflowFileConfig        `toml:"workflows"`
+	Agent            *agentFileConfig           `toml:"agent"`
 }
 
 type controllerLogFileConfig struct {
@@ -112,6 +115,13 @@ type mcpFileConfig struct {
 	ToolListPageSize        *int      `toml:"tool_list_page_size"`
 }
 
+type agentFileConfig struct {
+	Enabled     *bool              `toml:"enabled"`
+	Command     *string            `toml:"command"`
+	Arguments   *[]string          `toml:"arguments"`
+	Environment *map[string]string `toml:"environment"`
+}
+
 type workflowFileConfig struct {
 	Enabled             *bool     `toml:"enabled"`
 	DefinitionFiles     *[]string `toml:"definition_files"`
@@ -145,6 +155,9 @@ func defaultControllerOptions() controllerOptions {
 	}}
 	options.serverConfig.MCP.ApplyDefaults()
 	options.serverConfig.Workflows.ApplyDefaults()
+	// The agent service is on by default; command defaults are applied after
+	// the file merge so an explicit command never inherits the npx arguments.
+	options.serverConfig.Agent.Enabled = true
 	return options
 }
 
@@ -297,8 +310,8 @@ func loadControllerConfig(name string) (controllerFileConfig, error) {
 		}
 		return controllerFileConfig{}, fmt.Errorf("decode controller config %q: %s", name, details)
 	}
-	if config.Version != controllerConfigVersionV1 && config.Version != controllerConfigVersionV2 && config.Version != controllerConfigVersionV3 && config.Version != controllerConfigVersionV4 && config.Version != controllerConfigVersionV5 && config.Version != controllerConfigVersionV6 && config.Version != controllerConfigVersionV7 && config.Version != controllerConfigVersionV8 {
-		return controllerFileConfig{}, fmt.Errorf("controller config version must be %d, %d, %d, %d, %d, %d, %d, or %d", controllerConfigVersionV1, controllerConfigVersionV2, controllerConfigVersionV3, controllerConfigVersionV4, controllerConfigVersionV5, controllerConfigVersionV6, controllerConfigVersionV7, controllerConfigVersionV8)
+	if config.Version != controllerConfigVersionV1 && config.Version != controllerConfigVersionV2 && config.Version != controllerConfigVersionV3 && config.Version != controllerConfigVersionV4 && config.Version != controllerConfigVersionV5 && config.Version != controllerConfigVersionV6 && config.Version != controllerConfigVersionV7 && config.Version != controllerConfigVersionV8 && config.Version != controllerConfigVersionV9 {
+		return controllerFileConfig{}, fmt.Errorf("controller config version must be %d, %d, %d, %d, %d, %d, %d, %d, or %d", controllerConfigVersionV1, controllerConfigVersionV2, controllerConfigVersionV3, controllerConfigVersionV4, controllerConfigVersionV5, controllerConfigVersionV6, controllerConfigVersionV7, controllerConfigVersionV8, controllerConfigVersionV9)
 	}
 	if config.Version == controllerConfigVersionV1 && config.MCP != nil {
 		return controllerFileConfig{}, errors.New("controller config version 1 does not support the mcp table")
@@ -320,6 +333,9 @@ func loadControllerConfig(name string) (controllerFileConfig, error) {
 	}
 	if config.Version < controllerConfigVersionV8 && config.Workflows != nil {
 		return controllerFileConfig{}, fmt.Errorf("controller config version %d does not support the workflows table", config.Version)
+	}
+	if config.Version < controllerConfigVersionV9 && config.Agent != nil {
+		return controllerFileConfig{}, fmt.Errorf("controller config version %d does not support the agent table", config.Version)
 	}
 	return config, nil
 }
@@ -418,7 +434,29 @@ func applyControllerFileConfig(options *controllerOptions, config controllerFile
 			return err
 		}
 	}
+	if config.Agent != nil {
+		applyAgentFileConfig(&options.serverConfig.Agent, *config.Agent)
+	}
 	return nil
+}
+
+func applyAgentFileConfig(config *agent.Config, file agentFileConfig) {
+	if file.Enabled != nil {
+		config.Enabled = *file.Enabled
+	}
+	if file.Command != nil {
+		config.Command = *file.Command
+	}
+	if file.Arguments != nil {
+		config.Arguments = append([]string(nil), (*file.Arguments)...)
+	}
+	if file.Environment != nil {
+		environment := make(map[string]string, len(*file.Environment))
+		for key, value := range *file.Environment {
+			environment[key] = value
+		}
+		config.Environment = environment
+	}
 }
 
 func applyWorkflowFileConfig(config *workflow.Config, file workflowFileConfig) error {
@@ -606,6 +644,7 @@ func (o controllerOptions) validatedServerConfig() (server.Config, error) {
 	}
 	config.MCP.TLSCertificateFile = config.TLSCertificateFile
 	config.MCP.TLSKeyFile = config.TLSKeyFile
+	config.Agent.ApplyDefaults()
 	if err := server.ValidateConfig(config); err != nil {
 		return server.Config{}, err
 	}
