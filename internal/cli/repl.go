@@ -44,6 +44,7 @@ type REPL struct {
 	timeout          time.Duration
 	catMaxBytes      int64
 	cwd              string
+	agentSession     string
 	interruptContext func(context.Context) (context.Context, context.CancelFunc)
 }
 

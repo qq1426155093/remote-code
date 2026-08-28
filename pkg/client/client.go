@@ -42,6 +42,7 @@ type Client struct {
 	controller             codev1.ControllerServiceClient
 	files                  codev1.FileServiceClient
 	processes              codev1.ProcessServiceClient
+	agent                  codev1.AgentServiceClient
 	info                   *codev1.GetInfoResponse
 	address                string
 	transferStateDirectory string
@@ -103,6 +104,7 @@ func New(ctx context.Context, config Config) (*Client, error) {
 		controller:             codev1.NewControllerServiceClient(connection),
 		files:                  codev1.NewFileServiceClient(connection),
 		processes:              codev1.NewProcessServiceClient(connection),
+		agent:                  codev1.NewAgentServiceClient(connection),
 		address:                config.Address,
 		transferStateDirectory: config.TransferStateDirectory,
 	}

@@ -72,7 +72,8 @@ func TestInfoCommandFetchesAndPrintsCurrentControllerInfo(t *testing.T) {
 		"Resumable download: true\n" +
 		"Preferred transfer chunk bytes: 65536\n" +
 		"Max processes: 8\n" +
-		"Process template count: 3\n"
+		"Process template count: 3\n" +
+		"Agent: disabled\n"
 	if got := output.String(); got != want {
 		t.Fatalf("info output =\n%s\nwant:\n%s", got, want)
 	}

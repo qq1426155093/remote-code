@@ -49,4 +49,13 @@ const (
 	ReasonTransferPrefixMismatch = string(rpcerror.TransferPrefixMismatch)
 	ReasonTransferSessionState   = string(rpcerror.TransferSessionState)
 	ReasonTransferActiveTransfer = string(rpcerror.TransferActiveTransfer)
+
+	ReasonAgentDisabled         = string(rpcerror.AgentDisabled)
+	ReasonAgentStartFailed      = string(rpcerror.AgentStartFailed)
+	ReasonAgentSessionNotFound  = string(rpcerror.AgentSessionNotFound)
+	ReasonAgentSessionLost      = string(rpcerror.AgentSessionLost)
+	ReasonAgentTurnActive       = string(rpcerror.AgentTurnActive)
+	ReasonAgentProcessLost      = string(rpcerror.AgentProcessLost)
+	ReasonAgentWorkingDirectory = string(rpcerror.AgentWorkingDirectory)
+	ReasonAgentRequestError     = string(rpcerror.AgentRequestError)
 )

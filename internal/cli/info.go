@@ -1,6 +1,10 @@
 package cli
 
-import "fmt"
+import (
+	"fmt"
+
+	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
+)
 
 func (r *REPL) controllerInfo(arguments []string) error {
 	if len(arguments) != 0 {
@@ -16,5 +20,20 @@ func (r *REPL) controllerInfo(arguments []string) error {
 		info.GetControllerVersion(), info.GetApiVersion(), info.GetWorkspaceName(), info.GetMaxUploadBytes(),
 		info.GetFileTransfers().GetResumableUpload(), info.GetFileTransfers().GetResumableDownload(), info.GetFileTransfers().GetPreferredChunkBytes(),
 		info.GetMaxProcesses(), info.GetProcessTemplateCount())
+	fmt.Fprintf(r.stdout, "Agent: %s\n", agentInfoSummary(info.GetAgent()))
 	return nil
+}
+
+// agentInfoSummary renders the agent bridge status for `info`: absent when the
+// service is disabled, and noting that the child starts lazily on the first
+// query.
+func agentInfoSummary(agent *codev1.AgentInfo) string {
+	if agent == nil {
+		return "disabled"
+	}
+	if !agent.GetStarted() {
+		return "enabled (not started)"
+	}
+	return fmt.Sprintf("enabled (process %s, generation %d, sessions %d)",
+		agent.GetProcessId(), agent.GetGeneration(), agent.GetSessions())
 }

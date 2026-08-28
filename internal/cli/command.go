@@ -178,6 +178,14 @@ var defaultCommandRegistry = mustCommandRegistry([]commandSpec{
 		handler:    (*REPL).observeControllerLogs,
 		complete:   (*commandCompleter).completeControllerLogs,
 	},
+	{
+		name: "agent", aliases: []string{"agent-query"}, arguments: "[--session ID] [--cwd REMOTE_DIR] PROMPT",
+		listSuffix: "(Ctrl-C cancels the turn)",
+		details:    "Send one prompt to the code agent; without --session the last session is reused",
+		handler:    (*REPL).agentQuery,
+		complete:   completeRemotePathWithOption("--cwd", 1, completeDirectories),
+	},
+	{name: "agent-close", arguments: "[SESSION]", handler: (*REPL).agentCloseSession},
 	{name: "clear", handler: (*REPL).clearScreen},
 	{name: "exit", aliases: []string{"quit"}, handler: (*REPL).exitSession, action: commandExit},
 })

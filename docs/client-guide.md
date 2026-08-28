@@ -187,6 +187,40 @@ Controller 还会再次实施路径校验。
 | `attach PROCESS` | 接入 PTY 的原始交互终端 |
 | `forget PROCESS_OR_GLOB [...]` | 永久删除一个或多个终态进程的历史与日志 |
 
+### 4.4 Agent 命令
+
+| 命令 | 功能 |
+| --- | --- |
+| `agent` / `agent-query` `[--session ID] [--cwd REMOTE_DIR] PROMPT` | 向共享 Code Agent 发送一个 prompt，流式渲染回复 |
+| `agent-close [SESSION]` | 结束 Agent 会话；省略 id 时关闭 REPL 记住的会话 |
+
+Agent 会话按 turn 交互：一次 `agent` 命令就是一个 turn，事件按到达顺序渲染——消息文本直接输出，
+thought 以 `· ` 前缀标识，工具调用显示为一行（`→` 创建、`~` 更新、`(status)` 与 `path:line` 附注），
+计划整体重绘，最后输出 `usage:` 汇总和 `stop:` 结束原因。
+
+```text
+remote-code:/> agent fix the failing build
+session: 8f3c…
+→ [execute] cargo build
+~ (completed)
+fixed the linker flags in build.rs
+usage: 42310/200000 context, cost 0.42 USD
+stop: end_turn
+remote-code:/> agent also update the docs        # 复用同一会话的上下文
+remote-code:/> agent-close
+closed agent session 8f3c…
+```
+
+行为要点：
+
+- REPL 记住最近一次会话 id，后续 `agent` 命令默认接续同一对话；`--session` 显式指定，`agent-close`
+  后回到新会话；
+- `--cwd` 只对新会话生效，按 REPL 当前远端目录解析，且不能越出 workspace；
+- Ctrl-C 取消当前 turn（Controller 会向 Agent 转发 cancel），不会结束会话，也不会停止 Agent 进程；
+- 首次 `agent` 命令才会懒启动 Agent 子进程；Controller 未启用 Agent 服务时命令返回
+  `AGENT_DISABLED`，`info` 的 `Agent:` 行也会显示 `disabled`；
+- Agent 进程崩溃后，旧会话 id 返回 `AGENT_SESSION_LOST`，需要开新会话重试。
+
 ## 5. 文件操作详解
 
 ### 5.1 浏览与读取
@@ -585,6 +619,7 @@ func main() {
 | 日志 | `ObserveProcessLogs`、`ObserveControllerLogs` |
 | 输入 | `OpenProcessInput`、`ProcessInputSession` |
 | 交互终端 | `OpenProcessAttachment`、`ProcessAttachment` |
+| Agent 会话 | `AgentQuery`、`CloseAgentSession` |
 
 ### 9.3 文件示例
 
@@ -699,6 +734,51 @@ offset 继续，而不重复处理已经确认的记录。
 默认 attachment 最多回放 100,000 条逻辑行。`ProcessAttachOptions.TailLines` 设为 `0` 可从当前边界开始、
 不回放历史；设为其它值可控制回放量。
 
+### 9.6 Agent 会话
+
+`AgentQuery` 发送一个 turn 并返回服务端流；取消 context 即取消该 turn（Controller 会把客户端断开
+翻译为对 Agent 的 cancel）。会话由调用方持有：首个事件携带 `session_started` 的 id，之后用
+`AgentQueryOptions.SessionID` 接续对话。
+
+```go
+stream, err := client.AgentQuery(ctx, "summarize the failing tests", remoteclient.AgentQueryOptions{})
+if err != nil {
+    log.Fatal(err)
+}
+var sessionID string
+for {
+    response, err := stream.Recv()
+    if errors.Is(err, io.EOF) {
+        break
+    }
+    if err != nil {
+        log.Fatal(err)
+    }
+    switch payload := response.GetEvent().(type) {
+    case *codev1.QueryResponse_SessionStarted:
+        sessionID = payload.SessionStarted.GetSessionId()
+    case *codev1.QueryResponse_Message:
+        fmt.Print(payload.Message.GetText())
+    case *codev1.QueryResponse_Completed:
+        fmt.Printf("\nstop: %s\n", payload.Completed.GetStopReason())
+    }
+}
+if err := client.CloseAgentSession(ctx, sessionID); err != nil {
+    log.Fatal(err)
+}
+```
+
+要点：
+
+- Controller 未启用 Agent 服务时，两个方法都直接返回 `FailedPrecondition`（客户端依据连接时的
+  `Info().Agent` 预判），无需逐个处理 `Unimplemented`；
+- `WorkingDirectory` 只在新建会话时生效，必须是 workspace 相对路径，否则返回
+  `AGENT_WORKING_DIRECTORY`；
+- 复用不存在或已丢失的会话分别返回 `AGENT_SESSION_NOT_FOUND` 与 `AGENT_SESSION_LOST`；同一会话
+  并发 turn 返回 `AGENT_TURN_ACTIVE`；
+- turn 进行中 Agent 进程退出返回 `AGENT_PROCESS_LOST`，Agent 自身的 JSON-RPC 错误映射为
+  `AGENT_REQUEST_ERROR`（`metadata.jsonrpc_code` 保留原始码）。
+
 ## 10. 错误处理与兼容性
 
 CLI 会把 gRPC status 显示为：
@@ -758,6 +838,7 @@ Client 在连接时读取能力，而不是只根据版本字符串猜测功能�
 | `interactive attachment requires a PTY process` | 目标用 PIPE 启动 | 使用 `--attach`，或 `--pty --stdin` 重新启动 |
 | `process input ... already attached` | 另一 Client 持有独占 writer | 在原会话 detach，或等待其断开 |
 | follow 约 30 秒后结束 | 默认命令 timeout 生效 | 以 `--timeout 0` 重新启动 Client |
+| `agent` turn 约 30 秒后被 `context deadline exceeded` 打断 | 默认命令 timeout 对长 turn 生效 | 以 `--timeout 0` 启动 Client；会话仍在，可用下一条命令接续 |
 | 日志 offset 不可用 | 旧 segment 已按容量/保留期回收 | 从服务端报告的 earliest offset 或 tail 重新读取 |
 | 下载/上传提示同一传输已活动 | 本地状态锁被另一进程持有 | 确认其它 Client；异常退出后锁会随文件描述符释放 |
 | `forget` 部分成功、部分失败 | selector 混合命中活动/终态/不存在记录 | 查看逐项错误，先终止活动进程再重试 |
