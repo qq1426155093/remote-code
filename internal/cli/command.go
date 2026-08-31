@@ -181,10 +181,17 @@ var defaultCommandRegistry = mustCommandRegistry([]commandSpec{
 	{
 		name: "agent", aliases: []string{"agent-query"}, arguments: "[--session ID] [--cwd REMOTE_DIR] PROMPT",
 		listSuffix: "(Ctrl-C cancels the turn)",
-		details:    "Send one prompt to the code agent; without --session the last session is reused",
+		details:    "Send one prompt to the code agent; without --session the last session is reused; the printed query id replays with 'agent-observe'",
 		handler:    (*REPL).agentQuery,
 		complete:   completeRemotePathWithOption("--cwd", 1, completeDirectories),
 	},
+	{
+		name: "agent-observe", arguments: "[--from SEQUENCE] [--follow] QUERY_ID",
+		listSuffix: "(Ctrl-C stops observing; the turn keeps running)",
+		details:    "Replay a query's frames from a sequence; --follow keeps receiving a running turn",
+		handler:    (*REPL).agentObserve,
+	},
+	{name: "agent-cancel", arguments: "QUERY_ID", details: "Stop a running agent query; it settles as cancelled", handler: (*REPL).agentCancel},
 	{name: "agent-close", arguments: "[SESSION]", handler: (*REPL).agentCloseSession},
 	{name: "clear", handler: (*REPL).clearScreen},
 	{name: "exit", aliases: []string{"quit"}, handler: (*REPL).exitSession, action: commandExit},

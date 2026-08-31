@@ -88,8 +88,38 @@ func TestAgentCloseSessionWithoutSession(t *testing.T) {
 	}
 }
 
+func TestParseAgentObserveOptions(t *testing.T) {
+	options, err := parseAgentObserveOptions([]string{"q-1"})
+	if err != nil || options.queryID != "q-1" || options.fromSequence != 0 || options.follow {
+		t.Fatalf("parseAgentObserveOptions() = %+v, %v", options, err)
+	}
+	options, err = parseAgentObserveOptions([]string{"--from", "7", "--follow", "q-2"})
+	if err != nil || options.queryID != "q-2" || options.fromSequence != 7 || !options.follow {
+		t.Fatalf("parseAgentObserveOptions(flags) = %+v, %v", options, err)
+	}
+	options, err = parseAgentObserveOptions([]string{"-f", "q-3"})
+	if err != nil || !options.follow {
+		t.Fatalf("parseAgentObserveOptions(-f) = %+v, %v", options, err)
+	}
+	if _, err := parseAgentObserveOptions([]string{"--from", "x", "q"}); err == nil {
+		t.Fatal("accepted a non-numeric --from")
+	}
+	if _, err := parseAgentObserveOptions([]string{"--from", "1", "--from", "2", "q"}); err == nil {
+		t.Fatal("accepted a repeated --from")
+	}
+	if _, err := parseAgentObserveOptions([]string{"-x", "q"}); err == nil {
+		t.Fatal("accepted an unknown agent-observe option")
+	}
+	if _, err := parseAgentObserveOptions(nil); err == nil {
+		t.Fatal("accepted a missing query id")
+	}
+	if _, err := parseAgentObserveOptions([]string{"a", "b"}); err == nil {
+		t.Fatal("accepted two query ids")
+	}
+}
+
 func TestAgentCommandsRegistered(t *testing.T) {
-	for _, name := range []string{"agent", "agent-query", "agent-close"} {
+	for _, name := range []string{"agent", "agent-query", "agent-close", "agent-observe", "agent-cancel"} {
 		if _, ok := defaultCommandRegistry.lookup(name); !ok {
 			t.Fatalf("command %q is not registered", name)
 		}

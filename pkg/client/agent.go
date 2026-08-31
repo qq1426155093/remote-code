@@ -20,9 +20,12 @@ type AgentQueryOptions struct {
 }
 
 // AgentQuery starts one agent turn and returns its server-streamed events.
-// Cancelling ctx cancels the turn on the controller. The stream ends with a
-// completed event when the turn settled and with a status error when it
-// failed; unknown-session refusals surface before the first event.
+// The stream is an observation window: cancelling ctx (or stopping reads)
+// detaches without stopping the turn, which keeps running on the controller
+// with every frame persisted — CancelAgentQuery is the explicit stop, and
+// ObserveAgentQuery resumes receiving from the last sequence. The stream ends
+// with a completed event when the turn settled and with a status error when
+// it failed; unknown-session refusals surface before the first event.
 func (c *Client) AgentQuery(ctx context.Context, prompt string, options AgentQueryOptions) (codev1.AgentService_QueryClient, error) {
 	if err := c.requireAgentService(); err != nil {
 		return nil, err
@@ -50,6 +53,48 @@ func (c *Client) CloseAgentSession(ctx context.Context, sessionID string) error 
 		return errors.New("agent session id must not be empty")
 	}
 	_, err := c.agent.CloseSession(ctx, &codev1.CloseSessionRequest{SessionId: sessionID})
+	return err
+}
+
+// AgentObserveOptions selects the replay window of one query record. An empty
+// FromSequence replays from the first retained frame; Follow keeps receiving
+// while the query is still running.
+type AgentObserveOptions struct {
+	FromSequence uint64
+	Follow       bool
+}
+
+// ObserveAgentQuery replays a query's retained frames, resuming from the last
+// sequence a previous receiver got. The stream starts with a header anchoring
+// the window, continues with the query's frames carrying their original
+// sequences, and ends with an end marker (settled, snapshot complete, or
+// shutdown) — or a status error when the query failed, its events were pruned,
+// or the requested sequence falls outside the retained window.
+func (c *Client) ObserveAgentQuery(ctx context.Context, queryID string, options AgentObserveOptions) (codev1.AgentService_ObserveQueryClient, error) {
+	if err := c.requireAgentService(); err != nil {
+		return nil, err
+	}
+	if queryID == "" {
+		return nil, errors.New("agent query id must not be empty")
+	}
+	return c.agent.ObserveQuery(ctx, &codev1.ObserveQueryRequest{
+		QueryId:      queryID,
+		FromSequence: options.FromSequence,
+		Follow:       &options.Follow,
+	})
+}
+
+// CancelAgentQuery stops a running query on the controller; its stream then
+// settles with stop_reason cancelled and stays replayable. Cancelling a
+// settled query succeeds without effect.
+func (c *Client) CancelAgentQuery(ctx context.Context, queryID string) error {
+	if err := c.requireAgentService(); err != nil {
+		return err
+	}
+	if queryID == "" {
+		return errors.New("agent query id must not be empty")
+	}
+	_, err := c.agent.CancelQuery(ctx, &codev1.CancelQueryRequest{QueryId: queryID})
 	return err
 }
 

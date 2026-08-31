@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
@@ -82,8 +84,8 @@ func (r *REPL) agentQuery(arguments []string) error {
 
 	commandContext, cancelCommand := r.commandContext()
 	defer cancelCommand()
-	// A turn is always interruptible: Ctrl-C cancels the gRPC stream, which
-	// the controller translates into cancelling the agent turn.
+	// A turn is always interruptible: Ctrl-C stops this stream and cancels the
+	// turn on the controller, which prints the query id to replay later.
 	streamContext, stopInterrupt := r.interruptContext(commandContext)
 	defer stopInterrupt()
 	interrupted := func() bool {
@@ -92,6 +94,121 @@ func (r *REPL) agentQuery(arguments []string) error {
 
 	stream, err := r.client.AgentQuery(streamContext, options.prompt, remoteclient.AgentQueryOptions{
 		SessionID: sessionID, WorkingDirectory: workingDirectory,
+	})
+	if err != nil {
+		if interrupted() {
+			return nil
+		}
+		return err
+	}
+	renderer := &agentEventRenderer{output: r.stdout}
+	queryID := ""
+	for {
+		response, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			if interrupted() {
+				return r.cancelInterruptedTurn(commandContext, queryID)
+			}
+			return err
+		}
+		if queryID == "" {
+			queryID = response.GetQueryId()
+			if queryID != "" {
+				fmt.Fprintf(r.stdout, "query: %s\n", queryID)
+			}
+		}
+		if started := response.GetSessionStarted(); started != nil {
+			r.agentSession = started.GetSessionId()
+		}
+		if err := renderer.write(response); err != nil {
+			return err
+		}
+	}
+}
+
+// cancelInterruptedTurn stops a turn whose stream was interrupted and points
+// at the replay command, since the record outlives the stream.
+func (r *REPL) cancelInterruptedTurn(commandContext context.Context, queryID string) error {
+	if queryID == "" {
+		return nil
+	}
+	if err := r.client.CancelAgentQuery(commandContext, queryID); err != nil {
+		fmt.Fprintf(r.stdout, "turn %s keeps running (cancel failed: %v)\n", queryID, err)
+		return nil
+	}
+	fmt.Fprintf(r.stdout, "cancelled turn %s; replay with 'agent-observe %s'\n", queryID, queryID)
+	return nil
+}
+
+// agentObserveOptions selects the replay window of `agent-observe`.
+type agentObserveOptions struct {
+	queryID      string
+	fromSequence uint64
+	follow       bool
+}
+
+// parseAgentObserveOptions splits `agent-observe` arguments into the replay
+// flags and the positional query id.
+func parseAgentObserveOptions(arguments []string) (agentObserveOptions, error) {
+	var options agentObserveOptions
+	fromSet := false
+	words := make([]string, 0, 1)
+	for index := 0; index < len(arguments); index++ {
+		switch argument := arguments[index]; argument {
+		case "--from":
+			if index+1 >= len(arguments) || fromSet {
+				return agentObserveOptions{}, usageError()
+			}
+			index++
+			from, err := strconv.ParseUint(arguments[index], 10, 64)
+			if err != nil {
+				return agentObserveOptions{}, usageErrorf("invalid --from sequence %q", arguments[index])
+			}
+			fromSet = true
+			options.fromSequence = from
+		case "--follow", "-f":
+			if options.follow {
+				return agentObserveOptions{}, usageError()
+			}
+			options.follow = true
+		case "--":
+			words = append(words, arguments[index+1:]...)
+			index = len(arguments)
+		default:
+			if strings.HasPrefix(argument, "-") {
+				return agentObserveOptions{}, usageErrorf("unknown agent-observe option %q", argument)
+			}
+			words = append(words, argument)
+		}
+	}
+	if len(words) != 1 {
+		return agentObserveOptions{}, usageError()
+	}
+	options.queryID = words[0]
+	return options, nil
+}
+
+// agentObserve replays a query's frames — a finished turn's answer, the tail
+// a disconnected stream missed (--from), or a running turn's live output
+// (--follow). Ctrl-C stops observing; the turn itself keeps running.
+func (r *REPL) agentObserve(arguments []string) error {
+	options, err := parseAgentObserveOptions(arguments)
+	if err != nil {
+		return err
+	}
+	commandContext, cancelCommand := r.commandContext()
+	defer cancelCommand()
+	streamContext, stopInterrupt := r.interruptContext(commandContext)
+	defer stopInterrupt()
+	interrupted := func() bool {
+		return streamContext.Err() != nil && commandContext.Err() == nil
+	}
+
+	stream, err := r.client.ObserveAgentQuery(streamContext, options.queryID, remoteclient.AgentObserveOptions{
+		FromSequence: options.fromSequence, Follow: options.follow,
 	})
 	if err != nil {
 		if interrupted() {
@@ -111,13 +228,70 @@ func (r *REPL) agentQuery(arguments []string) error {
 			}
 			return err
 		}
-		if started := response.GetSessionStarted(); started != nil {
-			r.agentSession = started.GetSessionId()
-		}
-		if err := renderer.write(response); err != nil {
-			return err
+		switch payload := response.GetPayload().(type) {
+		case *codev1.ObserveQueryResponse_Header:
+			if err := writeAgentQueryHeader(r.stdout, payload.Header); err != nil {
+				return err
+			}
+		case *codev1.ObserveQueryResponse_Event:
+			if err := renderer.write(payload.Event); err != nil {
+				return err
+			}
+		case *codev1.ObserveQueryResponse_End:
+			return writeAgentQueryEnd(r.stdout, payload.End)
 		}
 	}
+}
+
+// agentCancel stops a running query; its stream settles with stop reason
+// cancelled and stays replayable.
+func (r *REPL) agentCancel(arguments []string) error {
+	if len(arguments) != 1 {
+		return usageError()
+	}
+	ctx, cancel := r.commandContext()
+	defer cancel()
+	if err := r.client.CancelAgentQuery(ctx, arguments[0]); err != nil {
+		return err
+	}
+	fmt.Fprintf(r.stdout, "cancelled agent query %s\n", arguments[0])
+	return nil
+}
+
+// writeAgentQueryHeader summarizes the replay window before its frames.
+func writeAgentQueryHeader(output io.Writer, header *codev1.AgentQueryHeader) error {
+	if header == nil {
+		return nil
+	}
+	line := fmt.Sprintf("query %s: %s, session %s, sequences %d..%d",
+		header.GetQueryId(), agentQueryStateText(header.GetState()), header.GetSessionId(),
+		header.GetResolvedStartSequence(), header.GetSnapshotEndSequence())
+	if header.GetHistoryTruncated() {
+		line += fmt.Sprintf(", truncated (earliest %d)", header.GetEarliestSequence())
+	}
+	if header.GetFollow() {
+		line += ", following"
+	}
+	_, err := fmt.Fprintln(output, line)
+	return err
+}
+
+// writeAgentQueryEnd reports how the observation ended.
+func writeAgentQueryEnd(output io.Writer, end *codev1.AgentQueryEnd) error {
+	if end == nil {
+		return nil
+	}
+	_, err := fmt.Fprintf(output, "end: %s (next sequence %d)\n",
+		agentQueryEndReasonText(end.GetReason()), end.GetNextSequence())
+	return err
+}
+
+func agentQueryStateText(state codev1.AgentQueryState) string {
+	return strings.ToLower(strings.TrimPrefix(state.String(), "AGENT_QUERY_STATE_"))
+}
+
+func agentQueryEndReasonText(reason codev1.AgentQueryEndReason) string {
+	return strings.ToLower(strings.TrimPrefix(reason.String(), "AGENT_QUERY_END_REASON_"))
 }
 
 // agentCloseSession ends the remembered agent session, or the named one.

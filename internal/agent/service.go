@@ -379,6 +379,13 @@ func (s *Service) ObserveQuery(ctx context.Context, queryID string, from uint64,
 	if err != nil {
 		return mapQueryStoreError(queryID, from, err)
 	}
+	// Attach pins the live writer's next sequence, but a settled record only
+	// carries it on the snapshot — validate uniformly so a from beyond the end
+	// is refused instead of silently replaying an empty window.
+	if from > snapshot.Next {
+		return mapQueryStoreError(queryID, from, ErrQuerySequence)
+	}
+
 	header := &codev1.AgentQueryHeader{
 		QueryId:               queryID,
 		SessionId:             snapshot.SessionID,

@@ -401,6 +401,11 @@ func TestService_ObserveQuery_AddressesAndErrors(t *testing.T) {
 	if err := stream.Wait(); err != nil {
 		t.Fatalf("Wait() error = %v", err)
 	}
+	// A settled record validates the window the same way a running one does.
+	err = observe(t, h.service, queryID, 9, false, &recordObserver{})
+	if status.Code(err) != codes.InvalidArgument || rpcerror.ReasonOf(err) != rpcerror.AgentQuerySequenceInvalid {
+		t.Fatalf("settled beyond-next error = %v (reason %q), want InvalidArgument AGENT_QUERY_SEQUENCE_INVALID", err, rpcerror.ReasonOf(err))
+	}
 	// A settled record replays its terminal error path when there is one; a
 	// clean cancel simply ends settled.
 	recorder := &recordObserver{}
