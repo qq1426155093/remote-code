@@ -70,8 +70,8 @@ func appendFrames(t *testing.T, writer *QueryWriter, queryID string, texts ...st
 	}
 }
 
-// collectFrames drains [from, to) through send and returns the texts.
-func collectFrames(t *testing.T, store *QueryStore, queryID string, from, to uint64) []string {
+// replayTexts drains [from, to) from disk and returns the frame texts.
+func replayTexts(t *testing.T, store *QueryStore, queryID string, from, to uint64) []string {
 	t.Helper()
 	var texts []string
 	err := store.ReadFrames(queryID, from, to, func(frame *codev1.QueryResponse) error {
@@ -127,7 +127,7 @@ func TestQueryStore_AppendSettleReplayAfterReopen(t *testing.T) {
 	if snapshot.Next != 3 || snapshot.Earliest != 0 {
 		t.Fatalf("window [%d,%d), want [0,3)", snapshot.Earliest, snapshot.Next)
 	}
-	if got := collectFrames(t, reopened, queryID, 0, snapshot.Next); len(got) != 3 || got[2] != "gamma" {
+	if got := replayTexts(t, reopened, queryID, 0, snapshot.Next); len(got) != 3 || got[2] != "gamma" {
 		t.Fatalf("replayed texts %v, want three frames ending gamma", got)
 	}
 }
@@ -142,10 +142,10 @@ func TestQueryStore_ReplayFromMidSequence(t *testing.T) {
 	if err := writer.Settle("end_turn"); err != nil {
 		t.Fatalf("settle: %v", err)
 	}
-	if got := collectFrames(t, store, queryID, 2, 4); len(got) != 2 || got[0] != "three" || got[1] != "four" {
+	if got := replayTexts(t, store, queryID, 2, 4); len(got) != 2 || got[0] != "three" || got[1] != "four" {
 		t.Fatalf("texts %v, want [three four]", got)
 	}
-	if got := collectFrames(t, store, queryID, 4, 4); len(got) != 0 {
+	if got := replayTexts(t, store, queryID, 4, 4); len(got) != 0 {
 		t.Fatalf("empty window returned %v", got)
 	}
 }
@@ -183,10 +183,13 @@ func TestQueryStore_RunningQueryMarkedLostOnReopen(t *testing.T) {
 	if snapshot.State != QueryStateLost {
 		t.Fatalf("state %q, want lost", snapshot.State)
 	}
+	if snapshot.Err == nil || rpcerror.ReasonOf(snapshot.Err.status()) != rpcerror.AgentProcessLost {
+		t.Fatalf("recovered error %v, want AGENT_PROCESS_LOST", snapshot.Err)
+	}
 	if snapshot.Next != 2 {
 		t.Fatalf("next %d, want 2 (events before the crash replay)", snapshot.Next)
 	}
-	if got := collectFrames(t, reopened, queryID, 0, 2); len(got) != 2 || got[1] != "partial-two" {
+	if got := replayTexts(t, reopened, queryID, 0, 2); len(got) != 2 || got[1] != "partial-two" {
 		t.Fatalf("texts %v, want both pre-crash frames", got)
 	}
 }
@@ -353,7 +356,7 @@ func TestQueryWriter_AttachFollowsLiveAppends(t *testing.T) {
 		t.Fatalf("snapshot next %d, want 2 (pinned at attach)", snapshot.Next)
 	}
 	// The disk part [1, 2) replays before the live channel takes over.
-	disk := collectFrames(t, store, queryID, 1, snapshot.Next)
+	disk := replayTexts(t, store, queryID, 1, snapshot.Next)
 	if len(disk) != 1 || disk[0] != "two" {
 		t.Fatalf("disk part %v, want [two]", disk)
 	}

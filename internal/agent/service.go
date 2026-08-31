@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/coder/acp-go-sdk"
+	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
 
 	"github.com/qq1426155093/remote-code/internal/process"
 	"github.com/qq1426155093/remote-code/internal/rpcerror"
@@ -32,6 +33,10 @@ const agentProcessName = "agent"
 // instead of the less specific AGENT_SESSION_NOT_FOUND.
 const lostSessionHistory = 1024
 
+// streamBufferCapacity bounds how many frames one TurnStream may queue for its
+// consumer; beyond it, forwarding to that consumer fails and the turn detaches.
+const streamBufferCapacity = 16
+
 // Config wires the agent bridge. Command/Arguments/Environment form the agent
 // child command line; the environment must come from operator configuration
 // or controller inheritance, never from callers.
@@ -43,6 +48,11 @@ type Config struct {
 	// WorkspaceRoot is the absolute workspace root every session cwd is
 	// confined to.
 	WorkspaceRoot string
+	// RuntimeDirectory hosts the query event store at <it>/agent-events. When
+	// empty, turns stream as before but nothing is retained for replay.
+	RuntimeDirectory string
+	// Events bounds the query event store; a zero value adopts the defaults.
+	Events EventLogConfig
 	// Processes is the process registry the agent child is started through.
 	// Required in production; unit tests inject Dial instead.
 	Processes *process.Service
@@ -54,20 +64,32 @@ type Config struct {
 	Logger *slog.Logger
 }
 
+// replayEnabled reports whether query events are persisted for replay.
+func (c Config) replayEnabled() bool {
+	return c.Enabled && c.RuntimeDirectory != ""
+}
+
+// queryStoreDirectoryName names the store inside the runtime directory,
+// following the file-transfers precedent of named non-process stores.
+const queryStoreDirectoryName = "agent-events"
+
 // Service is the agent bridge core: it owns the shared agent process, the
 // session table, and turn execution. The gRPC surface is a thin adapter over
-// StartTurn/CloseSession/Shutdown.
+// StartTurn/ObserveQuery/CancelQuery/CloseSession/Shutdown.
 type Service struct {
 	config    Config
 	logger    *slog.Logger
 	processes *process.Service
 
 	process *agentProcess
+	// queries persists turn events for replay; nil when replay is disabled.
+	queries *QueryStore
 
 	mu           sync.Mutex
 	sessions     map[string]*session
 	lostSessions map[string]struct{}
 	lostOrder    []string
+	liveQueries  map[string]*agentQuery
 	shuttingDown bool
 	// stop is closed once at shutdown; every turn pump selects on it so a
 	// shutdown interrupts even a blocked event emit.
@@ -76,9 +98,23 @@ type Service struct {
 	turns    sync.WaitGroup
 }
 
+// agentQuery tracks one in-flight turn for CancelQuery and live observation.
+// It is registered from StartTurn until the pump exits.
+type agentQuery struct {
+	id     string
+	writer *QueryWriter
+	// cancel triggers the turn's cancellation path; closed at most once.
+	cancel     chan struct{}
+	cancelOnce sync.Once
+}
+
+// cancel closes the cancel channel exactly once.
+func (q *agentQuery) trigger() { q.cancelOnce.Do(func() { close(q.cancel) }) }
+
 // New assembles the bridge. It starts nothing: the agent process appears
-// lazily on the first query.
-func New(config Config) *Service {
+// lazily on the first query. Opening the event store (and recovering previous
+// query records) is the one step that can fail construction.
+func New(config Config) (*Service, error) {
 	logger := config.Logger
 	if logger == nil {
 		logger = slog.Default()
@@ -89,7 +125,19 @@ func New(config Config) *Service {
 		processes:    config.Processes,
 		sessions:     make(map[string]*session),
 		lostSessions: make(map[string]struct{}),
+		liveQueries:  make(map[string]*agentQuery),
 		stop:         make(chan struct{}),
+	}
+	if config.replayEnabled() {
+		events := config.Events
+		if events == (EventLogConfig{}) {
+			events = DefaultEventLogConfig()
+		}
+		store, err := OpenQueryStore(filepath.Join(config.RuntimeDirectory, queryStoreDirectoryName), events, logger)
+		if err != nil {
+			return nil, fmt.Errorf("open agent event store: %w", err)
+		}
+		service.queries = store
 	}
 	dial := config.Dial
 	if dial == nil {
@@ -101,7 +149,7 @@ func New(config Config) *Service {
 		sink:    service,
 		onCrash: service.handleCrash,
 	}
-	return service
+	return service, nil
 }
 
 // TurnRequest is one query: a prompt for an existing session, or for a new
@@ -113,21 +161,21 @@ type TurnRequest struct {
 }
 
 // TurnStream is the event stream of one running turn. Events yields turn
-// events and closes when the turn settles; Wait then returns the terminal
-// error, nil for a completed turn. Callers should stop consuming Events as
-// soon as their own context ends; the turn keeps draining agent updates until
-// the prompt settles (the protocol requires it), so a caller going away
-// cancels the turn rather than abandoning it.
+// frames (query id and sequence included) and closes when the turn settles;
+// Wait then returns the terminal error, nil for a completed turn. The stream
+// is an observation window: a caller that stops receiving detaches, and the
+// turn keeps running to completion with its frames persisted for replay.
 type TurnStream struct {
-	events    chan Event
-	stop      <-chan struct{}
-	abandoned chan struct{}
-	done      chan struct{}
-	err       error
+	events      chan *codev1.QueryResponse
+	stop        <-chan struct{}
+	abandoned   chan struct{}
+	abandonOnce sync.Once
+	done        chan struct{}
+	err         error
 }
 
-// Events returns the turn's event channel. It is closed when the turn settles.
-func (t *TurnStream) Events() <-chan Event { return t.events }
+// Events returns the turn's frame channel. It is closed when the turn settles.
+func (t *TurnStream) Events() <-chan *codev1.QueryResponse { return t.events }
 
 // Wait blocks until the turn settled and returns its terminal error.
 func (t *TurnStream) Wait() error {
@@ -135,12 +183,12 @@ func (t *TurnStream) Wait() error {
 	return t.err
 }
 
-// emit forwards one event to the caller. It gives up when the caller's
+// emit forwards one frame to the caller. It gives up when the caller's
 // context ended, the service is shutting down, or the stream was abandoned —
 // never blocking the pump on a consumer that stopped receiving.
-func (t *TurnStream) emit(ctx context.Context, event Event) bool {
+func (t *TurnStream) emit(ctx context.Context, frame *codev1.QueryResponse) bool {
 	select {
-	case t.events <- event:
+	case t.events <- frame:
 		return true
 	case <-ctx.Done():
 	case <-t.stop:
@@ -150,7 +198,7 @@ func (t *TurnStream) emit(ctx context.Context, event Event) bool {
 }
 
 // abandon stops further forwarding while the pump keeps consuming.
-func (t *TurnStream) abandon() { close(t.abandoned) }
+func (t *TurnStream) abandon() { t.abandonOnce.Do(func() { close(t.abandoned) }) }
 
 // setErr records the terminal error before finish closes the stream.
 func (t *TurnStream) setErr(err error) { t.err = err }
@@ -228,29 +276,247 @@ func (s *Service) StartTurn(ctx context.Context, request TurnRequest) (*TurnStre
 		return nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.AgentTurnActive, "session %q already has an active turn", string(sess.id))
 	}
 
+	queryID, writer, err := s.beginQuery(sess, request)
+	if err != nil {
+		sess.endTurn(active)
+		return nil, err
+	}
+
 	stream := &TurnStream{
-		events:    make(chan Event, 16),
+		events:    make(chan *codev1.QueryResponse, streamBufferCapacity),
 		stop:      s.stop,
 		abandoned: make(chan struct{}),
 		done:      make(chan struct{}),
 	}
+	query := &agentQuery{id: queryID, writer: writer, cancel: make(chan struct{})}
+	s.mu.Lock()
+	if s.shuttingDown {
+		s.mu.Unlock()
+		sess.endTurn(active)
+		return nil, status.Error(codes.Unavailable, "agent service is shutting down")
+	}
+	s.liveQueries[queryID] = query
+	s.mu.Unlock()
 	s.turns.Add(1)
-	go s.runTurn(ctx, sess, connection, active, stream, request.Prompt, created)
+	go s.runTurn(ctx, sess, connection, active, stream, request.Prompt, created, query)
 	return stream, nil
 }
 
-// runTurn drives one prompt: it forwards session events to the caller while
-// waiting for the prompt response on a context detached from the caller's, so
-// a disconnect cancels the turn explicitly instead of aborting the wait.
-func (s *Service) runTurn(ctx context.Context, sess *session, connection *agentConnection, active *turn, stream *TurnStream, prompt string, created bool) {
+// beginQuery allocates the turn's query id and opens its event record. A nil
+// writer means replay is disabled: the turn still streams and carries its id,
+// but nothing is retained.
+func (s *Service) beginQuery(sess *session, request TurnRequest) (string, *QueryWriter, error) {
+	if s.queries == nil {
+		id, err := newQueryUUID()
+		if err != nil {
+			return "", nil, status.Errorf(codes.Internal, "allocate query id: %v", err)
+		}
+		return id, nil, nil
+	}
+	id, writer, err := s.queries.Begin(QueryMetadata{
+		SessionID:        string(sess.id),
+		WorkingDirectory: request.WorkingDirectory,
+	})
+	if err != nil {
+		return "", nil, status.Errorf(codes.Unavailable, "open query record: %v", err)
+	}
+	return id, writer, nil
+}
+
+// forgetQuery drops the live-query registration at pump exit.
+func (s *Service) forgetQuery(query *agentQuery) {
+	s.mu.Lock()
+	if s.liveQueries[query.id] == query {
+		delete(s.liveQueries, query.id)
+	}
+	s.mu.Unlock()
+}
+
+// CancelQuery asks a running turn to stop. It is the only way besides letting
+// it finish: a caller that merely stops reading a Query stream detaches. The
+// call triggers the cancellation and returns immediately — frames (ending with
+// a cancelled stop reason) arrive on the streams observing the query.
+func (s *Service) CancelQuery(queryID string) error {
+	if queryID == "" {
+		return status.Error(codes.InvalidArgument, "query id must not be empty")
+	}
+	s.mu.Lock()
+	query := s.liveQueries[queryID]
+	s.mu.Unlock()
+	if query != nil {
+		query.trigger()
+		return nil
+	}
+	if s.queries != nil {
+		if _, ok := s.queries.Stat(queryID); ok {
+			// Settled or lost: there is nothing left to stop.
+			return nil
+		}
+	}
+	return rpcerror.Errorf(codes.NotFound, rpcerror.AgentQueryNotFound, "query %q was not found", queryID)
+}
+
+// QueryObserver receives one ObserveQuery stream: a header describing the
+// window, then the frames from the requested sequence, then an end marker. A
+// turn that failed ends the stream with an error instead of an end marker —
+// the same terminal shape the original Query stream had.
+type QueryObserver interface {
+	QueryHeader(header *codev1.AgentQueryHeader) error
+	QueryEvent(frame *codev1.QueryResponse) error
+	QueryEnd(end *codev1.AgentQueryEnd) error
+}
+
+// ObserveQuery streams a query's frames starting at `from`. Without follow it
+// ends at the current window boundary (snapshot complete); with follow on a
+// running query it stays attached until the turn settles. The next sequence to
+// request on a resumed connection is always the end marker's next_sequence, or
+// one past the last received frame when the stream broke early.
+func (s *Service) ObserveQuery(ctx context.Context, queryID string, from uint64, follow bool, observer QueryObserver) error {
+	if s.queries == nil {
+		return rpcerror.Errorf(codes.NotFound, rpcerror.AgentQueryNotFound, "query %q: replay is disabled on this controller", queryID)
+	}
+	snapshot, subscription, err := s.queries.Attach(queryID, from)
+	if err != nil {
+		return mapQueryStoreError(queryID, from, err)
+	}
+	header := &codev1.AgentQueryHeader{
+		QueryId:               queryID,
+		SessionId:             snapshot.SessionID,
+		State:                 agentQueryStateOf(snapshot.State),
+		EarliestSequence:      snapshot.Earliest,
+		SnapshotEndSequence:   snapshot.Next,
+		ResolvedStartSequence: from,
+		HistoryTruncated:      snapshot.Earliest > 0,
+		Follow:                follow && subscription != nil,
+	}
+	if snapshot.State == QueryStateSettled && snapshot.Err == nil {
+		stopReason := snapshot.StopReason
+		header.StopReason = &stopReason
+	}
+	if err := observer.QueryHeader(header); err != nil {
+		return err
+	}
+	// The pinned disk part [from, snapshot.Next) is immutable once attached.
+	if snapshot.Next > from {
+		if err := s.queries.ReadFrames(queryID, from, snapshot.Next, observer.QueryEvent); err != nil {
+			return mapQueryStoreError(queryID, from, err)
+		}
+	}
+	if subscription == nil {
+		if snapshot.Err != nil {
+			return snapshot.Err.status()
+		}
+		reason := codev1.AgentQueryEndReason_AGENT_QUERY_END_REASON_SETTLED
+		if snapshot.State == QueryStateRunning {
+			reason = codev1.AgentQueryEndReason_AGENT_QUERY_END_REASON_SNAPSHOT_COMPLETE
+		}
+		return observer.QueryEnd(&codev1.AgentQueryEnd{NextSequence: snapshot.Next, Reason: reason})
+	}
+
+	delivered := snapshot.Next
+	for {
+		select {
+		case frame := <-subscription.Frames():
+			if err := observer.QueryEvent(frame); err != nil {
+				return err
+			}
+			delivered = frame.GetSequence() + 1
+		case err := <-subscription.Done():
+			if err != nil {
+				return mapQueryStoreError(queryID, delivered, err)
+			}
+			// The writer settled before ending its subscribers, so the state
+			// on disk is already terminal and answers the end marker.
+			final, ok := s.queries.Stat(queryID)
+			if !ok {
+				return rpcerror.Errorf(codes.NotFound, rpcerror.AgentQueryNotFound, "query %q vanished while settling", queryID)
+			}
+			if final.Err != nil {
+				return final.Err.status()
+			}
+			return observer.QueryEnd(&codev1.AgentQueryEnd{
+				NextSequence: final.Next,
+				Reason:       codev1.AgentQueryEndReason_AGENT_QUERY_END_REASON_SETTLED,
+			})
+		case <-ctx.Done():
+			return status.FromContextError(ctx.Err()).Err()
+		case <-s.stop:
+			return observer.QueryEnd(&codev1.AgentQueryEnd{
+				NextSequence: delivered,
+				Reason:       codev1.AgentQueryEndReason_AGENT_QUERY_END_REASON_SHUTDOWN,
+			})
+		}
+	}
+}
+
+// mapQueryStoreError lifts store addressing failures onto the wire with their
+// rpcerror reasons; anything else is an internal replay failure.
+func mapQueryStoreError(queryID string, from uint64, err error) error {
+	switch {
+	case errors.Is(err, ErrQueryNotFound):
+		return rpcerror.Errorf(codes.NotFound, rpcerror.AgentQueryNotFound, "query %q was not found", queryID)
+	case errors.Is(err, ErrQueryPruned):
+		return rpcerror.Errorf(codes.FailedPrecondition, rpcerror.AgentQueryEventsPruned, "query %q no longer retains sequence %d; re-observe from its earliest retained sequence", queryID, from)
+	case errors.Is(err, ErrQuerySequence):
+		return rpcerror.Errorf(codes.InvalidArgument, rpcerror.AgentQuerySequenceInvalid, "query %q has not written sequence %d yet", queryID, from)
+	case errors.Is(err, ErrQueryObservers):
+		return rpcerror.Errorf(codes.ResourceExhausted, rpcerror.AgentQueryObserverLimit, "query %q reached its observer limit; retry once one disconnects", queryID)
+	case errors.Is(err, ErrQueryObserverLags):
+		return rpcerror.Errorf(codes.ResourceExhausted, rpcerror.AgentQueryObserverLag, "observer of query %q fell behind; re-observe from the last received sequence", queryID)
+	}
+	return status.Errorf(codes.Internal, "replay query %q: %v", queryID, err)
+}
+
+// agentQueryStateOf maps the stored state onto its wire enum.
+func agentQueryStateOf(state QueryState) codev1.AgentQueryState {
+	switch state {
+	case QueryStateRunning:
+		return codev1.AgentQueryState_AGENT_QUERY_STATE_RUNNING
+	case QueryStateSettled:
+		return codev1.AgentQueryState_AGENT_QUERY_STATE_SETTLED
+	case QueryStateLost:
+		return codev1.AgentQueryState_AGENT_QUERY_STATE_LOST
+	}
+	return codev1.AgentQueryState_AGENT_QUERY_STATE_UNSPECIFIED
+}
+
+// runTurn drives one prompt: it persists and forwards session events while
+// waiting for the prompt response on a context detached from the caller's. A
+// caller that stops reading detaches — the turn runs to completion (or an
+// explicit CancelQuery) either way, because the protocol requires the prompt
+// to settle and every frame must reach the replay record.
+func (s *Service) runTurn(ctx context.Context, sess *session, connection *agentConnection, active *turn, stream *TurnStream, prompt string, created bool, query *agentQuery) {
 	defer s.turns.Done()
+	recordSettled := false
 	defer func() {
 		sess.endTurn(active)
+		s.forgetQuery(query)
+		if !recordSettled && query.writer != nil {
+			_ = query.writer.Lost(status.Error(codes.Internal, "turn pump exited without settling"))
+		}
 		stream.finish()
 	}()
 
+	sequence := uint64(0)
+	forward := func(event Event) {
+		frame := queryResponseOf(event)
+		frame.QueryId = query.id
+		frame.Sequence = sequence
+		if query.writer != nil {
+			if err := query.writer.Append(frame); err != nil {
+				s.logger.Warn("persist query frame failed", "query_id", query.id, "err", err.Error())
+			}
+		}
+		sequence++
+		if !stream.emit(ctx, frame) {
+			// The consumer is gone. Detach: keep persisting and consuming
+			// until the turn settles, so replay serves the full answer.
+			stream.abandon()
+		}
+	}
+
 	if created {
-		stream.emit(ctx, Event{Kind: EventKindSessionStarted, SessionStarted: SessionStarted{SessionID: string(sess.id)}})
+		forward(Event{Kind: EventKindSessionStarted, SessionStarted: SessionStarted{SessionID: string(sess.id)}})
 	}
 
 	promptCtx, cancelPrompt := context.WithCancel(context.Background())
@@ -278,9 +544,26 @@ func (s *Service) runTurn(ctx context.Context, sess *session, connection *agentC
 			return
 		}
 		cancelling = true
-		stream.abandon()
 		s.requestCancel(connection, sess)
 		orphanDeadline = time.After(orphanTurnGrace)
+	}
+	settleRecord := func(err error) {
+		recordSettled = true
+		if query.writer == nil {
+			return
+		}
+		// A lost process (or an agent that never answered the cancel) leaves
+		// the turn's fate unknown; every other failure is a clean refusal the
+		// caller can read back from the record.
+		if rpcerror.ReasonOf(err) == rpcerror.AgentProcessLost || status.Code(err) == codes.DeadlineExceeded {
+			if settleErr := query.writer.Lost(err); settleErr != nil {
+				s.logger.Warn("mark query record lost failed", "query_id", query.id, "err", settleErr.Error())
+			}
+			return
+		}
+		if settleErr := query.writer.Fail(err); settleErr != nil {
+			s.logger.Warn("settle query record failed", "query_id", query.id, "err", settleErr.Error())
+		}
 	}
 	for {
 		// Drain buffered updates before considering anything else. The SDK's
@@ -290,17 +573,13 @@ func (s *Service) runTurn(ctx context.Context, sess *session, connection *agentC
 		// the agent already sent.
 		select {
 		case event := <-active.incoming:
-			if !cancelling && !stream.emit(ctx, event) {
-				beginCancel()
-			}
+			forward(event)
 			continue
 		default:
 		}
 		select {
 		case event := <-active.incoming:
-			if !cancelling && !stream.emit(ctx, event) {
-				beginCancel()
-			}
+			forward(event)
 		case result := <-results:
 			if result.err != nil {
 				if !connection.alive() {
@@ -308,13 +587,13 @@ func (s *Service) runTurn(ctx context.Context, sess *session, connection *agentC
 					goto settled
 				}
 				if cancelling {
-					// The turn was already being cancelled, so the caller is
-					// gone and the stream abandoned. A live agent may answer
-					// with a cancelled stop reason, the SDK's -32800, or an
-					// error raised while tearing down on its already-cancelled
-					// handler context (the SDK turns those into jsonrpc
-					// -32603); every live-agent answer settles the turn as
-					// cancelled rather than failed.
+					// The turn was already being cancelled, so an explicit
+					// CancelQuery (or shutdown) is in flight. A live agent may
+					// answer with a cancelled stop reason, the SDK's -32800,
+					// or an error raised while tearing down on its
+					// already-cancelled handler context (the SDK turns those
+					// into jsonrpc -32603); every live-agent answer settles
+					// the turn as cancelled rather than failed.
 					stopReason = string(acp.StopReasonCancelled)
 				} else {
 					terminalErr = s.translatePromptError(connection, result.err)
@@ -323,7 +602,7 @@ func (s *Service) runTurn(ctx context.Context, sess *session, connection *agentC
 				stopReason = string(result.response.StopReason)
 			}
 			goto settled
-		case <-ctx.Done():
+		case <-query.cancel:
 			beginCancel()
 		case <-s.stop:
 			beginCancel()
@@ -337,8 +616,23 @@ func (s *Service) runTurn(ctx context.Context, sess *session, connection *agentC
 	}
 
 settled:
+	// Release the session's turn slot as soon as the outcome is known: the
+	// caller acts on the completed frame (or the stream error) immediately —
+	// reusing or closing the session — while settling the record below may
+	// still be flushing to disk. Both calls are idempotent, so the deferred
+	// release stays as the abnormal-exit safety net.
+	sess.endTurn(active)
+	s.forgetQuery(query)
 	if terminalErr == nil {
-		stream.emit(ctx, Event{Kind: EventKindCompleted, Completed: Completed{StopReason: stopReason}})
+		forward(Event{Kind: EventKindCompleted, Completed: Completed{StopReason: stopReason}})
+		recordSettled = true
+		if query.writer != nil {
+			if err := query.writer.Settle(stopReason); err != nil {
+				s.logger.Warn("settle query record failed", "query_id", query.id, "err", err.Error())
+			}
+		}
+	} else {
+		settleRecord(terminalErr)
 	}
 	stream.setErr(terminalErr)
 }
@@ -444,7 +738,13 @@ func (s *Service) Shutdown(ctx context.Context) error {
 	case <-ctx.Done():
 	}
 
-	return s.process.stop(ctx)
+	stopErr := s.process.stop(ctx)
+	if s.queries != nil {
+		if err := s.queries.Close(); err != nil {
+			s.logger.Warn("close agent event store failed", "err", err.Error())
+		}
+	}
+	return stopErr
 }
 
 // handleCrash empties the session table after the agent process died. Every
@@ -532,6 +832,15 @@ type Status struct {
 	LoadSession    bool
 	CloseSupported bool
 	Sessions       int
+	// Replay reports the event-store bounds when query replay is enabled.
+	Replay *AgentReplayStatus
+}
+
+// AgentReplayStatus mirrors the store bounds for AgentInfo.
+type AgentReplayStatus struct {
+	MaxObservers     int
+	MaxBytesPerQuery int64
+	MaxTotalBytes    int64
 }
 
 // Snapshot reports the current bridge state for GetInfo.
@@ -541,6 +850,13 @@ func (s *Service) Snapshot() Status {
 	s.mu.Unlock()
 	connection := s.process.currentConnection()
 	snapshot := Status{Sessions: sessions}
+	if s.queries != nil {
+		snapshot.Replay = &AgentReplayStatus{
+			MaxObservers:     s.queries.config.MaxObservers,
+			MaxBytesPerQuery: s.queries.config.MaxBytesPerQuery,
+			MaxTotalBytes:    s.queries.config.MaxTotalBytes,
+		}
+	}
 	if connection == nil {
 		return snapshot
 	}

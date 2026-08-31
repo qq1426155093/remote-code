@@ -75,6 +75,12 @@ const (
 	AgentQueryNotFound        Reason = "AGENT_QUERY_NOT_FOUND"
 	AgentQuerySequenceInvalid Reason = "AGENT_QUERY_SEQUENCE_INVALID"
 	AgentQueryEventsPruned    Reason = "AGENT_QUERY_EVENTS_PRUNED"
+	// AgentQueryObserverLimit marks a live observation refused because the
+	// record already carries the configured observer count.
+	AgentQueryObserverLimit Reason = "AGENT_QUERY_OBSERVER_LIMIT"
+	// AgentQueryObserverLag marks a live observation kicked for reading too
+	// slowly; the client re-observes from the last sequence it received.
+	AgentQueryObserverLag Reason = "AGENT_QUERY_OBSERVER_LAG"
 
 	// File transfers. These mirror FileTransferErrorReason, which stays on the
 	// wire for clients that already read it.

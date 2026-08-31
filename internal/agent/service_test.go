@@ -11,6 +11,7 @@ import (
 
 	"github.com/coder/acp-go-sdk"
 
+	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
 	"github.com/qq1426155093/remote-code/internal/rpcerror"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -36,32 +37,32 @@ func TestStartTurn_TurnLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StartTurn() error = %v", err)
 	}
-	events := collectEvents(t, stream)
+	frames := collectFrames(t, stream)
 	if err := stream.Wait(); err != nil {
 		t.Fatalf("Wait() error = %v", err)
 	}
 
-	if len(events) != 5 {
-		t.Fatalf("got %d events, want 5 (started, message, thought, message, completed)", len(events))
+	if len(frames) != 5 {
+		t.Fatalf("got %d frames, want 5 (started, message, thought, message, completed)", len(frames))
 	}
-	if events[0].Kind != EventKindSessionStarted || events[0].SessionStarted.SessionID != "sess-1" {
-		t.Fatalf("first event = %+v, want session_started sess-1", events[0])
+	if frames[0].GetSessionStarted() == nil || frames[0].GetSessionStarted().GetSessionId() != "sess-1" {
+		t.Fatalf("first frame = %+v, want session_started sess-1", frames[0])
 	}
-	if got := eventTexts(events); len(got) != 2 || got[0] != "first chunk" || got[1] != "second chunk" {
+	if got := frameTexts(frames); len(got) != 2 || got[0] != "first chunk" || got[1] != "second chunk" {
 		t.Fatalf("message chunks = %v", got)
 	}
 	sawThought := false
-	for _, event := range events {
-		if event.Kind == EventKindThought {
-			sawThought = event.Thought.Text == "thinking"
+	for _, frame := range frames {
+		if frame.GetThought() != nil {
+			sawThought = frame.GetThought().GetText() == "thinking"
 		}
 	}
 	if !sawThought {
-		t.Fatalf("thought event missing from %v", events)
+		t.Fatalf("thought frame missing from %v", frames)
 	}
-	last := events[len(events)-1]
-	if last.Kind != EventKindCompleted || last.Completed.StopReason != string(acp.StopReasonEndTurn) {
-		t.Fatalf("last event = %+v, want completed end_turn", last)
+	last := frames[len(frames)-1]
+	if last.GetCompleted() == nil || last.GetCompleted().GetStopReason() != string(acp.StopReasonEndTurn) {
+		t.Fatalf("last frame = %+v, want completed end_turn", last)
 	}
 
 	prompts := h.currentProcess(t).agent.promptsReceived()
@@ -77,22 +78,22 @@ func TestStartTurn_ReuseSessionForFollowUp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StartTurn() error = %v", err)
 	}
-	events := collectEvents(t, first)
+	frames := collectFrames(t, first)
 	if err := first.Wait(); err != nil {
 		t.Fatalf("Wait() error = %v", err)
 	}
-	sessionID := events[0].SessionStarted.SessionID
+	sessionID := frames[0].GetSessionStarted().GetSessionId()
 
 	second, err := h.service.StartTurn(context.Background(), TurnRequest{Prompt: "second", SessionID: sessionID})
 	if err != nil {
 		t.Fatalf("StartTurn(reuse) error = %v", err)
 	}
-	events = collectEvents(t, second)
+	frames = collectFrames(t, second)
 	if err := second.Wait(); err != nil {
 		t.Fatalf("Wait() error = %v", err)
 	}
-	for _, event := range events {
-		if event.Kind == EventKindSessionStarted {
+	for _, frame := range frames {
+		if frame.GetSessionStarted() != nil {
 			t.Fatal("follow-up turn must not emit session_started")
 		}
 	}
@@ -137,17 +138,22 @@ func TestStartTurn_TurnActiveRejected(t *testing.T) {
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	stream, err := h.service.StartTurn(ctx, TurnRequest{Prompt: "slow"})
 	if err != nil {
 		t.Fatalf("StartTurn() error = %v", err)
 	}
-	events := make(chan []Event, 1)
+	frames := make(chan []*codev1.QueryResponse, 1)
+	queryIDs := make(chan string, 1)
 	go func() {
-		var collected []Event
-		for event := range stream.Events() {
-			collected = append(collected, event)
+		var collected []*codev1.QueryResponse
+		for frame := range stream.Events() {
+			if len(collected) == 0 {
+				queryIDs <- frame.GetQueryId()
+			}
+			collected = append(collected, frame)
 		}
-		events <- collected
+		frames <- collected
 	}()
 
 	deadline := time.Now().Add(5 * time.Second)
@@ -168,9 +174,11 @@ func TestStartTurn_TurnActiveRejected(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	cancel()
+	if err := h.service.CancelQuery(<-queryIDs); err != nil {
+		t.Fatalf("CancelQuery() error = %v", err)
+	}
 	select {
-	case <-events:
+	case <-frames:
 	case <-time.After(20 * time.Second):
 		t.Fatal("cancelled turn did not settle")
 	}
@@ -183,7 +191,7 @@ func TestStartTurn_TurnActiveRejected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StartTurn(after cancel) error = %v", err)
 	}
-	collectEvents(t, next)
+	collectFrames(t, next)
 	if err := next.Wait(); err != nil {
 		t.Fatalf("Wait() error = %v", err)
 	}
@@ -210,14 +218,14 @@ func TestStartTurn_ParallelSessionsShareProcess(t *testing.T) {
 	}
 	ids := make(map[string]bool, sessions)
 	for i, stream := range streams {
-		events := collectEvents(t, stream)
+		frames := collectFrames(t, stream)
 		if err := stream.Wait(); err != nil {
 			t.Fatalf("Wait(%d) error = %v", i, err)
 		}
-		if len(events) == 0 || events[0].Kind != EventKindSessionStarted {
+		if len(frames) == 0 || frames[0].GetSessionStarted() == nil {
 			t.Fatalf("stream %d has no session_started", i)
 		}
-		ids[events[0].SessionStarted.SessionID] = true
+		ids[frames[0].GetSessionStarted().GetSessionId()] = true
 	}
 	if len(ids) != sessions {
 		t.Fatalf("got %d distinct session ids, want %d", len(ids), sessions)
@@ -274,7 +282,7 @@ func TestRequestPermission_AutoApprove(t *testing.T) {
 			if err != nil {
 				t.Fatalf("StartTurn() error = %v", err)
 			}
-			collectEvents(t, stream)
+			collectFrames(t, stream)
 			if err := stream.Wait(); err != nil {
 				t.Fatalf("Wait() error = %v", err)
 			}
@@ -307,49 +315,6 @@ func TestSelectPermissionOption(t *testing.T) {
 	}
 }
 
-func TestStartTurn_ClientDisconnectCancelsTurn(t *testing.T) {
-	h := newHarness(t, func(a *scriptedAgent) {
-		a.promptHook = func(a *scriptedAgent, ctx context.Context, prompt acp.PromptRequest) (acp.PromptResponse, error) {
-			if err := a.update(ctx, prompt.SessionId, acp.UpdateAgentMessageText("working")); err != nil {
-				return acp.PromptResponse{}, err
-			}
-			if err := a.waitForCancel(ctx); err != nil {
-				return acp.PromptResponse{}, err
-			}
-			// Post-cancel updates must still be consumed by the bridge. The
-			// SDK cancels the handler context on session/cancel, so a real
-			// agent flushes its final update on a detached context.
-			if err := a.update(context.WithoutCancel(ctx), prompt.SessionId, acp.UpdateAgentMessageText("late")); err != nil {
-				return acp.PromptResponse{}, err
-			}
-			return acp.PromptResponse{StopReason: acp.StopReasonCancelled}, nil
-		}
-	})
-
-	ctx, cancel := context.WithCancel(context.Background())
-	stream, err := h.service.StartTurn(ctx, TurnRequest{Prompt: "slow"})
-	if err != nil {
-		t.Fatalf("StartTurn() error = %v", err)
-	}
-drain:
-	for {
-		select {
-		case <-stream.Events():
-		default:
-			break drain
-		}
-	}
-	cancel()
-
-	if err := stream.Wait(); err != nil {
-		t.Fatalf("Wait() error = %v, want clean settle after cancel", err)
-	}
-	cancels := h.currentProcess(t).agent.cancelsReceived()
-	if len(cancels) != 1 || cancels[0] != "sess-1" {
-		t.Fatalf("agent received cancels = %v, want [sess-1]", cancels)
-	}
-}
-
 func TestStartTurn_ProcessCrash(t *testing.T) {
 	var calls int32
 	h := newHarness(t, func(a *scriptedAgent) {
@@ -376,8 +341,8 @@ func TestStartTurn_ProcessCrash(t *testing.T) {
 	}
 	sawMessage := make(chan struct{})
 	go func() {
-		for event := range stream.Events() {
-			if event.Kind == EventKindMessage {
+		for frame := range stream.Events() {
+			if frame.GetMessage() != nil {
 				close(sawMessage)
 				return
 			}
@@ -416,12 +381,12 @@ func TestStartTurn_ProcessCrash(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StartTurn(after crash) error = %v", err)
 	}
-	events := collectEvents(t, revived)
+	frames := collectFrames(t, revived)
 	if err := revived.Wait(); err != nil {
 		t.Fatalf("Wait() error = %v", err)
 	}
-	if len(events) == 0 || events[0].SessionStarted.SessionID != "sess-1" {
-		t.Fatalf("revived session event = %+v, want a fresh sess-1 on the new process", events)
+	if len(frames) == 0 || frames[0].GetSessionStarted().GetSessionId() != "sess-1" {
+		t.Fatalf("revived session frame = %+v, want a fresh sess-1 on the new process", frames)
 	}
 	if h.dialCount() != 2 {
 		t.Fatalf("dialed %d processes, want 2 (restart after crash)", h.dialCount())
@@ -479,7 +444,7 @@ func TestStartTurn_WorkingDirectoryConfined(t *testing.T) {
 			if err != nil {
 				t.Fatalf("working directory %q: %v", test.workingDirectory, err)
 			}
-			collectEvents(t, stream)
+			collectFrames(t, stream)
 			if err := stream.Wait(); err != nil {
 				t.Fatalf("working directory %q: Wait() = %v", test.workingDirectory, err)
 			}
@@ -516,7 +481,7 @@ func TestCloseSession(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		collectEvents(t, stream)
+		collectFrames(t, stream)
 		if err := h.service.CloseSession(context.Background(), "sess-1"); err != nil {
 			t.Fatalf("CloseSession() error = %v", err)
 		}
@@ -536,7 +501,7 @@ func TestCloseSession(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		collectEvents(t, stream)
+		collectFrames(t, stream)
 		if err := h.service.CloseSession(context.Background(), "sess-1"); err != nil {
 			t.Fatalf("CloseSession() error = %v", err)
 		}
@@ -557,14 +522,18 @@ func TestCloseSession(t *testing.T) {
 				return acp.PromptResponse{StopReason: acp.StopReasonCancelled}, nil
 			}
 		})
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		stream, err := h.service.StartTurn(ctx, TurnRequest{Prompt: "slow"})
+		stream, err := h.service.StartTurn(context.Background(), TurnRequest{Prompt: "slow"})
 		if err != nil {
 			t.Fatal(err)
 		}
+		queryIDs := make(chan string, 1)
 		go func() {
-			for range stream.Events() {
+			var seen bool
+			for frame := range stream.Events() {
+				if !seen {
+					seen = true
+					queryIDs <- frame.GetQueryId()
+				}
 			}
 		}()
 		deadline := time.Now().Add(5 * time.Second)
@@ -578,7 +547,9 @@ func TestCloseSession(t *testing.T) {
 			}
 			time.Sleep(10 * time.Millisecond)
 		}
-		cancel()
+		if err := h.service.CancelQuery(<-queryIDs); err != nil {
+			t.Fatalf("CancelQuery() error = %v", err)
+		}
 		if err := stream.Wait(); err != nil {
 			t.Fatalf("Wait() error = %v", err)
 		}

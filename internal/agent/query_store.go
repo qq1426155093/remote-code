@@ -14,6 +14,8 @@ import (
 	"time"
 
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
+	"github.com/qq1426155093/remote-code/internal/rpcerror"
+	"google.golang.org/grpc/codes"
 )
 
 // EventLogConfig bounds the on-disk store of query event records, mirroring
@@ -229,6 +231,14 @@ func (s *QueryStore) recoverDirectory(directory string) {
 	earliest, next, _ := scanOrZero(directory)
 	now := s.now()
 	state.State = string(QueryStateLost)
+	state.StopReason = ""
+	if state.Error == nil {
+		state.Error = &QueryError{
+			Code:    uint32(codes.Unavailable),
+			Reason:  string(rpcerror.AgentProcessLost),
+			Message: "the controller restarted while the query was running; its outcome is unknown",
+		}
+	}
 	state.EarliestSequence = earliest
 	state.NextSequence = next
 	state.SettledAt = &now
@@ -318,6 +328,36 @@ func (s *QueryStore) Stat(id string) (QuerySnapshot, bool) {
 		return QuerySnapshot{}, false
 	}
 	return snapshotOf(state), true
+}
+
+// Attach pins a query's window for observation. A non-nil subscription means
+// the query is live: frames before the pinned next come from ReadFrames, later
+// ones from the subscription. A nil subscription means the record is settled
+// (or unknown), and the snapshot path serves it from disk alone. The two
+// outcomes race only at settle time, where the writer's mutex keeps the pinned
+// snapshot consistent either way.
+func (s *QueryStore) Attach(id string, from uint64) (QuerySnapshot, *QuerySubscription, error) {
+	if !queryDirectoryPattern.MatchString(id) {
+		return QuerySnapshot{}, nil, fmt.Errorf("query %q: %w", id, ErrQueryNotFound)
+	}
+	s.mu.Lock()
+	writer := s.live[id]
+	s.mu.Unlock()
+	if writer == nil {
+		// Not live: serve whatever the disk state says, if anything.
+		state, err := readQueryState(filepath.Join(s.root, id))
+		if err != nil {
+			return QuerySnapshot{}, nil, fmt.Errorf("query %q: %w", id, ErrQueryNotFound)
+		}
+		if state.State == string(QueryStateRunning) {
+			// A running record with no writer belongs to an earlier controller
+			// life that recovery already rewrote as lost; re-read cannot race
+			// Begin, which only creates fresh directories.
+			return QuerySnapshot{}, nil, fmt.Errorf("query %q: %w", id, ErrQueryNotFound)
+		}
+		return snapshotOf(state), nil, nil
+	}
+	return writer.Attach(from)
 }
 
 // ReadFrames streams the retained frames [from, to) of a query from disk. The

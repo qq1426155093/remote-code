@@ -20,9 +20,10 @@ type RPC struct {
 // NewRPC wraps one bridge; service may be nil for the disabled surface.
 func NewRPC(service *Service) *RPC { return &RPC{bridge: service} }
 
-// Query runs one turn and forwards its events until the turn settles. The
-// stream context drives cancellation: a caller that goes away cancels the turn
-// on the agent instead of abandoning it.
+// Query runs one turn and forwards its frames until the turn settles. The
+// stream is an observation window: a caller that stops receiving detaches and
+// the turn keeps running — CancelQuery is the explicit stop, and ObserveQuery
+// resumes receiving from the last sequence.
 func (r *RPC) Query(request *codev1.QueryRequest, stream codev1.AgentService_QueryServer) error {
 	if r.bridge == nil {
 		return rpcerror.Errorf(codes.FailedPrecondition, rpcerror.AgentDisabled, "the agent service is disabled in controller configuration")
@@ -37,18 +38,57 @@ func (r *RPC) Query(request *codev1.QueryRequest, stream codev1.AgentService_Que
 	}
 	for {
 		select {
-		case event, ok := <-turn.Events():
+		case frame, ok := <-turn.Events():
 			if !ok {
 				// Events closed means the pump finished; Wait never blocks here.
 				return turn.Wait()
 			}
-			if err := stream.Send(queryResponseOf(event)); err != nil {
+			if err := stream.Send(frame); err != nil {
 				return err
 			}
 		case <-stream.Context().Done():
 			return status.FromContextError(stream.Context().Err()).Err()
 		}
 	}
+}
+
+// ObserveQuery replays a query's retained frames on the gRPC surface; see
+// Service.ObserveQuery for the window semantics.
+func (r *RPC) ObserveQuery(request *codev1.ObserveQueryRequest, stream codev1.AgentService_ObserveQueryServer) error {
+	if r.bridge == nil {
+		return rpcerror.Errorf(codes.FailedPrecondition, rpcerror.AgentDisabled, "the agent service is disabled in controller configuration")
+	}
+	return r.bridge.ObserveQuery(stream.Context(), request.GetQueryId(), request.GetFromSequence(), request.GetFollow(), &streamObserver{stream: stream})
+}
+
+// CancelQuery requests cancellation of a running turn; see Service.CancelQuery.
+func (r *RPC) CancelQuery(ctx context.Context, request *codev1.CancelQueryRequest) (*codev1.CancelQueryResponse, error) {
+	if r.bridge == nil {
+		return nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.AgentDisabled, "the agent service is disabled in controller configuration")
+	}
+	if err := r.bridge.CancelQuery(request.GetQueryId()); err != nil {
+		return nil, err
+	}
+	return &codev1.CancelQueryResponse{}, nil
+}
+
+// streamObserver adapts the gRPC server stream to the bridge's observer
+// interface. A send failure surfaces as the observer error and ends the
+// observation.
+type streamObserver struct {
+	stream codev1.AgentService_ObserveQueryServer
+}
+
+func (o *streamObserver) QueryHeader(header *codev1.AgentQueryHeader) error {
+	return o.stream.Send(&codev1.ObserveQueryResponse{Payload: &codev1.ObserveQueryResponse_Header{Header: header}})
+}
+
+func (o *streamObserver) QueryEvent(frame *codev1.QueryResponse) error {
+	return o.stream.Send(&codev1.ObserveQueryResponse{Payload: &codev1.ObserveQueryResponse_Event{Event: frame}})
+}
+
+func (o *streamObserver) QueryEnd(end *codev1.AgentQueryEnd) error {
+	return o.stream.Send(&codev1.ObserveQueryResponse{Payload: &codev1.ObserveQueryResponse_End{End: end}})
 }
 
 // CloseSession ends a session on the bridge; see Service.CloseSession for the
@@ -77,6 +117,15 @@ func (r *RPC) Info() *codev1.AgentInfo {
 		Generation:     snapshot.Generation,
 		CloseSupported: snapshot.CloseSupported,
 		Sessions:       uint32(snapshot.Sessions),
+	}
+	if snapshot.Replay != nil {
+		info.Replay = &codev1.AgentReplayInfo{
+			Available:        true,
+			FormatVersion:    queryEventFormat,
+			MaxObservers:     uint32(snapshot.Replay.MaxObservers),
+			MaxBytesPerQuery: snapshot.Replay.MaxBytesPerQuery,
+			MaxTotalBytes:    snapshot.Replay.MaxTotalBytes,
+		}
 	}
 	return info
 }

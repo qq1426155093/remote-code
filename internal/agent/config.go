@@ -15,14 +15,18 @@ var (
 )
 
 // ApplyDefaults fills the launch defaults for an enabled agent with no
-// explicit command. It never turns the service on: enabled defaults to true at
-// the controller option layer, where a v9 configuration can still opt out.
+// explicit command, and the event-store bounds when none were configured. It
+// never turns the service on: enabled defaults to true at the controller
+// option layer, where a v9 configuration can still opt out.
 func (c *Config) ApplyDefaults() {
 	if c.Command == "" {
 		c.Command = defaultAgentCommand
 		if c.Arguments == nil {
 			c.Arguments = append([]string(nil), defaultAgentArguments...)
 		}
+	}
+	if c.replayEnabled() && c.Events == (EventLogConfig{}) {
+		c.Events = DefaultEventLogConfig()
 	}
 }
 
@@ -39,6 +43,11 @@ func ValidateConfig(config Config) error {
 	for key := range config.Environment {
 		if key == "" || strings.ContainsAny(key, "=\x00") || strings.ContainsRune(key, ' ') {
 			return fmt.Errorf("agent environment key %q is not a valid variable name", key)
+		}
+	}
+	if config.replayEnabled() && config.Events != (EventLogConfig{}) {
+		if err := ValidateEventLogConfig(config.Events); err != nil {
+			return err
 		}
 	}
 	return nil

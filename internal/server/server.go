@@ -180,19 +180,29 @@ func NewPreparedWithLogger(prepared *Prepared, logger *controllerlog.Logger) (*S
 		_ = logger.Close()
 		return nil, err
 	}
-	// The agent bridge owns no resources until its first query spawns the
-	// child, so it cannot fail construction; the disabled surface stays
-	// registered and answers AGENT_DISABLED.
+	// The agent bridge spawns its child lazily on the first query; opening the
+	// query event store is the one step that can fail construction. The
+	// disabled surface stays registered and answers AGENT_DISABLED.
 	agentRPC := agent.NewRPC(nil)
 	if config.Agent.Enabled {
-		agentRPC = agent.NewRPC(agent.New(agent.Config{
-			Command:       config.Agent.Command,
-			Arguments:     config.Agent.Arguments,
-			Environment:   config.Agent.Environment,
-			WorkspaceRoot: config.Workspace,
-			Processes:     processService,
-			Logger:        newAgentLogHandler(logger),
-		}))
+		agentService, err := agent.New(agent.Config{
+			Enabled:          true,
+			Command:          config.Agent.Command,
+			Arguments:        config.Agent.Arguments,
+			Environment:      config.Agent.Environment,
+			WorkspaceRoot:    config.Workspace,
+			RuntimeDirectory: config.RuntimeDirectory,
+			Events:           config.Agent.Events,
+			Processes:        processService,
+			Logger:           newAgentLogHandler(logger),
+		})
+		if err != nil {
+			_ = processService.Close()
+			_ = fileService.Close()
+			_ = logger.Close()
+			return nil, fmt.Errorf("start agent service: %w", err)
+		}
+		agentRPC = agent.NewRPC(agentService)
 	}
 	var workflowService *workflow.Service
 	if config.Workflows.Enabled {

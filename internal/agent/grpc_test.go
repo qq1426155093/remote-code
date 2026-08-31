@@ -234,20 +234,27 @@ func TestRPCInfo_ReportsBridgeStatus(t *testing.T) {
 	h := newHarness(t, nil)
 	rpc := NewRPC(h.service)
 
-	if info := rpc.Info(); !info.GetEnabled() || info.GetStarted() || info.GetGeneration() != 0 {
+	info := rpc.Info()
+	if !info.GetEnabled() || info.GetStarted() || info.GetGeneration() != 0 {
 		t.Fatalf("Info() before first query = %+v", info)
+	}
+	if replay := info.GetReplay(); replay == nil || !replay.GetAvailable() || replay.GetFormatVersion() == 0 {
+		t.Fatalf("Info() replay before first query = %+v, want available with a format version", info.GetReplay())
 	}
 	stream, err := h.service.StartTurn(context.Background(), TurnRequest{Prompt: "hi"})
 	if err != nil {
 		t.Fatalf("StartTurn() error = %v", err)
 	}
-	collectEvents(t, stream)
+	collectFrames(t, stream)
 	if err := stream.Wait(); err != nil {
 		t.Fatalf("Wait() error = %v", err)
 	}
-	info := rpc.Info()
+	info = rpc.Info()
 	if !info.GetStarted() || info.GetGeneration() != 1 || info.GetSessions() != 1 || !info.GetCloseSupported() {
 		t.Fatalf("Info() after a query = %+v", info)
+	}
+	if replay := info.GetReplay(); !replay.GetAvailable() || replay.GetMaxBytesPerQuery() != DefaultEventLogConfig().MaxBytesPerQuery {
+		t.Fatalf("Info() replay after a query = %+v, want the store bounds", replay)
 	}
 }
 

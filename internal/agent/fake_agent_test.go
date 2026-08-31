@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/coder/acp-go-sdk"
+
+	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
 )
 
 // scriptedAgent plays the agent role (claude-agent-acp) over in-memory pipes
@@ -145,8 +147,11 @@ func (a *scriptedAgent) requestPermission(ctx context.Context, sessionID acp.Ses
 	return response, err
 }
 
-// waitForCancel blocks until the bridge sends session/cancel, the agent
-// connection dies, or ctx ends.
+// waitForCancel blocks until the bridge sends session/cancel or the agent
+// connection dies. The SDK also cancels the prompt handler's context on
+// session/cancel; that counts as the cancel arriving too — a well-behaved
+// agent flushes its final updates on a detached context afterwards, which is
+// what the scripted hooks emulate.
 func (a *scriptedAgent) waitForCancel(ctx context.Context) error {
 	select {
 	case <-a.cancelArrived:
@@ -154,7 +159,7 @@ func (a *scriptedAgent) waitForCancel(ctx context.Context) error {
 	case <-a.conn.Done():
 		return errors.New("agent connection closed")
 	case <-ctx.Done():
-		return ctx.Err()
+		return nil
 	}
 }
 
@@ -249,14 +254,25 @@ func (h *harness) setDialError(err error) {
 
 // newHarness assembles a Service whose dial spawns an in-memory scripted
 // agent per generation, with pipes that emulate a real child: closing the
-// client's stdin makes the "process" exit and close its stdout.
+// client's stdin makes the "process" exit and close its stdout. Replay is on,
+// over a fresh runtime directory, with the default event-store bounds.
 func newHarness(t *testing.T, configure func(*scriptedAgent)) *harness {
+	t.Helper()
+	return newHarnessWithEvents(t, EventLogConfig{}, configure)
+}
+
+// newHarnessWithEvents is newHarness with explicit event-store bounds; zero
+// fields adopt the defaults exactly the way New does.
+func newHarnessWithEvents(t *testing.T, events EventLogConfig, configure func(*scriptedAgent)) *harness {
 	t.Helper()
 	workspace := t.TempDir()
 	h := &harness{workspace: workspace}
-	h.service = New(Config{
-		WorkspaceRoot: workspace,
-		Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+	service, err := New(Config{
+		Enabled:          true,
+		WorkspaceRoot:    workspace,
+		RuntimeDirectory: t.TempDir(),
+		Events:           events,
+		Logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Dial: func(ctx context.Context) (transport, error) {
 			h.mu.Lock()
 			h.dials++
@@ -319,36 +335,45 @@ func newHarness(t *testing.T, configure func(*scriptedAgent)) *harness {
 			}, nil
 		},
 	})
+	if err != nil {
+		t.Fatalf("assemble agent service: %v", err)
+	}
+	h.service = service
+	t.Cleanup(func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		_ = service.Shutdown(shutdownCtx)
+	})
 	return h
 }
 
-// collectEvents drains a turn's events with a deadline so a stalled pump
+// collectFrames drains a turn's frames with a deadline so a stalled pump
 // fails the test instead of hanging it.
-func collectEvents(t *testing.T, stream *TurnStream) []Event {
+func collectFrames(t *testing.T, stream *TurnStream) []*codev1.QueryResponse {
 	t.Helper()
-	collected := make(chan []Event, 1)
+	collected := make(chan []*codev1.QueryResponse, 1)
 	go func() {
-		var events []Event
-		for event := range stream.Events() {
-			events = append(events, event)
+		var frames []*codev1.QueryResponse
+		for frame := range stream.Events() {
+			frames = append(frames, frame)
 		}
-		collected <- events
+		collected <- frames
 	}()
 	select {
-	case events := <-collected:
-		return events
+	case frames := <-collected:
+		return frames
 	case <-time.After(20 * time.Second):
 		t.Fatal("timed out waiting for the turn to settle")
 		return nil
 	}
 }
 
-// eventTexts extracts the text of message events, in order.
-func eventTexts(events []Event) []string {
-	texts := make([]string, 0, len(events))
-	for _, event := range events {
-		if event.Kind == EventKindMessage {
-			texts = append(texts, event.Message.Text)
+// frameTexts extracts the text of message frames, in order.
+func frameTexts(frames []*codev1.QueryResponse) []string {
+	texts := make([]string, 0, len(frames))
+	for _, frame := range frames {
+		if text := frame.GetMessage().GetText(); text != "" {
+			texts = append(texts, text)
 		}
 	}
 	return texts
