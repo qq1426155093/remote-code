@@ -795,3 +795,91 @@ func TestAgentConfigDefaults(t *testing.T) {
 		t.Fatal("invalid environment key accepted")
 	}
 }
+
+func TestLoadControllerConfigV9AgentEvents(t *testing.T) {
+	configFile := writeControllerConfig(t, `
+version = 9
+workspace = "/work"
+[agent.events]
+max_bytes_per_query = 33554432
+max_total_bytes = 8589934592
+segment_bytes = 2097152
+retention_after_settle = "48h"
+max_observers = 16
+`)
+	file, err := loadControllerConfig(configFile)
+	if err != nil {
+		t.Fatalf("loadControllerConfig() error = %v", err)
+	}
+	options := defaultControllerOptions()
+	if err := applyControllerFileConfig(&options, file); err != nil {
+		t.Fatal(err)
+	}
+	events := options.serverConfig.Agent.Events
+	if events.MaxBytesPerQuery != 32<<20 || events.MaxTotalBytes != 8<<30 || events.SegmentBytes != 2<<20 ||
+		events.RetentionAfterSettle != 48*time.Hour || events.MaxObservers != 16 {
+		t.Fatalf("agent events config = %+v", events)
+	}
+
+	// Without the table the defaults survive the merge untouched.
+	options = defaultControllerOptions()
+	if options.serverConfig.Agent.Events != agent.DefaultEventLogConfig() {
+		t.Fatalf("default agent events = %+v, want %+v", options.serverConfig.Agent.Events, agent.DefaultEventLogConfig())
+	}
+	file, err = loadControllerConfig(writeControllerConfig(t, "version = 9\nworkspace = \"/work\"\n"))
+	if err != nil {
+		t.Fatalf("loadControllerConfig() error = %v", err)
+	}
+	if err := applyControllerFileConfig(&options, file); err != nil {
+		t.Fatal(err)
+	}
+	if options.serverConfig.Agent.Events != agent.DefaultEventLogConfig() {
+		t.Fatalf("agent events after empty merge = %+v, want the defaults", options.serverConfig.Agent.Events)
+	}
+
+	// A single knob overrides just itself.
+	file, err = loadControllerConfig(writeControllerConfig(t, "version = 9\n[agent.events]\nmax_observers = 2\n"))
+	if err != nil {
+		t.Fatalf("loadControllerConfig() error = %v", err)
+	}
+	options = defaultControllerOptions()
+	if err := applyControllerFileConfig(&options, file); err != nil {
+		t.Fatal(err)
+	}
+	if options.serverConfig.Agent.Events.MaxObservers != 2 ||
+		options.serverConfig.Agent.Events != (agent.EventLogConfig{
+			MaxBytesPerQuery:     agent.DefaultEventLogConfig().MaxBytesPerQuery,
+			MaxTotalBytes:        agent.DefaultEventLogConfig().MaxTotalBytes,
+			SegmentBytes:         agent.DefaultEventLogConfig().SegmentBytes,
+			RetentionAfterSettle: agent.DefaultEventLogConfig().RetentionAfterSettle,
+			MaxObservers:         2,
+		}) {
+		t.Fatalf("partial agent events override = %+v", options.serverConfig.Agent.Events)
+	}
+
+	// A malformed duration names the key.
+	file, err = loadControllerConfig(writeControllerConfig(t, "version = 9\n[agent.events]\nretention_after_settle = \"later\"\n"))
+	if err != nil {
+		t.Fatalf("loadControllerConfig() error = %v", err)
+	}
+	options = defaultControllerOptions()
+	if err := applyControllerFileConfig(&options, file); err == nil || !strings.Contains(err.Error(), "agent.events.retention_after_settle") {
+		t.Fatalf("bad retention error = %v, want agent.events.retention_after_settle", err)
+	}
+
+	// Out-of-range bounds survive the merge but fail validation, so
+	// --check-config rejects them before any listener binds.
+	file, err = loadControllerConfig(writeControllerConfig(t, "version = 9\n[agent.events]\nsegment_bytes = 1024\n"))
+	if err != nil {
+		t.Fatalf("loadControllerConfig() error = %v", err)
+	}
+	options = defaultControllerOptions()
+	if err := applyControllerFileConfig(&options, file); err != nil {
+		t.Fatal(err)
+	}
+	options.serverConfig.RuntimeDirectory = t.TempDir()
+	options.serverConfig.Workspace = t.TempDir()
+	if err := agent.ValidateConfig(options.serverConfig.Agent); err == nil {
+		t.Fatal("out-of-range agent.events bounds accepted by ValidateConfig")
+	}
+}

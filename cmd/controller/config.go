@@ -116,10 +116,19 @@ type mcpFileConfig struct {
 }
 
 type agentFileConfig struct {
-	Enabled     *bool              `toml:"enabled"`
-	Command     *string            `toml:"command"`
-	Arguments   *[]string          `toml:"arguments"`
-	Environment *map[string]string `toml:"environment"`
+	Enabled     *bool                  `toml:"enabled"`
+	Command     *string                `toml:"command"`
+	Arguments   *[]string              `toml:"arguments"`
+	Environment *map[string]string     `toml:"environment"`
+	Events      *agentEventsFileConfig `toml:"events"`
+}
+
+type agentEventsFileConfig struct {
+	MaxBytesPerQuery     *int64  `toml:"max_bytes_per_query"`
+	MaxTotalBytes        *int64  `toml:"max_total_bytes"`
+	SegmentBytes         *int64  `toml:"segment_bytes"`
+	RetentionAfterSettle *string `toml:"retention_after_settle"`
+	MaxObservers         *int    `toml:"max_observers"`
 }
 
 type workflowFileConfig struct {
@@ -157,7 +166,10 @@ func defaultControllerOptions() controllerOptions {
 	options.serverConfig.Workflows.ApplyDefaults()
 	// The agent service is on by default; command defaults are applied after
 	// the file merge so an explicit command never inherits the npx arguments.
+	// Event retention defaults to the store's operator-facing bounds so a
+	// partial [agent.events] override keeps the rest.
 	options.serverConfig.Agent.Enabled = true
+	options.serverConfig.Agent.Events = agent.DefaultEventLogConfig()
 	return options
 }
 
@@ -435,12 +447,14 @@ func applyControllerFileConfig(options *controllerOptions, config controllerFile
 		}
 	}
 	if config.Agent != nil {
-		applyAgentFileConfig(&options.serverConfig.Agent, *config.Agent)
+		if err := applyAgentFileConfig(&options.serverConfig.Agent, *config.Agent); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-func applyAgentFileConfig(config *agent.Config, file agentFileConfig) {
+func applyAgentFileConfig(config *agent.Config, file agentFileConfig) error {
 	if file.Enabled != nil {
 		config.Enabled = *file.Enabled
 	}
@@ -457,6 +471,29 @@ func applyAgentFileConfig(config *agent.Config, file agentFileConfig) {
 		}
 		config.Environment = environment
 	}
+	if file.Events != nil {
+		events := file.Events
+		if events.MaxBytesPerQuery != nil {
+			config.Events.MaxBytesPerQuery = *events.MaxBytesPerQuery
+		}
+		if events.MaxTotalBytes != nil {
+			config.Events.MaxTotalBytes = *events.MaxTotalBytes
+		}
+		if events.SegmentBytes != nil {
+			config.Events.SegmentBytes = *events.SegmentBytes
+		}
+		if events.RetentionAfterSettle != nil {
+			retention, err := time.ParseDuration(*events.RetentionAfterSettle)
+			if err != nil {
+				return fmt.Errorf("invalid agent.events.retention_after_settle: %w", err)
+			}
+			config.Events.RetentionAfterSettle = retention
+		}
+		if events.MaxObservers != nil {
+			config.Events.MaxObservers = *events.MaxObservers
+		}
+	}
+	return nil
 }
 
 func applyWorkflowFileConfig(config *workflow.Config, file workflowFileConfig) error {
