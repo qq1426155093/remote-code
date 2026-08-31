@@ -1196,6 +1196,8 @@ var ProcessService_ServiceDesc = grpc.ServiceDesc{
 
 const (
 	AgentService_Query_FullMethodName        = "/remote.code.v1.AgentService/Query"
+	AgentService_ObserveQuery_FullMethodName = "/remote.code.v1.AgentService/ObserveQuery"
+	AgentService_CancelQuery_FullMethodName  = "/remote.code.v1.AgentService/CancelQuery"
 	AgentService_CloseSession_FullMethodName = "/remote.code.v1.AgentService/CloseSession"
 )
 
@@ -1204,10 +1206,16 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
 // AgentService bridges queries to an ACP agent child process. One turn streams
-// every agent observation until the turn settles; a caller that stops reading
-// cancels the turn.
+// every agent observation until the turn settles. The stream is an observation
+// window over a turn that always runs to completion: a caller that stops
+// reading detaches without cancelling; CancelQuery is the explicit stop.
 type AgentServiceClient interface {
 	Query(ctx context.Context, in *QueryRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[QueryResponse], error)
+	// Replay a turn's retained events from an inclusive sequence, optionally
+	// following a running turn until it settles.
+	ObserveQuery(ctx context.Context, in *ObserveQueryRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ObserveQueryResponse], error)
+	// Explicitly cancel a running turn; idempotent once settled.
+	CancelQuery(ctx context.Context, in *CancelQueryRequest, opts ...grpc.CallOption) (*CancelQueryResponse, error)
 	CloseSession(ctx context.Context, in *CloseSessionRequest, opts ...grpc.CallOption) (*CloseSessionResponse, error)
 }
 
@@ -1238,6 +1246,35 @@ func (c *agentServiceClient) Query(ctx context.Context, in *QueryRequest, opts .
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type AgentService_QueryClient = grpc.ServerStreamingClient[QueryResponse]
 
+func (c *agentServiceClient) ObserveQuery(ctx context.Context, in *ObserveQueryRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ObserveQueryResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &AgentService_ServiceDesc.Streams[1], AgentService_ObserveQuery_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ObserveQueryRequest, ObserveQueryResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type AgentService_ObserveQueryClient = grpc.ServerStreamingClient[ObserveQueryResponse]
+
+func (c *agentServiceClient) CancelQuery(ctx context.Context, in *CancelQueryRequest, opts ...grpc.CallOption) (*CancelQueryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CancelQueryResponse)
+	err := c.cc.Invoke(ctx, AgentService_CancelQuery_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *agentServiceClient) CloseSession(ctx context.Context, in *CloseSessionRequest, opts ...grpc.CallOption) (*CloseSessionResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CloseSessionResponse)
@@ -1253,10 +1290,16 @@ func (c *agentServiceClient) CloseSession(ctx context.Context, in *CloseSessionR
 // for forward compatibility.
 //
 // AgentService bridges queries to an ACP agent child process. One turn streams
-// every agent observation until the turn settles; a caller that stops reading
-// cancels the turn.
+// every agent observation until the turn settles. The stream is an observation
+// window over a turn that always runs to completion: a caller that stops
+// reading detaches without cancelling; CancelQuery is the explicit stop.
 type AgentServiceServer interface {
 	Query(*QueryRequest, grpc.ServerStreamingServer[QueryResponse]) error
+	// Replay a turn's retained events from an inclusive sequence, optionally
+	// following a running turn until it settles.
+	ObserveQuery(*ObserveQueryRequest, grpc.ServerStreamingServer[ObserveQueryResponse]) error
+	// Explicitly cancel a running turn; idempotent once settled.
+	CancelQuery(context.Context, *CancelQueryRequest) (*CancelQueryResponse, error)
 	CloseSession(context.Context, *CloseSessionRequest) (*CloseSessionResponse, error)
 	mustEmbedUnimplementedAgentServiceServer()
 }
@@ -1270,6 +1313,12 @@ type UnimplementedAgentServiceServer struct{}
 
 func (UnimplementedAgentServiceServer) Query(*QueryRequest, grpc.ServerStreamingServer[QueryResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method Query not implemented")
+}
+func (UnimplementedAgentServiceServer) ObserveQuery(*ObserveQueryRequest, grpc.ServerStreamingServer[ObserveQueryResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method ObserveQuery not implemented")
+}
+func (UnimplementedAgentServiceServer) CancelQuery(context.Context, *CancelQueryRequest) (*CancelQueryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CancelQuery not implemented")
 }
 func (UnimplementedAgentServiceServer) CloseSession(context.Context, *CloseSessionRequest) (*CloseSessionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CloseSession not implemented")
@@ -1306,6 +1355,35 @@ func _AgentService_Query_Handler(srv interface{}, stream grpc.ServerStream) erro
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type AgentService_QueryServer = grpc.ServerStreamingServer[QueryResponse]
 
+func _AgentService_ObserveQuery_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ObserveQueryRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(AgentServiceServer).ObserveQuery(m, &grpc.GenericServerStream[ObserveQueryRequest, ObserveQueryResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type AgentService_ObserveQueryServer = grpc.ServerStreamingServer[ObserveQueryResponse]
+
+func _AgentService_CancelQuery_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CancelQueryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).CancelQuery(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_CancelQuery_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).CancelQuery(ctx, req.(*CancelQueryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _AgentService_CloseSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CloseSessionRequest)
 	if err := dec(in); err != nil {
@@ -1332,6 +1410,10 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*AgentServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
+			MethodName: "CancelQuery",
+			Handler:    _AgentService_CancelQuery_Handler,
+		},
+		{
 			MethodName: "CloseSession",
 			Handler:    _AgentService_CloseSession_Handler,
 		},
@@ -1340,6 +1422,11 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "Query",
 			Handler:       _AgentService_Query_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "ObserveQuery",
+			Handler:       _AgentService_ObserveQuery_Handler,
 			ServerStreams: true,
 		},
 	},

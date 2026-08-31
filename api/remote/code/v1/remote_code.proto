@@ -44,10 +44,16 @@ service ProcessService {
 }
 
 // AgentService bridges queries to an ACP agent child process. One turn streams
-// every agent observation until the turn settles; a caller that stops reading
-// cancels the turn.
+// every agent observation until the turn settles. The stream is an observation
+// window over a turn that always runs to completion: a caller that stops
+// reading detaches without cancelling; CancelQuery is the explicit stop.
 service AgentService {
   rpc Query(QueryRequest) returns (stream QueryResponse);
+  // Replay a turn's retained events from an inclusive sequence, optionally
+  // following a running turn until it settles.
+  rpc ObserveQuery(ObserveQueryRequest) returns (stream ObserveQueryResponse);
+  // Explicitly cancel a running turn; idempotent once settled.
+  rpc CancelQuery(CancelQueryRequest) returns (CancelQueryResponse);
   rpc CloseSession(CloseSessionRequest) returns (CloseSessionResponse);
 }
 
@@ -798,8 +804,15 @@ message CloseSessionResponse {}
 
 // Exactly one event per message, selected by the oneof. The stream ends with
 // completed when the turn settled; a failed turn ends the stream with a status
-// error instead.
+// error instead. Every frame carries the turn's query_id and a per-query
+// sequence number that starts at zero and increases by one per frame,
+// synthetic frames included; (query_id, sequence) addresses any frame for
+// replay through ObserveQuery.
 message QueryResponse {
+  // Stable id of the turn this frame belongs to.
+  string query_id = 8;
+  // Zero-based position of this frame within the query.
+  uint64 sequence = 9;
   oneof event {
     AgentSessionStarted session_started = 1;
     AgentMessage message = 2;
@@ -809,6 +822,92 @@ message QueryResponse {
     AgentUsage usage = 6;
     AgentTurnCompleted completed = 7;
   }
+}
+
+message ObserveQueryRequest {
+  // Required; the query_id reported by Query frames.
+  string query_id = 1;
+  // Inclusive first sequence to replay. Zero is the first frame of the query.
+  uint64 from_sequence = 2;
+  // Keep following a running query until it settles. Unset drains the retained
+  // events and ends with snapshot_complete.
+  optional bool follow = 3;
+}
+
+// Terminal condition of an ObserveQuery stream.
+enum AgentQueryEndReason {
+  AGENT_QUERY_END_REASON_UNSPECIFIED = 0;
+  // The followed (or already settled) turn settled; a cancelled turn settles
+  // with stop_reason cancelled.
+  AGENT_QUERY_END_REASON_SETTLED = 1;
+  // Snapshot only: the caller did not ask to follow a running query.
+  AGENT_QUERY_END_REASON_SNAPSHOT_COMPLETE = 2;
+  // The controller is shutting down and cut the stream short.
+  AGENT_QUERY_END_REASON_SHUTDOWN = 3;
+}
+
+// Lifecycle state of a query record.
+enum AgentQueryState {
+  AGENT_QUERY_STATE_UNSPECIFIED = 0;
+  AGENT_QUERY_STATE_RUNNING = 1;
+  AGENT_QUERY_STATE_SETTLED = 2;
+  // The turn was in flight when the controller restarted or the agent process
+  // crashed; retained events are still replayable.
+  AGENT_QUERY_STATE_LOST = 3;
+}
+
+// First frame of an ObserveQuery stream, mirroring the process-log header: it
+// anchors the replay window before any event frames arrive.
+message AgentQueryHeader {
+  string query_id = 1;
+  string session_id = 2;
+  AgentQueryState state = 3;
+  // Lowest sequence still retained; lower requests fail with
+  // AGENT_QUERY_EVENTS_PRUNED.
+  uint64 earliest_sequence = 4;
+  // Next sequence at attach time: sequences >= snapshot_end_sequence arrive
+  // live when following.
+  uint64 snapshot_end_sequence = 5;
+  // First sequence actually streamed; equals the requested from_sequence after
+  // validation.
+  uint64 resolved_start_sequence = 6;
+  // The retention window dropped frames between zero and earliest_sequence.
+  bool history_truncated = 7;
+  // Terminal stop reason once settled or lost.
+  optional string stop_reason = 8;
+  bool follow = 9;
+}
+
+message AgentQueryEnd {
+  // First sequence the caller has not received.
+  uint64 next_sequence = 1;
+  AgentQueryEndReason reason = 2;
+}
+
+message ObserveQueryResponse {
+  oneof payload {
+    AgentQueryHeader header = 1;
+    // Reuses the Query frame type so clients share one renderer.
+    QueryResponse event = 2;
+    AgentQueryEnd end = 3;
+  }
+}
+
+message CancelQueryRequest {
+  // Required; the query_id reported by Query frames.
+  string query_id = 1;
+}
+
+message CancelQueryResponse {}
+
+// Query replay capability negotiated through AgentInfo, following the
+// file_transfers precedent; absent on controllers without the event store.
+message AgentReplayInfo {
+  bool available = 1;
+  uint32 format_version = 2;
+  uint32 max_observers = 3;
+  int64 max_bytes_per_query = 4;
+  int64 max_total_bytes = 5;
 }
 
 // First frame of a turn that created a session; carries the id to reuse for
@@ -881,4 +980,7 @@ message AgentInfo {
   uint64 generation = 4;
   bool close_supported = 5;
   uint32 sessions = 6;
+  // Query event retention parameters; absent when the controller has no event
+  // store.
+  optional AgentReplayInfo replay = 7;
 }

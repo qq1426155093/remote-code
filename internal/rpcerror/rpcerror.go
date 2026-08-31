@@ -71,6 +71,11 @@ const (
 	// metadata carries the raw jsonrpc_code.
 	AgentRequestError Reason = "AGENT_REQUEST_ERROR"
 
+	// Query replay: addressing a retained turn's event stream.
+	AgentQueryNotFound        Reason = "AGENT_QUERY_NOT_FOUND"
+	AgentQuerySequenceInvalid Reason = "AGENT_QUERY_SEQUENCE_INVALID"
+	AgentQueryEventsPruned    Reason = "AGENT_QUERY_EVENTS_PRUNED"
+
 	// File transfers. These mirror FileTransferErrorReason, which stays on the
 	// wire for clients that already read it.
 	TransferOffsetMismatch Reason = "TRANSFER_OFFSET_MISMATCH"
