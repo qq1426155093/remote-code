@@ -16,7 +16,7 @@
 
 | 决策点 | 结论 | 理由 |
 |---|---|---|
-| Query RPC 形态 | **服务端流式** `Query(QueryRequest) returns (stream QueryResponse)` | 贴合 ACP turn 模型;客户端断开流即取消 turn |
+| Query RPC 形态 | **服务端流式** `Query(QueryRequest) returns (stream QueryResponse)` | 贴合 ACP turn 模型;~~客户端断开流即取消 turn~~(修订:断开一律 detach,取消走 `CancelQuery`) |
 | 权限审批 | **自动放行**(选 `allow_once` 类选项) | gRPC token 持有者本可直接 `StartProcess` 执行任意命令,审批在该层只是 UX 不是隔离;与既有开放信任模型一致 |
 | 进程模型 | **单进程共享**:一个 claude-agent-acp 子进程承载全部会话 | 资源占用低(Node 常驻数百 MB),与 Zed 等编辑器用法一致;崩溃重启,会话标 LOST |
 | 进程承载 | **复用进程注册表**(新增内部 raw-pipe 入口) | 统一可观测性(记录/日志/LOST 语义);协议 stdout 不落盘 |
@@ -146,9 +146,13 @@ internal/agent/
 - **turn 生命周期**:`Prompt` 在独立 ctx 上等待(不随客户端流 ctx 取消);
   SessionUpdate 通知按 sessionId 扇出到事件总线 → 活跃 Query 流转发;`Prompt` 返回
   后发末帧 `TurnCompleted{stop_reason}` 并结束流。
-- **取消**:客户端断开 gRPC 流 → 发 `session/cancel` 通知 → 等 `Prompt` 以
-  `stopReason=cancelled` 落地(上限 30s,超时则记孤儿 turn 并强制终止流——对照
-  claude-agent-acp 自身的 30s 强杀兜底);协议要求 cancel 后到达的 update 仍要消费。
+- **取消**(**已被 query 回放设计修订,见下**):客户端断开 gRPC 流 → 发
+  `session/cancel` 通知 → 等 `Prompt` 以 `stopReason=cancelled` 落地(上限 30s,
+  超时则记孤儿 turn 并强制终止流——对照 claude-agent-acp 自身的 30s 强杀兜底);
+  协议要求 cancel 后到达的 update 仍要消费。
+  > **修订(2026-08-31)**:断开改为 **一律 detach**——turn 跑到底,事件逐帧落盘
+  > 可回放;显式取消走新的 `CancelQuery` RPC(内部仍是本条的 cancel 路径)。
+  > 详见 [Agent Query 回放设计 v1](agent-query-replay-design-v1.md)。
 - **CloseSession**:rpc `CloseSession` → 若能力快照含 `sessionCapabilities.close`
   (claude-agent-acp 有此能力)则调 SDK `CloseSession`(方法 `session/close`,
   `client_gen.go:267`)并移除本地会话表项;未广告该能力的 agent 仅做本地清理。

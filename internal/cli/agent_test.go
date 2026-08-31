@@ -90,16 +90,12 @@ func TestAgentCloseSessionWithoutSession(t *testing.T) {
 
 func TestParseAgentObserveOptions(t *testing.T) {
 	options, err := parseAgentObserveOptions([]string{"q-1"})
-	if err != nil || options.queryID != "q-1" || options.fromSequence != 0 || options.follow {
+	if err != nil || options.queryID != "q-1" || options.fromSequence != 0 || !options.follow {
 		t.Fatalf("parseAgentObserveOptions() = %+v, %v", options, err)
 	}
-	options, err = parseAgentObserveOptions([]string{"--from", "7", "--follow", "q-2"})
-	if err != nil || options.queryID != "q-2" || options.fromSequence != 7 || !options.follow {
+	options, err = parseAgentObserveOptions([]string{"--from", "7", "--no-follow", "q-2"})
+	if err != nil || options.queryID != "q-2" || options.fromSequence != 7 || options.follow {
 		t.Fatalf("parseAgentObserveOptions(flags) = %+v, %v", options, err)
-	}
-	options, err = parseAgentObserveOptions([]string{"-f", "q-3"})
-	if err != nil || !options.follow {
-		t.Fatalf("parseAgentObserveOptions(-f) = %+v, %v", options, err)
 	}
 	if _, err := parseAgentObserveOptions([]string{"--from", "x", "q"}); err == nil {
 		t.Fatal("accepted a non-numeric --from")
@@ -107,7 +103,10 @@ func TestParseAgentObserveOptions(t *testing.T) {
 	if _, err := parseAgentObserveOptions([]string{"--from", "1", "--from", "2", "q"}); err == nil {
 		t.Fatal("accepted a repeated --from")
 	}
-	if _, err := parseAgentObserveOptions([]string{"-x", "q"}); err == nil {
+	if _, err := parseAgentObserveOptions([]string{"--no-follow", "--no-follow", "q"}); err == nil {
+		t.Fatal("accepted a repeated --no-follow")
+	}
+	if _, err := parseAgentObserveOptions([]string{"-f", "q"}); err == nil {
 		t.Fatal("accepted an unknown agent-observe option")
 	}
 	if _, err := parseAgentObserveOptions(nil); err == nil {

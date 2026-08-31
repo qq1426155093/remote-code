@@ -143,7 +143,8 @@ func (r *REPL) cancelInterruptedTurn(commandContext context.Context, queryID str
 	return nil
 }
 
-// agentObserveOptions selects the replay window of `agent-observe`.
+// agentObserveOptions selects the replay window of `agent-observe`. A running
+// query is followed by default; --no-follow drains the retained events only.
 type agentObserveOptions struct {
 	queryID      string
 	fromSequence uint64
@@ -153,8 +154,9 @@ type agentObserveOptions struct {
 // parseAgentObserveOptions splits `agent-observe` arguments into the replay
 // flags and the positional query id.
 func parseAgentObserveOptions(arguments []string) (agentObserveOptions, error) {
-	var options agentObserveOptions
+	options := agentObserveOptions{follow: true}
 	fromSet := false
+	noFollowSet := false
 	words := make([]string, 0, 1)
 	for index := 0; index < len(arguments); index++ {
 		switch argument := arguments[index]; argument {
@@ -169,11 +171,12 @@ func parseAgentObserveOptions(arguments []string) (agentObserveOptions, error) {
 			}
 			fromSet = true
 			options.fromSequence = from
-		case "--follow", "-f":
-			if options.follow {
+		case "--no-follow":
+			if noFollowSet {
 				return agentObserveOptions{}, usageError()
 			}
-			options.follow = true
+			noFollowSet = true
+			options.follow = false
 		case "--":
 			words = append(words, arguments[index+1:]...)
 			index = len(arguments)
@@ -193,7 +196,8 @@ func parseAgentObserveOptions(arguments []string) (agentObserveOptions, error) {
 
 // agentObserve replays a query's frames — a finished turn's answer, the tail
 // a disconnected stream missed (--from), or a running turn's live output
-// (--follow). Ctrl-C stops observing; the turn itself keeps running.
+// (followed by default; --no-follow drains the snapshot only). Ctrl-C stops
+// observing; the turn itself keeps running.
 func (r *REPL) agentObserve(arguments []string) error {
 	options, err := parseAgentObserveOptions(arguments)
 	if err != nil {

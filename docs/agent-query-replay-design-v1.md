@@ -32,7 +32,7 @@ response 时,可凭 `query_id` + sequence 续传,从指定 sequence 起继续拿
 |---|---|---|
 | 客户端断开 Query 流 | 取消 turn(`session/cancel`) | **不影响 turn**;事件继续落盘,可 `ObserveQuery` 续看 |
 | Ctrl-C(CLI) | 关流即取消 | 改调 `CancelQuery` |
-| turn 终态 | 流随 turn 结束 | `state.json` 记录 settled/cancelled/lost,可反复回放至保留期 |
+| turn 终态 | 流随 turn 结束 | `state.json` 记录 settled(stop_reason 含 cancelled)/lost,可反复回放至保留期 |
 | 内存 | 事件总线只转发不囤积(风险 #5) | 活跃 turn 只转发;保留交给磁盘 |
 
 成本语义变化:**没人看的 turn 会跑完**(除非显式取消)。调用方发起即视为授权执行到底。
@@ -141,10 +141,13 @@ message AgentQueryHeader {
 
 message AgentQueryEnd {
   uint64 next_sequence = 1;
-  AgentQueryEndReason reason = 2;        // SETTLED / SNAPSHOT_COMPLETE /
-                                        // QUERY_LOST / SHUTDOWN / CANCELLED
+  AgentQueryEndReason reason = 2;        // SETTLED / SNAPSHOT_COMPLETE / SHUTDOWN
 }
 ```
+
+失败/lost 的查询**不以 end 帧收尾**:其 `state.json` 持久化了 rpc error
+(code、reason、message),回放末尾按原状态错误结束流——取消是
+`SETTLED + stop_reason=cancelled`,不是独立的 end reason。
 
 `AgentInfo` 追加 `optional AgentReplayInfo replay = 7`(available、format_version、
 max_observers、保留上限),沿用 `file_transfers` 能力协商先例。
@@ -156,11 +159,12 @@ max_observers、保留上限),沿用 `file_transfers` 能力协商先例。
 | reason | 场景 |
 |---|---|
 | `AGENT_QUERY_NOT_FOUND` | query id 未知或记录已删除 |
-| `AGENT_QUERY_SEQUENCE_INVALID` | `from_sequence` > `next_sequence`(尚未存在) |
+| `AGENT_QUERY_SEQUENCE_INVALID` | `from_sequence` > `next_sequence`(尚未存在;settled 记录同样校验) |
 | `AGENT_QUERY_EVENTS_PRUNED` | `from_sequence` < `earliest_sequence`(已被淘汰) |
+| `AGENT_QUERY_OBSERVER_LIMIT` | 活跃查询观察者达到上限(对照日志观察) |
+| `AGENT_QUERY_OBSERVER_LAG` | live 观察者落后被踢;从最后收到的 sequence 重新 observe |
 
-观察者超限对照日志观察的上限错误;流中途查询目录被 GC 删除 → end 帧
-`SNAPSHOT_COMPLETE` 前先报 `AGENT_QUERY_NOT_FOUND` 终止。
+流中途查询目录被 GC 删除 → 以 `AGENT_QUERY_NOT_FOUND` 状态错误终止。
 
 ## 5. `internal/agent` 改动
 
@@ -188,8 +192,8 @@ retention_after_settle = "168h"  # 7 天
 max_observers       = 8
 ```
 
-`--check-config` 走 `agent.ValidateEventsConfig`(量级校验,对照
-`processservice.ValidateLogConfig`)。
+`--check-config` 走 `agent.ValidateConfig`(内含 `ValidateEventLogConfig`
+量级校验,对照 `processservice.ValidateLogConfig`)。
 
 ## 7. CLI / client
 
@@ -197,10 +201,11 @@ max_observers       = 8
   `ObserveAgentQuery(ctx, ObserveAgentQueryOptions)` 与 `CancelAgentQuery`;
 - CLI 新命令(集中注册 `commandSpec`):
   - `agent-observe <QUERY_ID> [--from N] [--no-follow]`——渲染复用
-    `agentEventRenderer`;
+    `agentEventRenderer`;running 查询默认 follow,`--no-follow` 只排空快照;
+    每个命令输出头部一行 `query: <id>` 供回放引用;
   - `agent-cancel <QUERY_ID>`;
 - `agent`(query)Ctrl-C 改调 `CancelQuery`,中断后提示
-  `query <id> continues; observe with 'agent-observe <id> --from <n>'`。
+  `cancelled turn <id>; replay with 'agent-observe <id>'`。
 
 ## 8. 安全不变量对照
 
@@ -243,3 +248,23 @@ CLAUDE.md 的"Never log tokens, prompts..."措辞按此收窄为诊断日志范�
 3. **观察者落干**(live follow 落后于头部淘汰):v1 单查询段淘汰只发生在逐 query
    上限触顶,超大概率不会发生在 follow 窗口内;若发生,订阅者收到 pruned 错误;
 4. **detach 成本**:无人消费的 turn 跑完——文档明示,CLI 提示可 `agent-cancel`。
+
+## 12. 实现修订记录(2026-08-31)
+
+按本设计落地(`feat(agent): persist turns and serve replay over ObserveQuery`
+等提交)时确认的偏差:
+
+1. **失败终态不走 end 帧**:end reason 只有 `SETTLED` / `SNAPSHOT_COMPLETE` /
+   `SHUTDOWN`;失败/lost 查询以持久化的 rpc 状态错误结束回放流(§4.1 已改)。
+2. **lost 恢复补终态错误**:controller 重启把 running 记录标 lost 时,合成
+   `AGENT_PROCESS_LOST` 终态错误,回放以状态错误收尾而不是静默截断。
+3. **settled 记录同样校验 `from_sequence`**:Attach 只对活跃 writer 锁定
+   `next_sequence`;service 层对快照统一校验,越界一律
+   `AGENT_QUERY_SEQUENCE_INVALID`(此前 settled 路径会静默回放空窗口)。
+4. **turn 槽位先于落盘释放**:结果一到就 `endTurn`,记录 Settle(fsync)在
+   后面慢慢做——客户端收到 `completed` 帧立即复用/关闭会话不会被
+   `AGENT_TURN_ACTIVE` 拒绝。
+5. **新增观察者 reasons**:`AGENT_QUERY_OBSERVER_LIMIT` / `AGENT_QUERY_OBSERVER_LAG`
+   (§4.2 已补)。
+6. **CLI 默认 follow**:`agent-observe` 对 running 查询默认续流,`--no-follow`
+   排空快照即止;`agent` 命令每 turn 打印 `query: <id>` 供回放引用。

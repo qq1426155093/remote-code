@@ -113,8 +113,24 @@ func (h *agentHelper) LoadSession(context.Context, acp.LoadSessionRequest) (acp.
 // binary in helper mode.
 func startControllerWithAgent(t *testing.T, workspace string) string {
 	t.Helper()
+	return startControllerWithAgentRuntime(t, workspace, t.TempDir())
+}
+
+// startControllerWithAgentRuntime is startControllerWithAgent over an explicit
+// runtime directory, so restart tests can reuse the on-disk query records.
+func startControllerWithAgentRuntime(t *testing.T, workspace, runtimeDirectory string) string {
+	t.Helper()
+	controller, serveErrors := bootControllerWithAgent(t, workspace, runtimeDirectory)
+	t.Cleanup(func() { stopController(t, controller, serveErrors) })
+	return controller.Address()
+}
+
+// bootControllerWithAgent starts a controller without registering cleanup, for
+// tests that manage its lifecycle themselves.
+func bootControllerWithAgent(t *testing.T, workspace, runtimeDirectory string) (*server.Server, <-chan error) {
+	t.Helper()
 	controller, err := server.New(server.Config{
-		ListenAddress: "127.0.0.1:0", Workspace: workspace, RuntimeDirectory: t.TempDir(),
+		ListenAddress: "127.0.0.1:0", Workspace: workspace, RuntimeDirectory: runtimeDirectory,
 		Agent: agent.Config{
 			Enabled: true,
 			Command: os.Args[0],
@@ -129,19 +145,22 @@ func startControllerWithAgent(t *testing.T, workspace string) string {
 	}
 	serveErrors := make(chan error, 1)
 	go func() { serveErrors <- controller.Serve() }()
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-		if err := controller.Shutdown(ctx); err != nil && !errors.Is(err, context.DeadlineExceeded) {
-			t.Errorf("controller.Shutdown() error = %v", err)
-		}
-		select {
-		case <-serveErrors:
-		case <-time.After(15 * time.Second):
-			t.Error("controller Serve() did not return")
-		}
-	})
-	return controller.Address()
+	return controller, serveErrors
+}
+
+// stopController shuts one booted controller down and waits for its server.
+func stopController(t *testing.T, controller *server.Server, serveErrors <-chan error) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := controller.Shutdown(ctx); err != nil && !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("controller.Shutdown() error = %v", err)
+	}
+	select {
+	case <-serveErrors:
+	case <-time.After(15 * time.Second):
+		t.Error("controller Serve() did not return")
+	}
 }
 
 // drainAgentTurn reads one turn to completion and returns its message texts
@@ -389,6 +408,79 @@ func TestClientAgentQueryReplayAndCancelOverGRPC(t *testing.T) {
 	}
 	if err := remote.CancelAgentQuery(ctx, ""); err == nil {
 		t.Fatal("empty query id accepted by CancelAgentQuery")
+	}
+}
+
+func TestClientAgentQueryReplaySurvivesControllerRestart(t *testing.T) {
+	// Generation one: settle a turn whose record lands in the shared runtime
+	// directory, then stop the controller.
+	workspace := t.TempDir()
+	runtimeDirectory := t.TempDir()
+	controller, serveErrors := bootControllerWithAgent(t, workspace, runtimeDirectory)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	remote, err := remoteclient.New(ctx, remoteclient.Config{Address: controller.Address()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream, err := remote.AgentQuery(ctx, "first", remoteclient.AgentQueryOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	queryID := ""
+	frames := 0
+	for {
+		response, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatalf("turn Recv() error = %v", err)
+		}
+		queryID = response.GetQueryId()
+		frames++
+	}
+	if err := remote.Close(); err != nil {
+		t.Fatal(err)
+	}
+	stopController(t, controller, serveErrors)
+
+	// Generation two boots over the same runtime directory; the settled
+	// record replays without the agent child ever starting.
+	controller2, serveErrors2 := bootControllerWithAgent(t, workspace, runtimeDirectory)
+	defer stopController(t, controller2, serveErrors2)
+	remote2, err := remoteclient.New(ctx, remoteclient.Config{Address: controller2.Address()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer remote2.Close()
+	replay, err := remote2.ObserveAgentQuery(ctx, queryID, remoteclient.AgentObserveOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	header, err := replay.Recv()
+	if err != nil {
+		t.Fatalf("replay header after restart = %v", err)
+	}
+	if h := header.GetHeader(); h == nil || h.GetState() != codev1.AgentQueryState_AGENT_QUERY_STATE_SETTLED ||
+		h.GetSnapshotEndSequence() != uint64(frames) {
+		t.Fatalf("header after restart = %+v", header)
+	}
+	replayed := 0
+	for {
+		response, err := replay.Recv()
+		if err != nil {
+			t.Fatalf("replay Recv() after restart = %v", err)
+		}
+		if response.GetEvent() != nil {
+			replayed++
+		}
+		if response.GetEnd() != nil {
+			break
+		}
+	}
+	if replayed != frames {
+		t.Fatalf("replay after restart delivered %d frames, want %d", replayed, frames)
 	}
 }
 
