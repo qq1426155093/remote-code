@@ -5,7 +5,7 @@
 部分的分享提纲，也可作为部署手册使用。
 
 > 当前版本为 `0.1.0`，API 兼容线为 `remote.code.v1`。本文只把仓库中已经实现并有测试覆盖的能力
-> 描述为可用功能；面向 Claude Code 的 Agent 身份、角色和编排语义仍是后续规划。
+> 描述为可用功能；ACP Agent turn/session 已实现，`designer`、`implementer` 等角色和多 Agent 编排语义仍是后续规划。
 
 ## 1. Controller 的定位
 
@@ -16,6 +16,7 @@ Controller 是部署在远程开发机上的长期运行服务，也是远程工
 - 启动、记录、观察和终止通用受管进程；
 - 为 PIPE 与 PTY 进程保留可回放日志和可重连输入；
 - 通过服务端模板固化 Code Agent 等复杂进程的启动约束；
+- 通过共享 ACP 子进程执行 Agent turn，并持久化、回放和发现 query；
 - 在内部运行可恢复的静态 DAG/Expr 工作流与长时间 Activity；
 - 对传输大小、活动进程、日志、MCP 调用和并发连接实施资源限制；
 - 在进程退出或 Controller 重启后保留必要的历史记录。
@@ -31,7 +32,8 @@ Controller 是部署在远程开发机上的长期运行服务，也是远程工
 | 进程模板 | 已实现 | JSON Schema 参数校验、受限 Expr 渲染、启动参数脱敏 |
 | MCP Server | 已实现，默认关闭 | 从严格 `.mcp.yaml` 加载工具，并复用 Controller 内部服务 |
 | Workflow core | 已实现，默认关闭 | 内部 Go API、静态 DAG、Expr、Activity lease、人工介入和 bbolt 恢复；暂无公共 RPC/CLI |
-| Agent 角色与执行适配 | 尚未实现 | `designer`、`implementer`、`reviewer` 及真实 Agent 进程启动仍属于后续规划 |
+| ACP Agent bridge | 已实现，默认启用 | 流式 turn、显式取消、query 回放/列表、当前可复用 session 列表和关闭 |
+| 多 Agent 角色与编排 | 尚未实现 | `designer`、`implementer`、`reviewer` 的调度、权限和协作仍属于后续规划 |
 | 操作系统沙箱 | 不提供 | workspace 边界不能替代容器、虚拟机或受限系统用户 |
 
 ## 2. 总体架构
@@ -47,21 +49,26 @@ flowchart LR
         Auth --> Info[Controller service]
         Auth --> Files[File service]
         Auth --> Processes[Process service]
+        Auth --> AgentService[Agent service]
         Auth --> ControllerLogs[Controller runtime log]
         MCP --> MCPAuth[Bearer authentication]
         MCPAuth --> Registry[MCP tool registry]
         Registry --> Files
         Registry --> Processes
         Workflows[Workflow core]
+        AgentService --> AgentBridge[ACP bridge]
     end
 
     Files --> Workspace[(Workspace)]
     Files --> TransferState[(Transfer state)]
     Processes --> Runtime[(Process metadata and logs)]
+    AgentBridge --> AgentEvents[(Agent query events)]
+    AgentBridge --> AgentProcess[Shared ACP child]
     ControllerLogs --> RuntimeDiagnostics[(controller log segments)]
     Workflows --> WorkflowState[(workflow bbolt state)]
     Processes --> Groups[Managed process groups]
     Groups --> Workspace
+    AgentProcess --> Workspace
 ```
 
 gRPC 与 MCP 使用不同 listener。默认情况下，gRPC 监听 `127.0.0.1:9443`，MCP 监听
@@ -75,6 +82,7 @@ Controller 内部的主要组件如下：
 | `ControllerService` | 返回版本、API、workspace、文件传输能力、进程上限、模板数量，并观察 Controller 运行日志 |
 | `FileService` | 实施工作区边界、文件元数据、目录树、原子传输和文件变更 |
 | `ProcessService` | 管理进程注册表、进程组、PIPE/PTY、输入流、日志、模板和持久化历史 |
+| `AgentService` | 管理 ACP session/turn、query 事件存储、回放、取消和分页列表 |
 | gRPC health service | 提供标准 gRPC 健康状态；启用 token 时健康请求同样需要认证 |
 | MCP registry | 启动时编译工具定义、JSON Schema 和 Expr，并按 capability 调用内部服务 |
 | Workflow core | 启动时编译静态 DAG 和 Expr，以 Activity journal、lease 和事务事件恢复内部编排 |
@@ -92,6 +100,7 @@ Controller 内部的主要组件如下：
 - 推荐传输分块大小；
 - 最大活动进程数；
 - 当前加载的进程模板数量。
+- Agent 进程代、会话数、回放参数以及 query/session 列表能力。
 
 这一步同时承担连接、TLS 和 token 的快速校验。公共 Go client 只有在 `GetInfo` 成功后才返回可用实例。
 
@@ -218,6 +227,20 @@ MCP 工具通过 capability allowlist 调用已有文件和进程服务，不直
 工具级并发、请求速率、请求/响应大小及超时限制。示例默认不暴露文件删除、进程历史删除、任意信号、
 stdin、PTY attach 或日志 follow。
 
+### 3.8 ACP Agent 服务
+
+Agent 服务默认启用，首次 `Query` 时才通过进程注册表的 raw-pipe 入口启动一个共享 ACP 子进程。协议
+stdout 不进入进程日志，stderr 仍可按普通受管进程观测。每个 turn 获得稳定 `query_id` 和从 0 开始的
+sequence；事件逐帧写入 `runtime_directory/agent-events/<query-id>/`。
+
+`Query` 流只是观察窗口，客户端断开不会停止 turn；显式停止使用 `CancelQuery`，续读使用
+`ObserveQuery`。`ListQueries` 按创建时间从新到旧分页列出保留期内的 `RUNNING`、`SETTLED` 和 `LOST`
+记录，可按 session/state 过滤。已落定记录受 `[agent.events]` 的保留时长和总容量 GC 约束。
+
+`ListSessions` 只返回当前 ACP 子进程代内可继续传给 `Query.session_id` 的 session，并区分 `IDLE` 与
+`RUNNING`、报告活动 query。ACP 子进程崩溃或 Controller 重启后旧 session 不可复用，因此不会出现在
+列表中；已落盘 query 仍可通过 `ListQueries` 和 `ObserveQuery` 做事后查看。
+
 ## 4. 构建与安装
 
 ### 4.1 环境要求
@@ -310,6 +333,7 @@ allow_insecure_remote = false
 | `[tls]` | 全局服务端证书和私钥，两项必须同时提供 |
 | `[auth]` | gRPC bearer token 文件路径；token 内容不直接写入 TOML |
 | `[process_templates]` | workspace 外模板定义文件和只读 `extra_parameters` |
+| `[agent]` / `[agent.events]` | ACP 子进程命令、环境，以及 query 分段、容量、保留期和观察者上限 |
 | `[workflows]` | workspace 外静态 DAG、Activity 租约、重试和恢复参数 |
 | `[mcp]` | MCP listener、可选独立 token、定义文件、capability、速率、并发、大小和超时 |
 
@@ -356,7 +380,7 @@ configuration OK
 
 ```text
 /srv/remote-code/workspace/       Agent 和远程命令的工作区
-/var/lib/remote-code/runtime/     进程历史、日志和传输状态
+/var/lib/remote-code/runtime/     进程历史、日志、Agent query 事件和传输状态
 /etc/remote-code/                 TOML、token、TLS 文件
 /etc/remote-code/definitions/     进程模板和 MCP 定义
 ```

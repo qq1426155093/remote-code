@@ -118,9 +118,34 @@ func TestParseAgentObserveOptions(t *testing.T) {
 }
 
 func TestAgentCommandsRegistered(t *testing.T) {
-	for _, name := range []string{"agent", "agent-query", "agent-close", "agent-observe", "agent-cancel"} {
+	for _, name := range []string{"agent", "agent-query", "agent-close", "agent-observe", "agent-cancel", "agent-queries", "agent-sessions"} {
 		if _, ok := defaultCommandRegistry.lookup(name); !ok {
 			t.Fatalf("command %q is not registered", name)
 		}
+	}
+}
+
+func TestParseAgentListOptions(t *testing.T) {
+	queries, err := parseAgentQueryListOptions([]string{
+		"--session", "s-1", "--state", "running", "--state", "lost",
+		"--page-size", "25", "--page-token", "next",
+	})
+	if err != nil || queries.sessionID != "s-1" || len(queries.states) != 2 || queries.pageSize != 25 || queries.pageToken != "next" {
+		t.Fatalf("parseAgentQueryListOptions() = %+v, %v", queries, err)
+	}
+	sessions, err := parseAgentSessionListOptions([]string{"--state", "idle", "--page-size", "10"})
+	if err != nil || len(sessions.states) != 1 || sessions.states[0] != codev1.AgentSessionState_AGENT_SESSION_STATE_IDLE || sessions.pageSize != 10 {
+		t.Fatalf("parseAgentSessionListOptions() = %+v, %v", sessions, err)
+	}
+	for _, arguments := range [][]string{
+		{"--state", "unknown"}, {"--page-size", "0"}, {"--page-size", "x"},
+		{"--page-token"}, {"--session", "a", "--session", "b"}, {"extra"},
+	} {
+		if _, err := parseAgentQueryListOptions(arguments); err == nil {
+			t.Fatalf("agent query list accepted %v", arguments)
+		}
+	}
+	if _, err := parseAgentSessionListOptions([]string{"--state", "settled"}); err == nil {
+		t.Fatal("agent session list accepted query-only state")
 	}
 }

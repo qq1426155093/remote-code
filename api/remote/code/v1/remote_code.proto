@@ -54,6 +54,10 @@ service AgentService {
   rpc ObserveQuery(ObserveQueryRequest) returns (stream ObserveQueryResponse);
   // Explicitly cancel a running turn; idempotent once settled.
   rpc CancelQuery(CancelQueryRequest) returns (CancelQueryResponse);
+  // List query records still retained by the replay store.
+  rpc ListQueries(ListQueriesRequest) returns (ListQueriesResponse);
+  // List sessions that are reusable in the current agent process generation.
+  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
   rpc CloseSession(CloseSessionRequest) returns (CloseSessionResponse);
 }
 
@@ -900,6 +904,73 @@ message CancelQueryRequest {
 
 message CancelQueryResponse {}
 
+message ListQueriesRequest {
+  // When present, only return turns from this session.
+  optional string session_id = 1;
+  // Empty returns every state. UNSPECIFIED is not a valid filter.
+  repeated AgentQueryState states = 2;
+  // Zero selects the server default; values above the advertised maximum fail.
+  uint32 page_size = 3;
+  // Opaque token returned by an earlier response with the same filters.
+  string page_token = 4;
+}
+
+// A retained query record summary. Prompts and event contents are deliberately
+// absent; use ObserveQuery to read retained frames.
+message AgentQueryInfo {
+  string query_id = 1;
+  string session_id = 2;
+  AgentQueryState state = 3;
+  uint64 earliest_sequence = 4;
+  uint64 next_sequence = 5;
+  bool history_truncated = 6;
+  optional string stop_reason = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp settled_at = 9;
+  // Present for failed or lost turns; matches the terminal ObserveQuery error.
+  google.rpc.Status terminal_status = 10;
+}
+
+message ListQueriesResponse {
+  // Newest records first, with query_id as the stable tie breaker.
+  repeated AgentQueryInfo queries = 1;
+  string next_page_token = 2;
+}
+
+enum AgentSessionState {
+  AGENT_SESSION_STATE_UNSPECIFIED = 0;
+  AGENT_SESSION_STATE_IDLE = 1;
+  AGENT_SESSION_STATE_RUNNING = 2;
+}
+
+message ListSessionsRequest {
+  // Empty returns both states. UNSPECIFIED is not a valid filter.
+  repeated AgentSessionState states = 1;
+  // Zero selects the server default; values above the advertised maximum fail.
+  uint32 page_size = 2;
+  // Opaque token returned by an earlier response with the same filters.
+  string page_token = 3;
+}
+
+// A session in the current agent process generation. Closed, crashed, and
+// pre-controller-restart sessions are not reusable and therefore are absent.
+message AgentSessionInfo {
+  string session_id = 1;
+  // Canonical workspace-absolute display path: "/" is the workspace root.
+  string working_directory = 2;
+  AgentSessionState state = 3;
+  optional string active_query_id = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp last_activity_at = 6;
+  uint64 generation = 7;
+}
+
+message ListSessionsResponse {
+  // Most recently active sessions first, with session_id as the tie breaker.
+  repeated AgentSessionInfo sessions = 1;
+  string next_page_token = 2;
+}
+
 // Query replay capability negotiated through AgentInfo, following the
 // file_transfers precedent; absent on controllers without the event store.
 message AgentReplayInfo {
@@ -908,6 +979,14 @@ message AgentReplayInfo {
   uint32 max_observers = 3;
   int64 max_bytes_per_query = 4;
   int64 max_total_bytes = 5;
+}
+
+message AgentListCapabilities {
+  // Query listing requires the replay store.
+  bool queries = 1;
+  bool sessions = 2;
+  uint32 default_page_size = 3;
+  uint32 max_page_size = 4;
 }
 
 // First frame of a turn that created a session; carries the id to reuse for
@@ -983,4 +1062,6 @@ message AgentInfo {
   // Query event retention parameters; absent when the controller has no event
   // store.
   optional AgentReplayInfo replay = 7;
+  // Absent on controllers that predate the listing RPCs.
+  optional AgentListCapabilities listing = 8;
 }

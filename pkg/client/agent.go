@@ -19,6 +19,24 @@ type AgentQueryOptions struct {
 	WorkingDirectory string
 }
 
+// AgentQueryListOptions filters and paginates retained agent turns. Empty
+// States includes running, settled, and lost records.
+type AgentQueryListOptions struct {
+	SessionID string
+	States    []codev1.AgentQueryState
+	PageSize  uint32
+	PageToken string
+}
+
+// AgentSessionListOptions filters and paginates sessions reusable in the
+// controller's current agent process generation. Empty States includes idle
+// and running sessions.
+type AgentSessionListOptions struct {
+	States    []codev1.AgentSessionState
+	PageSize  uint32
+	PageToken string
+}
+
 // AgentQuery starts one agent turn and returns its server-streamed events.
 // The stream is an observation window: cancelling ctx (or stopping reads)
 // detaches without stopping the turn, which keeps running on the controller
@@ -54,6 +72,34 @@ func (c *Client) CloseAgentSession(ctx context.Context, sessionID string) error 
 	}
 	_, err := c.agent.CloseSession(ctx, &codev1.CloseSessionRequest{SessionId: sessionID})
 	return err
+}
+
+// ListAgentQueries returns query records still retained by the replay store.
+// The response token can be passed back unchanged to continue the same filter.
+func (c *Client) ListAgentQueries(ctx context.Context, options AgentQueryListOptions) (*codev1.ListQueriesResponse, error) {
+	if err := c.requireAgentQueryListing(); err != nil {
+		return nil, err
+	}
+	request := &codev1.ListQueriesRequest{
+		States:   append([]codev1.AgentQueryState(nil), options.States...),
+		PageSize: options.PageSize, PageToken: options.PageToken,
+	}
+	if options.SessionID != "" {
+		request.SessionId = &options.SessionID
+	}
+	return c.agent.ListQueries(ctx, request)
+}
+
+// ListAgentSessions returns only session ids that can be reused by AgentQuery
+// on the current controller/agent generation.
+func (c *Client) ListAgentSessions(ctx context.Context, options AgentSessionListOptions) (*codev1.ListSessionsResponse, error) {
+	if err := c.requireAgentSessionListing(); err != nil {
+		return nil, err
+	}
+	return c.agent.ListSessions(ctx, &codev1.ListSessionsRequest{
+		States:   append([]codev1.AgentSessionState(nil), options.States...),
+		PageSize: options.PageSize, PageToken: options.PageToken,
+	})
 }
 
 // AgentObserveOptions selects the replay window of one query record. An empty
@@ -104,6 +150,26 @@ func (c *Client) CancelAgentQuery(ctx context.Context, queryID string) error {
 func (c *Client) requireAgentService() error {
 	if c.info.GetAgent() == nil {
 		return status.Error(codes.FailedPrecondition, "agent service is disabled on this controller")
+	}
+	return nil
+}
+
+func (c *Client) requireAgentQueryListing() error {
+	if err := c.requireAgentService(); err != nil {
+		return err
+	}
+	if !c.info.GetAgent().GetListing().GetQueries() {
+		return status.Error(codes.FailedPrecondition, "agent query listing is not supported by this controller")
+	}
+	return nil
+}
+
+func (c *Client) requireAgentSessionListing() error {
+	if err := c.requireAgentService(); err != nil {
+		return err
+	}
+	if !c.info.GetAgent().GetListing().GetSessions() {
+		return status.Error(codes.FailedPrecondition, "agent session listing is not supported by this controller")
 	}
 	return nil
 }

@@ -192,6 +192,10 @@ Controller 还会再次实施路径校验。
 | 命令 | 功能 |
 | --- | --- |
 | `agent` / `agent-query` `[--session ID] [--cwd REMOTE_DIR] PROMPT` | 向共享 Code Agent 发送一个 prompt，流式渲染回复 |
+| `agent-observe [--from SEQUENCE] [--no-follow] QUERY_ID` | 从保留序号回放 query；运行中默认继续 follow |
+| `agent-cancel QUERY_ID` | 显式取消运行中的 query |
+| `agent-queries [--session ID] [--state STATE] [--page-size N] [--page-token TOKEN]` | 分页列出仍在保留期内的 query |
+| `agent-sessions [--state idle\|running] [--page-size N] [--page-token TOKEN]` | 分页列出当前进程代内可复用的 session |
 | `agent-close [SESSION]` | 结束 Agent 会话；省略 id 时关闭 REPL 记住的会话 |
 
 Agent 会话按 turn 交互：一次 `agent` 命令就是一个 turn，事件按到达顺序渲染——消息文本直接输出，
@@ -207,6 +211,8 @@ fixed the linker flags in build.rs
 usage: 42310/200000 context, cost 0.42 USD
 stop: end_turn
 remote-code:/> agent also update the docs        # 复用同一会话的上下文
+remote-code:/> agent-sessions
+remote-code:/> agent-queries --session 8f3c…
 remote-code:/> agent-close
 closed agent session 8f3c…
 ```
@@ -216,7 +222,10 @@ closed agent session 8f3c…
 - REPL 记住最近一次会话 id，后续 `agent` 命令默认接续同一对话；`--session` 显式指定，`agent-close`
   后回到新会话；
 - `--cwd` 只对新会话生效，按 REPL 当前远端目录解析，且不能越出 workspace；
-- Ctrl-C 取消当前 turn（Controller 会向 Agent 转发 cancel），不会结束会话，也不会停止 Agent 进程；
+- gRPC `Query` 流断开只会 detach，远端 turn 会继续运行并持久化事件；CLI 的 Ctrl-C 会额外调用
+  `CancelQuery` 显式取消该 turn，不会结束会话或停止 Agent 进程；
+- `agent-queries` 返回 `RUNNING`、`SETTLED`、`LOST` 中仍受事件保留策略覆盖的记录；`agent-sessions`
+  只返回当前 Agent 进程代内可继续传给 `agent --session` 的会话，Controller 重启后的旧会话不会出现；
 - 首次 `agent` 命令才会懒启动 Agent 子进程；Controller 未启用 Agent 服务时命令返回
   `AGENT_DISABLED`，`info` 的 `Agent:` 行也会显示 `disabled`；
 - Agent 进程崩溃后，旧会话 id 返回 `AGENT_SESSION_LOST`，需要开新会话重试。
@@ -736,9 +745,9 @@ offset 继续，而不重复处理已经确认的记录。
 
 ### 9.6 Agent 会话
 
-`AgentQuery` 发送一个 turn 并返回服务端流；取消 context 即取消该 turn（Controller 会把客户端断开
-翻译为对 Agent 的 cancel）。会话由调用方持有：首个事件携带 `session_started` 的 id，之后用
-`AgentQueryOptions.SessionID` 接续对话。
+`AgentQuery` 发送一个 turn 并返回服务端流。取消 context 或停止读取只会 detach；turn 在 Controller
+继续运行并持久化，显式停止使用 `CancelAgentQuery`，续读使用 `ObserveAgentQuery`。会话由调用方持有：
+首个事件携带 `session_started` 的 id，之后用 `AgentQueryOptions.SessionID` 接续对话。
 
 ```go
 stream, err := client.AgentQuery(ctx, "summarize the failing tests", remoteclient.AgentQueryOptions{})
@@ -763,6 +772,21 @@ for {
         fmt.Printf("\nstop: %s\n", payload.Completed.GetStopReason())
     }
 }
+queries, err := client.ListAgentQueries(ctx, remoteclient.AgentQueryListOptions{
+    SessionID: sessionID,
+    States: []codev1.AgentQueryState{codev1.AgentQueryState_AGENT_QUERY_STATE_SETTLED},
+})
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("retained turns: %d\n", len(queries.GetQueries()))
+
+sessions, err := client.ListAgentSessions(ctx, remoteclient.AgentSessionListOptions{})
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("reusable sessions: %d\n", len(sessions.GetSessions()))
+
 if err := client.CloseAgentSession(ctx, sessionID); err != nil {
     log.Fatal(err)
 }
@@ -770,8 +794,10 @@ if err := client.CloseAgentSession(ctx, sessionID); err != nil {
 
 要点：
 
-- Controller 未启用 Agent 服务时，两个方法都直接返回 `FailedPrecondition`（客户端依据连接时的
-  `Info().Agent` 预判），无需逐个处理 `Unimplemented`；
+- Controller 未启用 Agent 服务时，client 方法直接返回 `FailedPrecondition`（客户端依据连接时的
+  `Info().Agent` 预判）；列表方法还会检查 `Info().Agent.Listing`，无需依赖 `Unimplemented` 探测；
+- `ListAgentQueries` 仅在 replay store 可用时启用，默认按创建时间从新到旧返回保留记录；
+  `ListAgentSessions` 只返回当前进程代内可复用会话。两者都使用不透明 `NextPageToken` 继续同一过滤条件；
 - `WorkingDirectory` 只在新建会话时生效，必须是 workspace 相对路径，否则返回
   `AGENT_WORKING_DIRECTORY`；
 - 复用不存在或已丢失的会话分别返回 `AGENT_SESSION_NOT_FOUND` 与 `AGENT_SESSION_LOST`；同一会话

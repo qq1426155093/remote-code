@@ -105,6 +105,8 @@ controller-logs | clogs [-f] [-n LINES|--tail LINES|--offset OFFSET] (Ctrl-C sto
 agent | agent-query [--session ID] [--cwd REMOTE_DIR] PROMPT (Ctrl-C cancels the turn)
 agent-observe [--from SEQUENCE] [--no-follow] QUERY_ID (Ctrl-C stops observing; the turn keeps running)
 agent-cancel QUERY_ID
+agent-queries [--session ID] [--state running|settled|lost] [--page-size N] [--page-token TOKEN]
+agent-sessions [--state idle|running] [--page-size N] [--page-token TOKEN]
 agent-close [SESSION]
 clear
 exit | quit

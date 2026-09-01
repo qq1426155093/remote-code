@@ -1198,6 +1198,8 @@ const (
 	AgentService_Query_FullMethodName        = "/remote.code.v1.AgentService/Query"
 	AgentService_ObserveQuery_FullMethodName = "/remote.code.v1.AgentService/ObserveQuery"
 	AgentService_CancelQuery_FullMethodName  = "/remote.code.v1.AgentService/CancelQuery"
+	AgentService_ListQueries_FullMethodName  = "/remote.code.v1.AgentService/ListQueries"
+	AgentService_ListSessions_FullMethodName = "/remote.code.v1.AgentService/ListSessions"
 	AgentService_CloseSession_FullMethodName = "/remote.code.v1.AgentService/CloseSession"
 )
 
@@ -1216,6 +1218,10 @@ type AgentServiceClient interface {
 	ObserveQuery(ctx context.Context, in *ObserveQueryRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ObserveQueryResponse], error)
 	// Explicitly cancel a running turn; idempotent once settled.
 	CancelQuery(ctx context.Context, in *CancelQueryRequest, opts ...grpc.CallOption) (*CancelQueryResponse, error)
+	// List query records still retained by the replay store.
+	ListQueries(ctx context.Context, in *ListQueriesRequest, opts ...grpc.CallOption) (*ListQueriesResponse, error)
+	// List sessions that are reusable in the current agent process generation.
+	ListSessions(ctx context.Context, in *ListSessionsRequest, opts ...grpc.CallOption) (*ListSessionsResponse, error)
 	CloseSession(ctx context.Context, in *CloseSessionRequest, opts ...grpc.CallOption) (*CloseSessionResponse, error)
 }
 
@@ -1275,6 +1281,26 @@ func (c *agentServiceClient) CancelQuery(ctx context.Context, in *CancelQueryReq
 	return out, nil
 }
 
+func (c *agentServiceClient) ListQueries(ctx context.Context, in *ListQueriesRequest, opts ...grpc.CallOption) (*ListQueriesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListQueriesResponse)
+	err := c.cc.Invoke(ctx, AgentService_ListQueries_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentServiceClient) ListSessions(ctx context.Context, in *ListSessionsRequest, opts ...grpc.CallOption) (*ListSessionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListSessionsResponse)
+	err := c.cc.Invoke(ctx, AgentService_ListSessions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *agentServiceClient) CloseSession(ctx context.Context, in *CloseSessionRequest, opts ...grpc.CallOption) (*CloseSessionResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CloseSessionResponse)
@@ -1300,6 +1326,10 @@ type AgentServiceServer interface {
 	ObserveQuery(*ObserveQueryRequest, grpc.ServerStreamingServer[ObserveQueryResponse]) error
 	// Explicitly cancel a running turn; idempotent once settled.
 	CancelQuery(context.Context, *CancelQueryRequest) (*CancelQueryResponse, error)
+	// List query records still retained by the replay store.
+	ListQueries(context.Context, *ListQueriesRequest) (*ListQueriesResponse, error)
+	// List sessions that are reusable in the current agent process generation.
+	ListSessions(context.Context, *ListSessionsRequest) (*ListSessionsResponse, error)
 	CloseSession(context.Context, *CloseSessionRequest) (*CloseSessionResponse, error)
 	mustEmbedUnimplementedAgentServiceServer()
 }
@@ -1319,6 +1349,12 @@ func (UnimplementedAgentServiceServer) ObserveQuery(*ObserveQueryRequest, grpc.S
 }
 func (UnimplementedAgentServiceServer) CancelQuery(context.Context, *CancelQueryRequest) (*CancelQueryResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CancelQuery not implemented")
+}
+func (UnimplementedAgentServiceServer) ListQueries(context.Context, *ListQueriesRequest) (*ListQueriesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListQueries not implemented")
+}
+func (UnimplementedAgentServiceServer) ListSessions(context.Context, *ListSessionsRequest) (*ListSessionsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListSessions not implemented")
 }
 func (UnimplementedAgentServiceServer) CloseSession(context.Context, *CloseSessionRequest) (*CloseSessionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CloseSession not implemented")
@@ -1384,6 +1420,42 @@ func _AgentService_CancelQuery_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentService_ListQueries_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListQueriesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).ListQueries(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_ListQueries_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).ListQueries(ctx, req.(*ListQueriesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentService_ListSessions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListSessionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).ListSessions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_ListSessions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).ListSessions(ctx, req.(*ListSessionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _AgentService_CloseSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CloseSessionRequest)
 	if err := dec(in); err != nil {
@@ -1412,6 +1484,14 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CancelQuery",
 			Handler:    _AgentService_CancelQuery_Handler,
+		},
+		{
+			MethodName: "ListQueries",
+			Handler:    _AgentService_ListQueries_Handler,
+		},
+		{
+			MethodName: "ListSessions",
+			Handler:    _AgentService_ListSessions_Handler,
 		},
 		{
 			MethodName: "CloseSession",

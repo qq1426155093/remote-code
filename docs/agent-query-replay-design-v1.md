@@ -24,7 +24,7 @@ response 时,可凭 `query_id` + sequence 续传,从指定 sequence 起继续拿
 - 跨重启续会话(`session/load`/`resume`)——沿用 v1 非目标;
 - 回放事件的 MCP 暴露(仅 gRPC token);
 - 存 prompt 文本本身(v1 已丢弃 `user_message_chunk`;回放方是原客户端,自知发过什么);
-- 查询列表/检索 API(`ListQueries` 留待需要时)。
+- prompt/事件内容的全文检索（列表只返回元数据，内容仍通过 `ObserveQuery` 读取）。
 
 ## 2. 语义变化(相对 agent-service-design-v1)
 
@@ -102,6 +102,8 @@ service AgentService {
   rpc Query(QueryRequest) returns (stream QueryResponse);
   rpc ObserveQuery(ObserveQueryRequest) returns (stream ObserveQueryResponse);
   rpc CancelQuery(CancelQueryRequest) returns (CancelQueryResponse);
+  rpc ListQueries(ListQueriesRequest) returns (ListQueriesResponse);
+  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
   rpc CloseSession(CloseSessionRequest) returns (CloseSessionResponse);
 }
 
@@ -151,6 +153,10 @@ message AgentQueryEnd {
 
 `AgentInfo` 追加 `optional AgentReplayInfo replay = 7`(available、format_version、
 max_observers、保留上限),沿用 `file_transfers` 能力协商先例。
+
+后续实现追加 `ListQueries`：分页返回存储中仍保留的 query 元数据，可按 `session_id` 与状态过滤，
+不返回 prompt 或事件内容；默认按 `created_at` 倒序，opaque page token 只能与原过滤条件复用。
+`AgentInfo.listing` 显式协商 query/session listing 与分页上限，避免依赖 `Unimplemented` 探测。
 
 ### 4.2 错误模型
 
@@ -204,6 +210,8 @@ max_observers       = 8
     `agentEventRenderer`;running 查询默认 follow,`--no-follow` 只排空快照;
     每个命令输出头部一行 `query: <id>` 供回放引用;
   - `agent-cancel <QUERY_ID>`;
+  - `agent-queries [--session ID] [--state running|settled|lost] [--page-size N] [--page-token TOKEN]`;
+  - `agent-sessions [--state idle|running] [--page-size N] [--page-token TOKEN]`;
 - `agent`(query)Ctrl-C 改调 `CancelQuery`,中断后提示
   `cancelled turn <id>; replay with 'agent-observe <id>'`。
 
@@ -268,3 +276,7 @@ CLAUDE.md 的"Never log tokens, prompts..."措辞按此收窄为诊断日志范�
    (§4.2 已补)。
 6. **CLI 默认 follow**:`agent-observe` 对 running 查询默认续流,`--no-follow`
    排空快照即止;`agent` 命令每 turn 打印 `query: <id>` 供回放引用。
+7. **列表发现**（2026-09-01）：新增分页 `ListQueries` 与 CLI `agent-queries`；列表只读
+   `state.json` 投影，不读取事件 payload，GC 后记录自然消失。
+8. **live 订阅排空顺序**（2026-09-01）：订阅结束先关闭 frame channel，observer 排空所有已排队帧后
+   再读取 terminal condition，避免 `Done` 与最后 `completed` 帧竞争而漏末帧。

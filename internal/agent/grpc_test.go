@@ -228,6 +228,12 @@ func TestRPCDisabled_SurfaceReportsReason(t *testing.T) {
 	if _, err := client.CloseSession(context.Background(), &codev1.CloseSessionRequest{SessionId: "s"}); status.Code(err) != codes.FailedPrecondition || rpcerror.ReasonOf(err) != rpcerror.AgentDisabled {
 		t.Fatalf("CloseSession() error = %v, want FailedPrecondition/AGENT_DISABLED", err)
 	}
+	if _, err := client.ListQueries(context.Background(), &codev1.ListQueriesRequest{}); status.Code(err) != codes.FailedPrecondition || rpcerror.ReasonOf(err) != rpcerror.AgentDisabled {
+		t.Fatalf("ListQueries() error = %v, want FailedPrecondition/AGENT_DISABLED", err)
+	}
+	if _, err := client.ListSessions(context.Background(), &codev1.ListSessionsRequest{}); status.Code(err) != codes.FailedPrecondition || rpcerror.ReasonOf(err) != rpcerror.AgentDisabled {
+		t.Fatalf("ListSessions() error = %v, want FailedPrecondition/AGENT_DISABLED", err)
+	}
 }
 
 func TestRPCInfo_ReportsBridgeStatus(t *testing.T) {
@@ -240,6 +246,10 @@ func TestRPCInfo_ReportsBridgeStatus(t *testing.T) {
 	}
 	if replay := info.GetReplay(); replay == nil || !replay.GetAvailable() || replay.GetFormatVersion() == 0 {
 		t.Fatalf("Info() replay before first query = %+v, want available with a format version", info.GetReplay())
+	}
+	if listing := info.GetListing(); listing == nil || !listing.GetQueries() || !listing.GetSessions() ||
+		listing.GetDefaultPageSize() != agentListDefaultPageSize || listing.GetMaxPageSize() != agentListMaxPageSize {
+		t.Fatalf("Info() listing = %+v, want query/session capabilities and page bounds", listing)
 	}
 	stream, err := h.service.StartTurn(context.Background(), TurnRequest{Prompt: "hi"})
 	if err != nil {

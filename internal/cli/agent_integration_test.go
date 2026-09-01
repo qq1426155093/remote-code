@@ -190,6 +190,27 @@ func TestREPLAgentObserveReplaysAndCancels(t *testing.T) {
 		t.Fatalf("agent output =\n%s", output.String())
 	}
 
+	output.mu.Lock()
+	output.buf.Reset()
+	output.mu.Unlock()
+	if err := repl.agentQueries(nil); err != nil {
+		t.Fatalf("agentQueries() error = %v", err)
+	}
+	if listed := output.String(); !strings.Contains(listed, queryID) || !strings.Contains(listed, "settled") ||
+		!strings.Contains(listed, "cli-helper-1") {
+		t.Fatalf("agent query listing =\n%s", listed)
+	}
+
+	output.mu.Lock()
+	output.buf.Reset()
+	output.mu.Unlock()
+	if err := repl.agentSessions(nil); err != nil {
+		t.Fatalf("agentSessions() error = %v", err)
+	}
+	if listed := output.String(); !strings.Contains(listed, "cli-helper-1") || !strings.Contains(listed, "idle") {
+		t.Fatalf("agent session listing =\n%s", listed)
+	}
+
 	// Full replay renders the retained frames through the same renderer.
 	output.mu.Lock()
 	output.buf.Reset()

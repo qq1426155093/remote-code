@@ -2,7 +2,7 @@
 
 Remote Code 是一个面向远程开发任务的 Code Agent 控制平面。它在远程机器上运行
 `controller`，通过 gRPC 接受本地 `remote-code` CLI 的请求，管理工作区文件以及通用
-受管进程。Claude Code 接入将建立在这套通用进程能力之上，目前不需要 Claude 凭据。
+受管进程，并通过 ACP bridge 向客户端提供流式 Agent 会话。
 
 > 项目状态：文件与基础进程控制已可运行，包含带 Tab 补全的交互式 CLI、结构化目录树、
 > gRPC controller、流式上传/下载、PTY/pipe 启动、可回放/跟随的持久化输出日志、进程列表、
@@ -15,11 +15,11 @@ Remote Code 是一个面向远程开发任务的 Code Agent 控制平面。它�
 > `ControllerService.ObserveControllerLogs` 或 CLI 的 `controller-logs`/`clogs` 回放、续读和 follow。
 > MCP listener 可配置独立于 gRPC 的 bearer token。
 > controller 还包含默认关闭的内部 Workflow core：它可在启动期校验静态 DAG/Expr，并通过持久
-> Activity、lease、人工介入和 bbolt 事件存储恢复运行；当前尚未提供 Workflow RPC/CLI 或真实 Agent
-> 执行适配器。
+> Activity、lease、人工介入和 bbolt 事件存储恢复运行；当前尚未提供 Workflow RPC/CLI 或 Agent
+> Activity 适配器。
 > 进程与日志相关的错误携带机器可读的 reason，客户端不必匹配消息文本即可区分共用同一 status code
 > 的多种条件。
-> Agent 语义仍是后续版本计划。
+> `AgentService` 已可通过共享的 ACP 子进程执行流式 turn，并支持持久化事件回放、显式取消、列表发现和会话关闭。
 
 ## 功能与使用文档
 
@@ -75,6 +75,8 @@ remote-code:/> forget listing 'test-*' glob:reused-name
 remote-code:/> templates
 remote-code:/> templates code-agent
 remote-code:/> exec-template --attach --params-file ./agent-parameters.json code-agent
+remote-code:/> agent-sessions
+remote-code:/> agent-queries --state running
 ```
 
 默认仅允许 loopback 明文监听。远程部署应配置 `--tls-cert`、`--tls-key` 和
@@ -154,7 +156,7 @@ controller 是唯一的远程入口，负责认证、路径校验、进程注册
 
 - **Workspace**：controller 启动时指定的根目录。所有文件操作和 agent 工作目录都必须位于该目录内。
 - **Process**：一个通用受管进程，拥有稳定 UUID、逻辑名称、PID、启动参数和持久化生命周期状态。
-- **Agent**：后续建立在 Process 之上的 Claude Code 语义层。
+- **Agent**：通过共享 ACP 子进程提供 session/turn 语义的服务；Agent 子进程由 Process 注册表托管。
 - **Attachment**：CLI 与受管进程 PTY 的一次连接。网络断开不等同于终止进程，之后可以重新接入。
 - **Event**：带递增序号和时间戳的输出、状态变化或错误，可用于断线续传和审计。
 
@@ -177,7 +179,9 @@ remote-code --controller-addr devbox.example.com:9443 \
   --token-file ~/.config/remote-code/devbox.token
 ```
 
-当前 REPL 已提供通用的 `exec`、`ps`、`ps -a`、`kill`、`stdin`、`attach` 和 `logs`；下面的 context 与 agent 命令是后续版本的产品形态草案：
+当前 REPL 已提供通用的 `exec`、`ps`、`ps -a`、`kill`、`stdin`、`attach` 和 `logs`，以及
+`agent`、`agent-observe`、`agent-cancel`、`agent-queries`、`agent-sessions` 和 `agent-close`。
+下面的 context 与多 Agent 管理命令是后续版本的产品形态草案：
 
 以下命令用于约定产品形态，并不表示已经实现：
 
@@ -208,8 +212,7 @@ CLI 应同时支持面向人的表格输出和供自动化使用的 `--output js
 
 ## gRPC API
 
-API 放在版本化包 `remote.code.v1` 中。当前实现 `ControllerService.GetInfo` 与完整的
-`FileService`；Agent API 为后续规划。当前文件接口如下：
+API 放在版本化包 `remote.code.v1` 中。当前 service 定义如下：
 
 ```protobuf
 service ControllerService {
@@ -246,7 +249,24 @@ service ProcessService {
   rpc ObserveProcessLogs(ObserveProcessLogsRequest) returns (stream ObserveProcessLogsResponse);
   rpc StreamProcessInput(stream StreamProcessInputRequest) returns (stream StreamProcessInputResponse);
 }
+
+service AgentService {
+  rpc Query(QueryRequest) returns (stream QueryResponse);
+  rpc ObserveQuery(ObserveQueryRequest) returns (stream ObserveQueryResponse);
+  rpc CancelQuery(CancelQueryRequest) returns (CancelQueryResponse);
+  rpc ListQueries(ListQueriesRequest) returns (ListQueriesResponse);
+  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
+  rpc CloseSession(CloseSessionRequest) returns (CloseSessionResponse);
+}
 ```
+
+`AgentService.Query` 把一个 turn 桥接到共享 ACP Agent 子进程。客户端停止读取只会 detach，turn 仍会运行到
+结束并持久化事件；`ObserveQuery` 可从指定 sequence 回放并选择是否继续 follow，`CancelQuery` 才会显式
+停止运行中的 turn。`ListQueries` 分页列出事件存储仍保留的 query，`ListSessions` 只列出当前 Agent
+进程代内可复用的 session；`CloseSession` 关闭 ACP session。可用性、回放和列表能力分别通过
+`GetInfo.agent`、`GetInfo.agent.replay` 与 `GetInfo.agent.listing` 协商；详细契约见
+[Agent 服务设计 v1](docs/agent-service-design-v1.md)与
+[Agent Query 回放设计 v1](docs/agent-query-replay-design-v1.md)。
 
 `TreeResponse` 使用递归的 `TreeNode` 返回文件元数据和子节点，CLI 只负责把它渲染成类似
 Linux `tree` 的文本。新客户端通过 `GetInfo.file_transfers` 协商断点续传：上传使用持久化 session、

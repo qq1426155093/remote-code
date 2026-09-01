@@ -84,6 +84,7 @@ type Service struct {
 	process *agentProcess
 	// queries persists turn events for replay; nil when replay is disabled.
 	queries *QueryStore
+	now     func() time.Time
 
 	mu           sync.Mutex
 	sessions     map[string]*session
@@ -126,6 +127,7 @@ func New(config Config) (*Service, error) {
 		sessions:     make(map[string]*session),
 		lostSessions: make(map[string]struct{}),
 		liveQueries:  make(map[string]*agentQuery),
+		now:          time.Now,
 		stop:         make(chan struct{}),
 	}
 	if config.replayEnabled() {
@@ -260,7 +262,7 @@ func (s *Service) StartTurn(ctx context.Context, request TurnRequest) (*TurnStre
 		if err != nil {
 			return nil, mapAgentRequestError("create session", err)
 		}
-		sess = newSession(response.SessionId, cwd)
+		sess = newSession(response.SessionId, s.displaySessionWorkingDirectory(cwd), connection.generation, s.now())
 		created = true
 		s.mu.Lock()
 		if s.shuttingDown {
@@ -271,14 +273,14 @@ func (s *Service) StartTurn(ctx context.Context, request TurnRequest) (*TurnStre
 		s.mu.Unlock()
 	}
 
-	active, ok := sess.beginTurn()
+	active, ok := sess.beginTurn(s.now())
 	if !ok {
 		return nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.AgentTurnActive, "session %q already has an active turn", string(sess.id))
 	}
 
-	queryID, writer, err := s.beginQuery(sess, request)
+	queryID, writer, err := s.beginQuery(sess)
 	if err != nil {
-		sess.endTurn(active)
+		sess.endTurn(active, s.now())
 		return nil, err
 	}
 
@@ -289,10 +291,11 @@ func (s *Service) StartTurn(ctx context.Context, request TurnRequest) (*TurnStre
 		done:      make(chan struct{}),
 	}
 	query := &agentQuery{id: queryID, writer: writer, cancel: make(chan struct{})}
+	sess.bindQuery(active, queryID)
 	s.mu.Lock()
 	if s.shuttingDown {
 		s.mu.Unlock()
-		sess.endTurn(active)
+		sess.endTurn(active, s.now())
 		return nil, status.Error(codes.Unavailable, "agent service is shutting down")
 	}
 	s.liveQueries[queryID] = query
@@ -305,7 +308,7 @@ func (s *Service) StartTurn(ctx context.Context, request TurnRequest) (*TurnStre
 // beginQuery allocates the turn's query id and opens its event record. A nil
 // writer means replay is disabled: the turn still streams and carries its id,
 // but nothing is retained.
-func (s *Service) beginQuery(sess *session, request TurnRequest) (string, *QueryWriter, error) {
+func (s *Service) beginQuery(sess *session) (string, *QueryWriter, error) {
 	if s.queries == nil {
 		id, err := newQueryUUID()
 		if err != nil {
@@ -315,7 +318,7 @@ func (s *Service) beginQuery(sess *session, request TurnRequest) (string, *Query
 	}
 	id, writer, err := s.queries.Begin(QueryMetadata{
 		SessionID:        string(sess.id),
-		WorkingDirectory: request.WorkingDirectory,
+		WorkingDirectory: strings.TrimPrefix(sess.workingDirectory, "/"),
 	})
 	if err != nil {
 		return "", nil, status.Errorf(codes.Unavailable, "open query record: %v", err)
@@ -423,28 +426,30 @@ func (s *Service) ObserveQuery(ctx context.Context, queryID string, from uint64,
 	delivered := snapshot.Next
 	for {
 		select {
-		case frame := <-subscription.Frames():
+		case frame, ok := <-subscription.Frames():
+			if !ok {
+				err := <-subscription.Done()
+				if err != nil {
+					return mapQueryStoreError(queryID, delivered, err)
+				}
+				// The writer settled before ending its subscribers, so the
+				// state on disk is already terminal and answers the end marker.
+				final, found := s.queries.Stat(queryID)
+				if !found {
+					return rpcerror.Errorf(codes.NotFound, rpcerror.AgentQueryNotFound, "query %q vanished while settling", queryID)
+				}
+				if final.Err != nil {
+					return final.Err.status()
+				}
+				return observer.QueryEnd(&codev1.AgentQueryEnd{
+					NextSequence: final.Next,
+					Reason:       codev1.AgentQueryEndReason_AGENT_QUERY_END_REASON_SETTLED,
+				})
+			}
 			if err := observer.QueryEvent(frame); err != nil {
 				return err
 			}
 			delivered = frame.GetSequence() + 1
-		case err := <-subscription.Done():
-			if err != nil {
-				return mapQueryStoreError(queryID, delivered, err)
-			}
-			// The writer settled before ending its subscribers, so the state
-			// on disk is already terminal and answers the end marker.
-			final, ok := s.queries.Stat(queryID)
-			if !ok {
-				return rpcerror.Errorf(codes.NotFound, rpcerror.AgentQueryNotFound, "query %q vanished while settling", queryID)
-			}
-			if final.Err != nil {
-				return final.Err.status()
-			}
-			return observer.QueryEnd(&codev1.AgentQueryEnd{
-				NextSequence: final.Next,
-				Reason:       codev1.AgentQueryEndReason_AGENT_QUERY_END_REASON_SETTLED,
-			})
 		case <-ctx.Done():
 			return status.FromContextError(ctx.Err()).Err()
 		case <-s.stop:
@@ -496,7 +501,7 @@ func (s *Service) runTurn(ctx context.Context, sess *session, connection *agentC
 	defer s.turns.Done()
 	recordSettled := false
 	defer func() {
-		sess.endTurn(active)
+		sess.endTurn(active, s.now())
 		s.forgetQuery(query)
 		if !recordSettled && query.writer != nil {
 			_ = query.writer.Lost(status.Error(codes.Internal, "turn pump exited without settling"))
@@ -519,6 +524,16 @@ func (s *Service) runTurn(ctx context.Context, sess *session, connection *agentC
 			// The consumer is gone. Detach: keep persisting and consuming
 			// until the turn settles, so replay serves the full answer.
 			stream.abandon()
+		}
+	}
+	drainIncoming := func() {
+		for {
+			select {
+			case event := <-active.incoming:
+				forward(event)
+			default:
+				return
+			}
 		}
 	}
 
@@ -578,16 +593,17 @@ func (s *Service) runTurn(ctx context.Context, sess *session, connection *agentC
 		// response before that response, but select picks randomly among ready
 		// cases — without this drain a turn could settle and abandon updates
 		// the agent already sent.
-		select {
-		case event := <-active.incoming:
-			forward(event)
-			continue
-		default:
-		}
+		drainIncoming()
 		select {
 		case event := <-active.incoming:
 			forward(event)
 		case result := <-results:
+			// The initial drain and this select are not atomic: if the final
+			// update and prompt response become ready together, select may pick
+			// the response. Prompt's notification barrier guarantees that every
+			// preceding update has been dispatched by now, so drain once more
+			// before releasing the session turn.
+			drainIncoming()
 			if result.err != nil {
 				if !connection.alive() {
 					terminalErr = rpcerror.Errorf(codes.Unavailable, rpcerror.AgentProcessLost, "agent process %q exited during the turn", connection.transport.processID)
@@ -628,7 +644,7 @@ settled:
 	// reusing or closing the session — while settling the record below may
 	// still be flushing to disk. Both calls are idempotent, so the deferred
 	// release stays as the abnormal-exit safety net.
-	sess.endTurn(active)
+	sess.endTurn(active, s.now())
 	s.forgetQuery(query)
 	if terminalErr == nil {
 		forward(Event{Kind: EventKindCompleted, Completed: Completed{StopReason: stopReason}})
@@ -825,6 +841,20 @@ func (s *Service) resolveWorkingDirectory(requested string) (string, error) {
 		return "", rpcerror.Errorf(codes.InvalidArgument, rpcerror.AgentWorkingDirectory, "working directory %q is not a directory", requested)
 	}
 	return resolved, nil
+}
+
+// displaySessionWorkingDirectory projects a verified native cwd onto the
+// workspace-absolute path syntax used by the remote CLI.
+func (s *Service) displaySessionWorkingDirectory(cwd string) string {
+	root, err := filepath.EvalSymlinks(s.config.WorkspaceRoot)
+	if err != nil {
+		return "/"
+	}
+	relative, err := filepath.Rel(root, cwd)
+	if err != nil || relative == "." {
+		return "/"
+	}
+	return "/" + filepath.ToSlash(relative)
 }
 
 func withinRoot(path, root string) bool {

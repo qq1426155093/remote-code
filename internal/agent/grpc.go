@@ -72,6 +72,22 @@ func (r *RPC) CancelQuery(ctx context.Context, request *codev1.CancelQueryReques
 	return &codev1.CancelQueryResponse{}, nil
 }
 
+// ListQueries returns replay records still retained by the event store.
+func (r *RPC) ListQueries(ctx context.Context, request *codev1.ListQueriesRequest) (*codev1.ListQueriesResponse, error) {
+	if r.bridge == nil {
+		return nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.AgentDisabled, "the agent service is disabled in controller configuration")
+	}
+	return r.bridge.ListQueries(ctx, request)
+}
+
+// ListSessions returns sessions reusable in the current process generation.
+func (r *RPC) ListSessions(ctx context.Context, request *codev1.ListSessionsRequest) (*codev1.ListSessionsResponse, error) {
+	if r.bridge == nil {
+		return nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.AgentDisabled, "the agent service is disabled in controller configuration")
+	}
+	return r.bridge.ListSessions(ctx, request)
+}
+
 // streamObserver adapts the gRPC server stream to the bridge's observer
 // interface. A send failure surfaces as the observer error and ends the
 // observation.
@@ -117,6 +133,7 @@ func (r *RPC) Info() *codev1.AgentInfo {
 		Generation:     snapshot.Generation,
 		CloseSupported: snapshot.CloseSupported,
 		Sessions:       uint32(snapshot.Sessions),
+		Listing:        agentListCapabilities(snapshot.Replay != nil),
 	}
 	if snapshot.Replay != nil {
 		info.Replay = &codev1.AgentReplayInfo{

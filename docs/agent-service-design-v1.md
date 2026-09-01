@@ -275,3 +275,14 @@ arguments = ["@agentclientprotocol/claude-agent-acp"]
 4. **审批超时**:agent 侧权限请求在自动放行下即时应答,无挂起风险;若未来改交互式,
    需补超时与 cancel 联动;
 5. **长期会话的内存增长**:事件总线仅转发不囤积(无订阅者时丢弃),turn 结束即释放。
+
+## 10. 实现修订记录（2026-09-01）
+
+- `AgentService` 新增分页 `ListSessions`，只返回当前 Agent 进程 generation 内可被 `Query.session_id`
+  复用的 session；状态为 `IDLE` 或 `RUNNING`，运行态同时报告 `active_query_id`。
+- session 快照补充 workspace-absolute 展示路径、generation、创建时间和最近活动时间。ACP 子进程崩溃、
+  Controller 重启或 `CloseSession` 后记录从列表消失；不把 query 历史聚合成不可复用的伪 session。
+- ACP 自身的 `session/list` 仍未直接暴露：它列出的持久化会话需要先实现 `LoadSession` 才能安全复用，
+  与当前 generation 内 session 列表是不同契约。
+- `AgentInfo.listing` 发布 query/session listing 与分页大小能力；CLI 对应
+  `agent-queries` / `agent-sessions`。

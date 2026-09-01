@@ -57,8 +57,8 @@ func (s *QuerySubscription) Done() <-chan error { return s.done }
 // end delivers the terminal condition and closes the frame channel. Called
 // with the writer's mutex held, after every frame has been enqueued.
 func (s *QuerySubscription) end(err error) {
-	s.done <- err
 	close(s.frames)
+	s.done <- err
 }
 
 // newQueryWriter opens the record's first segment.

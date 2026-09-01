@@ -79,6 +79,10 @@ func TestReasonValuesAreUniqueAndWellFormed(t *testing.T) {
 		ProcessLogsObserved, ProcessLogObserverLimitReached, LogOffsetOutOfRange,
 		ControllerLogOffsetOutOfRange, ControllerLogsUnavailable,
 		TemplateRenderFailed, TemplateRevisionMismatch,
+		AgentDisabled, AgentStartFailed, AgentSessionNotFound, AgentSessionLost,
+		AgentTurnActive, AgentProcessLost, AgentWorkingDirectory, AgentRequestError,
+		AgentQueryNotFound, AgentQueryReplayDisabled, AgentQuerySequenceInvalid,
+		AgentQueryEventsPruned, AgentQueryObserverLimit, AgentQueryObserverLag,
 		TransferOffsetMismatch, TransferFileChanged, TransferPrefixMismatch,
 		TransferSessionState, TransferActiveTransfer,
 	}

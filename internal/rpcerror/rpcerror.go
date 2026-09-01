@@ -73,6 +73,7 @@ const (
 
 	// Query replay: addressing a retained turn's event stream.
 	AgentQueryNotFound        Reason = "AGENT_QUERY_NOT_FOUND"
+	AgentQueryReplayDisabled  Reason = "AGENT_QUERY_REPLAY_DISABLED"
 	AgentQuerySequenceInvalid Reason = "AGENT_QUERY_SEQUENCE_INVALID"
 	AgentQueryEventsPruned    Reason = "AGENT_QUERY_EVENTS_PRUNED"
 	// AgentQueryObserverLimit marks a live observation refused because the

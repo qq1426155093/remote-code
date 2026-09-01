@@ -156,6 +156,7 @@ type querySettledEntry struct {
 	directory string
 	settledAt time.Time
 	bytes     int64
+	snapshot  QuerySnapshot
 }
 
 // OpenQueryStore opens (and creates) the store root and recovers every record
@@ -268,7 +269,9 @@ func (s *QueryStore) rememberSettled(directory string, state *queryStateFile) {
 		settledAt = *state.SettledAt
 	}
 	s.mu.Lock()
-	s.settled[state.QueryID] = querySettledEntry{directory: directory, settledAt: settledAt, bytes: bytes}
+	s.settled[state.QueryID] = querySettledEntry{
+		directory: directory, settledAt: settledAt, bytes: bytes, snapshot: snapshotOf(state),
+	}
 	s.totalSet += bytes
 	s.mu.Unlock()
 }
@@ -328,6 +331,26 @@ func (s *QueryStore) Stat(id string) (QuerySnapshot, bool) {
 		return QuerySnapshot{}, false
 	}
 	return snapshotOf(state), true
+}
+
+// List returns one point-in-time snapshot of every record still retained by
+// the store. Live writers are snapshotted after releasing the store lock so a
+// slow filesystem flush cannot block Begin, settle, or GC bookkeeping.
+func (s *QueryStore) List() []QuerySnapshot {
+	s.mu.Lock()
+	live := make([]*QueryWriter, 0, len(s.live))
+	for _, writer := range s.live {
+		live = append(live, writer)
+	}
+	snapshots := make([]QuerySnapshot, 0, len(s.live)+len(s.settled))
+	for _, entry := range s.settled {
+		snapshots = append(snapshots, entry.snapshot)
+	}
+	s.mu.Unlock()
+	for _, writer := range live {
+		snapshots = append(snapshots, writer.Snapshot())
+	}
+	return snapshots
 }
 
 // Attach pins a query's window for observation. A non-nil subscription means
@@ -440,7 +463,9 @@ func (s *QueryStore) settleRecord(writer *QueryWriter, state *queryStateFile, by
 	if s.live[writer.id] == writer {
 		delete(s.live, writer.id)
 	}
-	entry := querySettledEntry{directory: writer.directory, settledAt: s.now(), bytes: bytes}
+	entry := querySettledEntry{
+		directory: writer.directory, settledAt: s.now(), bytes: bytes, snapshot: snapshotOf(state),
+	}
 	if state.SettledAt != nil {
 		entry.settledAt = *state.SettledAt
 	}

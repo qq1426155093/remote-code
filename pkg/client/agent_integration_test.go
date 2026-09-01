@@ -219,6 +219,18 @@ func TestClientAgentTurnLifecycleOverGRPC(t *testing.T) {
 	if sessionID == "" {
 		t.Fatal("first turn did not report a session id")
 	}
+	listing := remote.Info().GetAgent().GetListing()
+	if listing == nil || !listing.GetQueries() || !listing.GetSessions() || listing.GetMaxPageSize() == 0 {
+		t.Fatalf("connection-time info does not report agent listing: %+v", listing)
+	}
+	sessions, err := remote.ListAgentSessions(ctx, remoteclient.AgentSessionListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions.GetSessions()) != 1 || sessions.GetSessions()[0].GetSessionId() != sessionID ||
+		sessions.GetSessions()[0].GetState() != codev1.AgentSessionState_AGENT_SESSION_STATE_IDLE {
+		t.Fatalf("ListAgentSessions() = %+v, want idle %s", sessions, sessionID)
+	}
 
 	// The second turn reuses the session: the shared child answers with its
 	// lifetime turn counter instead of starting another session.
@@ -279,6 +291,16 @@ func TestClientAgentQueryReplayAndCancelOverGRPC(t *testing.T) {
 		}
 		queryID = response.GetQueryId()
 		frames++
+	}
+	queries, err := remote.ListAgentQueries(ctx, remoteclient.AgentQueryListOptions{
+		States: []codev1.AgentQueryState{codev1.AgentQueryState_AGENT_QUERY_STATE_SETTLED}, PageSize: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(queries.GetQueries()) != 1 || queries.GetQueries()[0].GetQueryId() != queryID ||
+		queries.GetQueries()[0].GetNextSequence() != uint64(frames) {
+		t.Fatalf("ListAgentQueries() = %+v, want settled %s", queries, queryID)
 	}
 
 	// Full replay from zero mirrors the original stream.
@@ -454,6 +476,18 @@ func TestClientAgentQueryReplaySurvivesControllerRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer remote2.Close()
+	listed, err := remote2.ListAgentQueries(ctx, remoteclient.AgentQueryListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed.GetQueries()) != 1 || listed.GetQueries()[0].GetQueryId() != queryID ||
+		listed.GetQueries()[0].GetState() != codev1.AgentQueryState_AGENT_QUERY_STATE_SETTLED {
+		t.Fatalf("query listing after restart = %+v, want settled %s", listed, queryID)
+	}
+	sessions, err := remote2.ListAgentSessions(ctx, remoteclient.AgentSessionListOptions{})
+	if err != nil || len(sessions.GetSessions()) != 0 {
+		t.Fatalf("session listing after restart = %+v, %v; old sessions must not be reusable", sessions, err)
+	}
 	replay, err := remote2.ObserveAgentQuery(ctx, queryID, remoteclient.AgentObserveOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -501,5 +535,11 @@ func TestClientAgentGatedWhenServiceDisabled(t *testing.T) {
 	}
 	if err := remote.CloseAgentSession(ctx, "any"); status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("CloseAgentSession() error = %v, want FailedPrecondition", err)
+	}
+	if _, err := remote.ListAgentQueries(ctx, remoteclient.AgentQueryListOptions{}); status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("ListAgentQueries() error = %v, want FailedPrecondition", err)
+	}
+	if _, err := remote.ListAgentSessions(ctx, remoteclient.AgentSessionListOptions{}); status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("ListAgentSessions() error = %v, want FailedPrecondition", err)
 	}
 }

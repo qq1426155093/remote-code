@@ -192,6 +192,8 @@ var defaultCommandRegistry = mustCommandRegistry([]commandSpec{
 		handler:    (*REPL).agentObserve,
 	},
 	{name: "agent-cancel", arguments: "QUERY_ID", details: "Stop a running agent query; it settles as cancelled", handler: (*REPL).agentCancel},
+	{name: "agent-queries", arguments: "[--session ID] [--state running|settled|lost] [--page-size N] [--page-token TOKEN]", handler: (*REPL).agentQueries},
+	{name: "agent-sessions", arguments: "[--state idle|running] [--page-size N] [--page-token TOKEN]", handler: (*REPL).agentSessions},
 	{name: "agent-close", arguments: "[SESSION]", handler: (*REPL).agentCloseSession},
 	{name: "clear", handler: (*REPL).clearScreen},
 	{name: "exit", aliases: []string{"quit"}, handler: (*REPL).exitSession, action: commandExit},
