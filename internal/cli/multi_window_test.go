@@ -203,7 +203,7 @@ func TestVirtualProcessWindowTerminalsIsolateANSIState(t *testing.T) {
 func TestProcessWindowManagerKeepsFinalFrameAfterAttachmentEnds(t *testing.T) {
 	localTerminal := &fakeTerminalController{}
 	var created *fakeProcessWindowTerminal
-	manager := newProcessWindowManager(localTerminal, io.Discard, nil, func(columns, rows int) processWindowTerminal {
+	manager := newProcessWindowManager(context.Background(), localTerminal, io.Discard, nil, func(columns, rows int) processWindowTerminal {
 		created = newFakeProcessWindowTerminal(columns, rows).(*fakeProcessWindowTerminal)
 		return created
 	}, 10)
@@ -251,7 +251,7 @@ func TestProcessWindowManagerKeepsFinalFrameAfterAttachmentEnds(t *testing.T) {
 }
 
 func TestProcessWindowManagerCloseSelectsAdjacentPane(t *testing.T) {
-	manager := newProcessWindowManager(&fakeTerminalController{}, io.Discard, nil, newFakeProcessWindowTerminal, 10)
+	manager := newProcessWindowManager(context.Background(), &fakeTerminalController{}, io.Discard, nil, newFakeProcessWindowTerminal, 10)
 	manager.columns, manager.rows = 80, 24
 	for _, name := range []string{"one", "two", "three"} {
 		paneContext, paneCancel := context.WithCancel(manager.ctx)
@@ -284,7 +284,7 @@ func TestProcessWindowManagerCloseSelectsAdjacentPane(t *testing.T) {
 }
 
 func TestProcessWindowManagerPreservesOpenRequestOrder(t *testing.T) {
-	manager := newProcessWindowManager(&fakeTerminalController{}, io.Discard, nil, newFakeProcessWindowTerminal, 10)
+	manager := newProcessWindowManager(context.Background(), &fakeTerminalController{}, io.Discard, nil, newFakeProcessWindowTerminal, 10)
 	manager.columns, manager.rows = 80, 24
 	_, betaCancel := context.WithCancel(manager.ctx)
 	_, alphaCancel := context.WithCancel(manager.ctx)
@@ -306,7 +306,7 @@ func TestProcessWindowManagerPreservesOpenRequestOrder(t *testing.T) {
 }
 
 func TestProcessWindowManagerRoutesInputOnlyToActivePane(t *testing.T) {
-	manager := newProcessWindowManager(&fakeTerminalController{}, io.Discard, nil, newFakeProcessWindowTerminal, 10)
+	manager := newProcessWindowManager(context.Background(), &fakeTerminalController{}, io.Discard, nil, newFakeProcessWindowTerminal, 10)
 	manager.columns, manager.rows = 80, 24
 	alpha := newFakeProcessWindowAttachment("alpha")
 	beta := newFakeProcessWindowAttachment("beta")
@@ -338,7 +338,7 @@ func assertAttachmentInput(t *testing.T, attachment *fakeProcessWindowAttachment
 }
 
 func TestProcessWindowManagerDetachesBeforeCancelingAttachmentContext(t *testing.T) {
-	manager := newProcessWindowManager(&fakeTerminalController{}, io.Discard, nil, newFakeProcessWindowTerminal, 10)
+	manager := newProcessWindowManager(context.Background(), &fakeTerminalController{}, io.Discard, nil, newFakeProcessWindowTerminal, 10)
 	manager.columns, manager.rows = 80, 24
 	attachmentContext, attachmentCancel := context.WithCancel(manager.ctx)
 	attachment := newFakeProcessWindowAttachment("agent")
@@ -360,7 +360,7 @@ func TestProcessWindowManagerDetachesBeforeCancelingAttachmentContext(t *testing
 }
 
 func TestProcessWindowManagerShutdownWithFullEventQueue(t *testing.T) {
-	manager := newProcessWindowManager(&fakeTerminalController{}, io.Discard, nil, newFakeProcessWindowTerminal, 10)
+	manager := newProcessWindowManager(context.Background(), &fakeTerminalController{}, io.Discard, nil, newFakeProcessWindowTerminal, 10)
 	attachment := newFakeProcessWindowAttachment("agent")
 	paneContext, paneCancel := context.WithCancel(manager.ctx)
 	_, attachmentCancel := context.WithCancel(manager.ctx)
@@ -388,10 +388,145 @@ func TestProcessWindowManagerShutdownWithFullEventQueue(t *testing.T) {
 	}
 }
 
+func TestProcessWindowManagerStaysResponsiveWhenPaneWriterStalls(t *testing.T) {
+	manager := newProcessWindowManager(context.Background(), &fakeTerminalController{}, io.Discard, nil, newFakeProcessWindowTerminal, 10)
+	manager.columns, manager.rows = 80, 24
+	attachment := newFakeProcessWindowAttachment("stalled")
+	_, attachmentCancel := context.WithCancel(manager.ctx)
+	manager.acceptOpenResult(processWindowOpenResult{
+		attachment: attachment, cancel: attachmentCancel, reference: "name:stalled",
+	})
+	if len(manager.panes) != 1 {
+		manager.shutdown()
+		t.Fatalf("accepted panes = %d, want 1", len(manager.panes))
+	}
+	paneID := manager.panes[0].id
+
+	loopDone := make(chan error, 1)
+	go func() { loopDone <- manager.eventLoop(make(chan struct{})) }()
+
+	// Nothing drains the attachment, so the pane operation queue fills. Replies
+	// answer terminal queries in the remote output, which means a remote peer
+	// controls how fast they arrive; they must never wedge the event loop.
+	for index := 0; index < processWindowOperationBuffer*8; index++ {
+		select {
+		case manager.events <- processWindowTerminalReply{paneID: paneID, data: []byte("x")}:
+		case <-time.After(5 * time.Second):
+			manager.cancel()
+			t.Fatalf("event loop stopped draining after %d replies", index)
+		}
+	}
+
+	select {
+	case manager.inputEvents <- []byte{attachEscapeByte, 'q'}:
+	case <-time.After(5 * time.Second):
+		manager.cancel()
+		t.Fatal("event loop stopped reading keyboard input")
+	}
+	select {
+	case err := <-loopDone:
+		if err != nil {
+			manager.cancel()
+			t.Fatalf("event loop returned %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		manager.cancel()
+		t.Fatal("quit keystroke never reached the event loop")
+	}
+	manager.shutdown()
+}
+
+func TestProcessWindowManagerDropsInputAfterGraceWhenPaneWriterStalls(t *testing.T) {
+	manager := newProcessWindowManager(context.Background(), &fakeTerminalController{}, io.Discard, nil, newFakeProcessWindowTerminal, 10)
+	manager.columns, manager.rows = 80, 24
+	pane := newStalledProcessWindowPane(manager, "stalled")
+	manager.panes = append(manager.panes, pane)
+	manager.active = 0
+
+	start := time.Now()
+	manager.enqueueActive(processWindowOperation{kind: processWindowOperationInput, data: []byte("a")})
+	elapsed := time.Since(start)
+
+	if elapsed < processWindowInputEnqueueGrace {
+		t.Fatalf("keystroke waited %s, want at least the %s grace", elapsed, processWindowInputEnqueueGrace)
+	}
+	if elapsed > 5*time.Second {
+		t.Fatalf("keystroke waited %s: the grace period did not bound the wait", elapsed)
+	}
+	if !strings.Contains(manager.status, "keystrokes dropped") {
+		t.Fatalf("status = %q, want it to report dropped keystrokes", manager.status)
+	}
+	manager.cancel()
+}
+
+func TestProcessWindowManagerCoalescesResizeForStalledPane(t *testing.T) {
+	manager := newProcessWindowManager(context.Background(), &fakeTerminalController{}, io.Discard, nil, newFakeProcessWindowTerminal, 10)
+	manager.columns, manager.rows = 80, 24
+	pane := newStalledProcessWindowPane(manager, "stalled")
+	manager.panes = append(manager.panes, pane)
+
+	manager.enqueuePane(pane, processWindowOperation{kind: processWindowOperationResize, rows: 10, columns: 20})
+	manager.enqueuePane(pane, processWindowOperation{kind: processWindowOperationResize, rows: 30, columns: 40})
+	if pane.pendingResize == nil {
+		manager.cancel()
+		t.Fatal("resize was neither queued nor retained")
+	}
+	if pane.pendingResize.rows != 30 || pane.pendingResize.columns != 40 {
+		manager.cancel()
+		t.Fatalf("retained resize = %dx%d, want the newest 30x40",
+			pane.pendingResize.rows, pane.pendingResize.columns)
+	}
+
+	// Once the writer drains, the newest size is delivered on the next frame.
+	<-pane.operations
+	manager.retryPendingResizes()
+	if pane.pendingResize != nil {
+		manager.cancel()
+		t.Fatal("retry did not clear the coalesced resize")
+	}
+	var delivered processWindowOperation
+	for {
+		operation := <-pane.operations
+		if operation.kind == processWindowOperationResize {
+			delivered = operation
+			break
+		}
+		if len(pane.operations) == 0 {
+			manager.cancel()
+			t.Fatal("coalesced resize was never queued")
+		}
+	}
+	if delivered.rows != 30 || delivered.columns != 40 {
+		manager.cancel()
+		t.Fatalf("delivered resize = %dx%d, want 30x40", delivered.rows, delivered.columns)
+	}
+	manager.cancel()
+}
+
+// newStalledProcessWindowPane builds an active pane whose operation queue is
+// already full and has no pump draining it, which is the state a pane reaches
+// when its remote peer stops consuming input.
+func newStalledProcessWindowPane(manager *processWindowManager, name string) *processWindowPane {
+	paneContext, paneCancel := context.WithCancel(manager.ctx)
+	_, attachmentCancel := context.WithCancel(manager.ctx)
+	pane := &processWindowPane{
+		id: 1, ctx: paneContext, cancel: paneCancel,
+		process:    &codev1.ProcessInfo{Id: name, Name: name},
+		attachment: newFakeProcessWindowAttachment(name),
+		terminal:   newFakeProcessWindowTerminal(10, 3), state: processWindowPaneActive,
+		operations: make(chan processWindowOperation, processWindowOperationBuffer),
+		attachStop: attachmentCancel,
+	}
+	for len(pane.operations) < processWindowOperationBuffer {
+		pane.operations <- processWindowOperation{kind: processWindowOperationInput, data: []byte("x")}
+	}
+	return pane
+}
+
 func TestProcessWindowManagerRunRestoresTerminalOnQuit(t *testing.T) {
 	terminal := &scriptedTerminalController{input: []byte{attachEscapeByte, 'q'}}
 	var output bytes.Buffer
-	manager := newProcessWindowManager(terminal, &output, nil, newFakeProcessWindowTerminal, 0)
+	manager := newProcessWindowManager(context.Background(), terminal, &output, nil, newFakeProcessWindowTerminal, 0)
 	if err := manager.run(nil); err != nil {
 		t.Fatal(err)
 	}
@@ -513,8 +648,14 @@ func (a *fakeProcessWindowAttachment) Write(data []byte) (int, error) {
 	case <-a.done:
 		return 0, io.ErrClosedPipe
 	default:
-		a.input <- append([]byte(nil), data...)
+	}
+	// A stalled peer leaves input undrained; detaching releases the writer the
+	// way cancelling a real attachment's RPC context does.
+	select {
+	case a.input <- append([]byte(nil), data...):
 		return len(data), nil
+	case <-a.done:
+		return 0, io.ErrClosedPipe
 	}
 }
 func (a *fakeProcessWindowAttachment) Resize(uint32, uint32) error {
