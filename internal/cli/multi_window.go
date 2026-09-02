@@ -27,6 +27,12 @@ const (
 	processWindowEventBuffer      = 256
 	processWindowOperationBuffer  = 64
 	processWindowDetachTimeout    = 3 * time.Second
+	// processWindowInputEnqueueGrace bounds how long the session event loop
+	// waits for room in a pane operation queue before it drops a keystroke.
+	// The queue only fills when the pane's writer is stalled (a remote peer
+	// that stopped reading its input), and blocking the loop there would
+	// freeze rendering, window switching and quitting for every pane.
+	processWindowInputEnqueueGrace = 250 * time.Millisecond
 
 	processWindowsEnterScreenSequence = "\x1b[?1049h\x1b[?7l\x1b[?25l\x1b[2J\x1b[H"
 	processWindowsLeaveScreenSequence = "\x1b[0m\x1b[?25h\x1b[?7h\x1b[?1049l"
@@ -77,7 +83,21 @@ func (s processWindowPaneState) String() string {
 	}
 }
 
+// processWindowOperationKind classifies who produced an operation, which
+// decides what the session event loop may do when the pane queue is full.
+// Keystrokes are user intent and are worth a bounded wait; emulator replies
+// and resizes are generated locally and must never stall the loop, because
+// remote output drives the reply stream.
+type processWindowOperationKind uint8
+
+const (
+	processWindowOperationInput processWindowOperationKind = iota + 1
+	processWindowOperationReply
+	processWindowOperationResize
+)
+
 type processWindowOperation struct {
+	kind    processWindowOperationKind
 	data    []byte
 	rows    uint32
 	columns uint32
@@ -95,6 +115,11 @@ type processWindowPane struct {
 	rectangle  windowRectangle
 	state      processWindowPaneState
 	operations chan processWindowOperation
+	// pendingResize holds the newest size that could not be queued because the
+	// pane's operations were backed up. Only the session event loop touches
+	// it, and it is retried on the next frame so a wedged pane still converges
+	// on the right remote size once its writer drains.
+	pendingResize *processWindowOperation
 }
 
 type processWindowManager struct {
@@ -167,7 +192,10 @@ func (r *REPL) processWindows(arguments []string) error {
 	if r.terminal == nil || !r.terminal.available() {
 		return errors.New("windows requires a supported interactive local terminal")
 	}
+	sessionContext, stopInterrupt := r.interruptContext(context.Background())
+	defer stopInterrupt()
 	manager := newProcessWindowManager(
+		sessionContext,
 		r.terminal,
 		r.stdout,
 		func(ctx context.Context, reference *codev1.ProcessReference, options remoteclient.ProcessAttachOptions) (processWindowAttachment, error) {
@@ -219,13 +247,20 @@ func parseProcessWindowOptions(arguments []string) (processWindowOptions, error)
 }
 
 func newProcessWindowManager(
+	parent context.Context,
 	terminal terminalController,
 	stdout io.Writer,
 	opener processWindowAttachmentOpener,
 	terminalFactory processWindowTerminalFactory,
 	tailLines uint64,
 ) *processWindowManager {
-	ctx, cancel := context.WithCancel(context.Background())
+	if parent == nil {
+		parent = context.Background()
+	}
+	// The parent carries SIGINT so a session can always be unwound from
+	// outside: raw mode clears ISIG, so Ctrl-C never reaches the process and
+	// the keyboard alone cannot end a session whose panes have all stalled.
+	ctx, cancel := context.WithCancel(parent)
 	return &processWindowManager{
 		ctx: ctx, cancel: cancel, terminal: terminal, stdout: stdout,
 		opener: opener, terminalFactory: terminalFactory, tailLines: tailLines,
@@ -235,7 +270,7 @@ func newProcessWindowManager(
 	}
 }
 
-func (m *processWindowManager) run(initial []*codev1.ProcessReference) error {
+func (m *processWindowManager) run(initial []*codev1.ProcessReference) (err error) {
 	rows, columns, err := m.terminal.size()
 	if err != nil {
 		m.cancel()
@@ -253,10 +288,26 @@ func (m *processWindowManager) run(initial []*codev1.ProcessReference) error {
 		m.cancel()
 		return fmt.Errorf("enter raw terminal mode: %w", err)
 	}
-	if err := writeTerminalSequence(m.stdout, processWindowsEnterScreenSequence); err != nil {
+	// Restore through a defer so a panic or an early return can never leave
+	// the local terminal in raw mode on the alternate screen.
+	defer func() {
+		restoreErr := restore()
+		if restoreErr != nil {
+			restoreErr = fmt.Errorf("restore local terminal mode: %w", restoreErr)
+		}
+		err = errors.Join(err, restoreErr)
+	}()
+	if writeErr := writeTerminalSequence(m.stdout, processWindowsEnterScreenSequence); writeErr != nil {
 		m.cancel()
-		return errors.Join(fmt.Errorf("enter multi-window terminal screen: %w", err), restore())
+		return fmt.Errorf("enter multi-window terminal screen: %w", writeErr)
 	}
+	defer func() {
+		leaveErr := writeTerminalSequence(m.stdout, processWindowsLeaveScreenSequence)
+		if leaveErr != nil {
+			leaveErr = fmt.Errorf("leave multi-window terminal screen: %w", leaveErr)
+		}
+		err = errors.Join(err, leaveErr)
+	}()
 
 	resizeEvents, stopResize := m.terminal.resizeEvents()
 	m.startTerminalReader()
@@ -266,15 +317,7 @@ func (m *processWindowManager) run(initial []*codev1.ProcessReference) error {
 	result := m.eventLoop(resizeEvents)
 	stopResize()
 	m.shutdown()
-	leaveErr := writeTerminalSequence(m.stdout, processWindowsLeaveScreenSequence)
-	restoreErr := restore()
-	if leaveErr != nil {
-		leaveErr = fmt.Errorf("leave multi-window terminal screen: %w", leaveErr)
-	}
-	if restoreErr != nil {
-		restoreErr = fmt.Errorf("restore local terminal mode: %w", restoreErr)
-	}
-	return errors.Join(result, leaveErr, restoreErr)
+	return result
 }
 
 func (m *processWindowManager) eventLoop(resizeEvents <-chan struct{}) error {
@@ -323,6 +366,7 @@ func (m *processWindowManager) eventLoop(resizeEvents <-chan struct{}) error {
 			}
 			dirty = true
 		case <-ticker.C:
+			m.retryPendingResizes()
 			if dirty {
 				if err := m.render(); err != nil {
 					return err
@@ -340,7 +384,7 @@ func (m *processWindowManager) handleInput(data []byte) bool {
 	for _, action := range actions {
 		switch action.kind {
 		case processWindowInputForward:
-			m.enqueueActive(processWindowOperation{data: action.data})
+			m.enqueueActive(processWindowOperation{kind: processWindowOperationInput, data: action.data})
 		case processWindowInputOpen:
 			if !utf8.ValidString(action.value) || strings.IndexFunc(action.value, unicode.IsControl) >= 0 {
 				m.status = "open: process reference must be valid UTF-8 without control characters"
@@ -413,7 +457,7 @@ func (m *processWindowManager) handleEvent(event any) error {
 	case processWindowTerminalReply:
 		pane := m.findPane(event.paneID)
 		if pane != nil && pane.state == processWindowPaneActive {
-			m.enqueuePane(pane, processWindowOperation{data: event.data})
+			m.enqueuePane(pane, processWindowOperation{kind: processWindowOperationReply, data: event.data})
 		}
 	case processWindowOperationError:
 		pane := m.findPane(event.paneID)
@@ -538,7 +582,9 @@ func (m *processWindowManager) acceptOpenResult(result processWindowOpenResult) 
 	m.startPaneWorkers(pane)
 	m.applyLayout()
 	for _, size := range attachmentRedrawSizes(uint32(content.height), uint32(content.width)) {
-		m.enqueuePane(pane, processWindowOperation{rows: size.rows, columns: size.columns})
+		m.enqueuePane(pane, processWindowOperation{
+			kind: processWindowOperationResize, rows: size.rows, columns: size.columns,
+		})
 	}
 	m.status = fmt.Sprintf("opened %s (%s)", process.GetName(), process.GetId())
 }
@@ -634,14 +680,73 @@ func (m *processWindowManager) enqueueActive(operation processWindowOperation) {
 	m.enqueuePane(pane, operation)
 }
 
+// enqueuePane hands one operation to the pane's operation pump. The queue is
+// bounded and fills whenever the pane's writer stalls, so this must never
+// block the session event loop indefinitely: doing so would freeze rendering,
+// window switching, closing and quitting for every pane at once. Keystrokes
+// get a bounded grace period, locally generated operations never wait at all.
 func (m *processWindowManager) enqueuePane(pane *processWindowPane, operation processWindowOperation) {
 	if operation.data != nil {
 		operation.data = append([]byte(nil), operation.data...)
 	}
 	select {
 	case pane.operations <- operation:
+		if operation.kind == processWindowOperationResize {
+			pane.pendingResize = nil
+		}
+		return
 	case <-pane.ctx.Done():
 		m.status = fmt.Sprintf("%s is no longer accepting input", pane.process.GetName())
+		return
+	default:
+	}
+	m.enqueueBackedUpPane(pane, operation)
+}
+
+// enqueueBackedUpPane handles the full-queue case, which only happens when the
+// pane's remote peer stopped consuming its input.
+func (m *processWindowManager) enqueueBackedUpPane(pane *processWindowPane, operation processWindowOperation) {
+	switch operation.kind {
+	case processWindowOperationResize:
+		// Keep only the newest size and retry it on a later frame; a stale
+		// resize in the queue has no value once a newer one exists.
+		queued := operation
+		pane.pendingResize = &queued
+	case processWindowOperationInput:
+		timer := time.NewTimer(processWindowInputEnqueueGrace)
+		defer timer.Stop()
+		select {
+		case pane.operations <- operation:
+		case <-pane.ctx.Done():
+			m.status = fmt.Sprintf("%s is no longer accepting input", pane.process.GetName())
+		case <-timer.C:
+			m.status = fmt.Sprintf(
+				"%s is not reading input; keystrokes dropped (close it with Ctrl-] x)",
+				pane.process.GetName())
+		}
+	default: // processWindowOperationReply, and any other locally generated kind
+		// Emulator replies answer terminal queries in the remote output, so
+		// the remote side controls how fast they arrive. Dropping one leaves a
+		// query unanswered; blocking on one would hand a remote process the
+		// ability to wedge the whole multiplexer.
+		m.status = fmt.Sprintf("%s is not reading input; terminal reply dropped", pane.process.GetName())
+	}
+}
+
+// retryPendingResizes re-offers coalesced resizes once a pane's queue has
+// room. It runs on the frame tick, so a pane whose writer recovers converges
+// on the current layout without another SIGWINCH.
+func (m *processWindowManager) retryPendingResizes() {
+	for _, pane := range m.panes {
+		if pane.pendingResize == nil || pane.state != processWindowPaneActive {
+			continue
+		}
+		operation := *pane.pendingResize
+		select {
+		case pane.operations <- operation:
+			pane.pendingResize = nil
+		default:
+		}
 	}
 }
 
@@ -722,7 +827,11 @@ func (m *processWindowManager) applyLayout() {
 		}
 		pane.terminal.Resize(content.width, content.height)
 		if pane.state == processWindowPaneActive {
-			m.enqueuePane(pane, processWindowOperation{rows: uint32(content.height), columns: uint32(content.width)})
+			m.enqueuePane(pane, processWindowOperation{
+				kind:    processWindowOperationResize,
+				rows:    uint32(content.height),
+				columns: uint32(content.width),
+			})
 		}
 	}
 }

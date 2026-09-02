@@ -174,9 +174,23 @@ attachment 和虚拟终端都通过窄接口注入。生产实现分别适配 `P
 检查会话是否仍存在、窗格上限和 UUID 去重后才按顺序接纳它。
 
 用户输入与虚拟终端 reply 都由事件循环按序放入同一个窗格 operation queue，operation pump 再调用
-`ProcessAttachment.Write`，因此单窗格内顺序确定。queue 满时事件循环等待空位，把背压传到本地 terminal
-reader，而不是丢弃输入。`ProcessAttachment` 自身最多允许 32 个未确认操作，继续承担有限网络背压。
-会话事件队列也是有界的；当渲染暂时落后时，输出 pump 逐级反压到 gRPC stream，不建立无界内存队列。
+`ProcessAttachment.Write`，因此单窗格内顺序确定。`ProcessAttachment` 自身最多允许 32 个未确认操作，
+承担有限网络背压。会话事件队列也是有界的；当渲染暂时落后时，输出 pump 逐级反压到 gRPC stream，
+不建立无界内存队列。
+
+**queue 满时事件循环一律不无限等待。** operation queue 只在远端停止读取自己的输入时才会填满
+（服务端 ack 与 pty 写入同步），此时阻塞事件循环会同时冻结全部窗格的渲染、切换、关闭和退出，与
+第 8 节"一个窗格失败不会结束其他窗格"直接冲突；而 raw mode 清掉了 ISIG，键盘上不存在任何退出手段。
+因此按来源区分：
+
+- **键盘输入**是用户意图，等待一个有界的宽限期（250ms），超时后丢弃并在状态栏说明该窗格未读取输入；
+- **虚拟终端 reply** 由远端输出里的终端查询序列驱动，即由远端控制到达速率，queue 满时直接丢弃——
+  丢一个 reply 只是让一次查询无人应答，阻塞则等于把冻结整个复用器的能力交给远端进程；
+- **resize** 合并：queue 满时只保留最新尺寸，在后续 frame tick 上重试，窗格写入侧恢复后自动收敛到
+  当前布局，不需要再来一次 SIGWINCH。
+
+会话 context 挂在带 SIGINT 的父 context 上，作为键盘之外的兜底出口；本地终端的 raw mode 与
+alternate screen 恢复走 defer，任何返回路径（含 panic）都不会把终端留在损坏状态。
 
 输出到达只标记 frame 为 dirty。渲染 timer 把刷新频率限制在最多约 30 FPS，并把完整 frame 组装成一次
 本地 write，避免高速 agent 输出导致每个 chunk 都重绘全屏。输入、resize、attachment 结束和本地命令
