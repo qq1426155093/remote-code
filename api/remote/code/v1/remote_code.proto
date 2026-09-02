@@ -56,8 +56,12 @@ service AgentService {
   rpc CancelQuery(CancelQueryRequest) returns (CancelQueryResponse);
   // List query records still retained by the replay store.
   rpc ListQueries(ListQueriesRequest) returns (ListQueriesResponse);
-  // List sessions that are reusable in the current agent process generation.
+  // List sessions currently running a turn on the agent child; settled turns
+  // auto-close their session, which stays resumable by id on the agent side.
   rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
+  // Close a session manually: refused with AGENT_TURN_ACTIVE while its turn
+  // runs, an idempotent success for any other id (including auto-closed,
+  // unknown, and pre-restart ones).
   rpc CloseSession(CloseSessionRequest) returns (CloseSessionResponse);
 }
 
@@ -794,10 +798,21 @@ message BatchDeleteProcessesResponse {
 message QueryRequest {
   // Required; plain text in v1.
   string prompt = 1;
-  // Empty starts a new session in the workspace.
+  // Empty starts a new turn-scoped session that auto-closes once the turn
+  // settles; non-empty first resumes that agent-side conversation (requires
+  // the agent's session/resume capability) and closes it again after the
+  // turn, so every query leaves the session table empty.
   optional string session_id = 2;
   // Workspace-relative session directory; only consulted when session_id is empty.
   optional string working_directory = 3;
+  // Environment overrides for the agent child, allowed on every query whether
+  // it starts or resumes a session. Environment is fixed at process spawn, so
+  // the merged set (caller wins over the controller's [agent].environment)
+  // identifies the child generation: a query whose environment differs from
+  // the running child's fails with AGENT_ENV_CONFLICT while that child still
+  // has work in flight, and restarts the child once idle. Values live only in
+  // the child process and controller memory; records retain key names only.
+  map<string, string> environment = 4;
 }
 
 message CloseSessionRequest {
@@ -939,6 +954,8 @@ message ListQueriesResponse {
 
 enum AgentSessionState {
   AGENT_SESSION_STATE_UNSPECIFIED = 0;
+  // Retained for filter compatibility: turn-scoped sessions are only listed
+  // while running, so listing never returns an IDLE row.
   AGENT_SESSION_STATE_IDLE = 1;
   AGENT_SESSION_STATE_RUNNING = 2;
 }
@@ -952,8 +969,9 @@ message ListSessionsRequest {
   string page_token = 3;
 }
 
-// A session in the current agent process generation. Closed, crashed, and
-// pre-controller-restart sessions are not reusable and therefore are absent.
+// A session with a turn in flight on the agent child. Sessions are
+// turn-scoped: the completed frame already retired the settled ones, whose
+// transcripts live on in the agent child and resume by session id.
 message AgentSessionInfo {
   string session_id = 1;
   // Canonical workspace-absolute display path: "/" is the workspace root.

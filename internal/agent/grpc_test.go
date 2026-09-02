@@ -136,7 +136,7 @@ func TestRPCQuery_MapsEveryEventKind(t *testing.T) {
 	}
 }
 
-func TestRPCQuery_ReusesSession(t *testing.T) {
+func TestRPCQuery_ResumesSession(t *testing.T) {
 	h := newHarness(t, nil)
 	client := serveRPC(t, NewRPC(h.service))
 
@@ -191,7 +191,10 @@ func TestRPCQuery_WorkingDirectoryConfined(t *testing.T) {
 	}
 }
 
-func TestRPCCloseSession_ForwardsToAgent(t *testing.T) {
+// TestRPCCloseSession: sessions auto-close when their turn settles, so an RPC
+// close of the settled id is an idempotent success and must not double-close
+// on the agent.
+func TestRPCCloseSession(t *testing.T) {
 	h := newHarness(t, nil)
 	client := serveRPC(t, NewRPC(h.service))
 
@@ -202,13 +205,13 @@ func TestRPCCloseSession_ForwardsToAgent(t *testing.T) {
 	sessionID := receiveEvents(t, stream)[0].GetSessionStarted().GetSessionId()
 
 	if _, err := client.CloseSession(context.Background(), &codev1.CloseSessionRequest{SessionId: sessionID}); err != nil {
-		t.Fatalf("CloseSession() error = %v", err)
+		t.Fatalf("CloseSession(settled) error = %v, want nil", err)
 	}
 	if closes := h.currentProcess(t).agent.closesReceived(); len(closes) != 1 || closes[0] != sessionID {
-		t.Fatalf("agent closed sessions = %v, want [%s]", closes, sessionID)
+		t.Fatalf("agent closed sessions = %v, want exactly the auto-close of [%s]", closes, sessionID)
 	}
-	if _, err := client.CloseSession(context.Background(), &codev1.CloseSessionRequest{SessionId: sessionID}); status.Code(err) != codes.NotFound {
-		t.Fatalf("double close error = %v, want NotFound", err)
+	if _, err := client.CloseSession(context.Background(), &codev1.CloseSessionRequest{SessionId: "ghost"}); err != nil {
+		t.Fatalf("CloseSession(unknown) error = %v, want nil", err)
 	}
 }
 
@@ -260,7 +263,8 @@ func TestRPCInfo_ReportsBridgeStatus(t *testing.T) {
 		t.Fatalf("Wait() error = %v", err)
 	}
 	info = rpc.Info()
-	if !info.GetStarted() || info.GetGeneration() != 1 || info.GetSessions() != 1 || !info.GetCloseSupported() {
+	// The turn settled, so its turn-scoped session already auto-closed.
+	if !info.GetStarted() || info.GetGeneration() != 1 || info.GetSessions() != 0 || !info.GetCloseSupported() {
 		t.Fatalf("Info() after a query = %+v", info)
 	}
 	if replay := info.GetReplay(); !replay.GetAvailable() || replay.GetMaxBytesPerQuery() != DefaultEventLogConfig().MaxBytesPerQuery {

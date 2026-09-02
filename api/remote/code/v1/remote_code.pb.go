@@ -857,8 +857,10 @@ type AgentSessionState int32
 
 const (
 	AgentSessionState_AGENT_SESSION_STATE_UNSPECIFIED AgentSessionState = 0
-	AgentSessionState_AGENT_SESSION_STATE_IDLE        AgentSessionState = 1
-	AgentSessionState_AGENT_SESSION_STATE_RUNNING     AgentSessionState = 2
+	// Retained for filter compatibility: turn-scoped sessions are only listed
+	// while running, so listing never returns an IDLE row.
+	AgentSessionState_AGENT_SESSION_STATE_IDLE    AgentSessionState = 1
+	AgentSessionState_AGENT_SESSION_STATE_RUNNING AgentSessionState = 2
 )
 
 // Enum value maps for AgentSessionState.
@@ -7080,12 +7082,23 @@ type QueryRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Required; plain text in v1.
 	Prompt string `protobuf:"bytes,1,opt,name=prompt,proto3" json:"prompt,omitempty"`
-	// Empty starts a new session in the workspace.
+	// Empty starts a new turn-scoped session that auto-closes once the turn
+	// settles; non-empty first resumes that agent-side conversation (requires
+	// the agent's session/resume capability) and closes it again after the
+	// turn, so every query leaves the session table empty.
 	SessionId *string `protobuf:"bytes,2,opt,name=session_id,json=sessionId,proto3,oneof" json:"session_id,omitempty"`
 	// Workspace-relative session directory; only consulted when session_id is empty.
 	WorkingDirectory *string `protobuf:"bytes,3,opt,name=working_directory,json=workingDirectory,proto3,oneof" json:"working_directory,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Environment overrides for the agent child, allowed on every query whether
+	// it starts or resumes a session. Environment is fixed at process spawn, so
+	// the merged set (caller wins over the controller's [agent].environment)
+	// identifies the child generation: a query whose environment differs from
+	// the running child's fails with AGENT_ENV_CONFLICT while that child still
+	// has work in flight, and restarts the child once idle. Values live only in
+	// the child process and controller memory; records retain key names only.
+	Environment   map[string]string `protobuf:"bytes,4,rep,name=environment,proto3" json:"environment,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *QueryRequest) Reset() {
@@ -7137,6 +7150,13 @@ func (x *QueryRequest) GetWorkingDirectory() string {
 		return *x.WorkingDirectory
 	}
 	return ""
+}
+
+func (x *QueryRequest) GetEnvironment() map[string]string {
+	if x != nil {
+		return x.Environment
+	}
+	return nil
 }
 
 type CloseSessionRequest struct {
@@ -8127,8 +8147,9 @@ func (x *ListSessionsRequest) GetPageToken() string {
 	return ""
 }
 
-// A session in the current agent process generation. Closed, crashed, and
-// pre-controller-restart sessions are not reusable and therefore are absent.
+// A session with a turn in flight on the agent child. Sessions are
+// turn-scoped: the completed frame already retired the settled ones, whose
+// transcripts live on in the agent child and resume by session id.
 type AgentSessionInfo struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	SessionId string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
@@ -9500,12 +9521,16 @@ const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	"\x06status\x18\x03 \x01(\v2\x12.google.rpc.StatusR\x06status\"\xaf\x01\n" +
 	"\x1cBatchDeleteProcessesResponse\x12G\n" +
 	"\tselectors\x18\x01 \x03(\v2).remote.code.v1.BatchDeleteSelectorResultR\tselectors\x12F\n" +
-	"\tprocesses\x18\x02 \x03(\v2(.remote.code.v1.BatchDeleteProcessResultR\tprocesses\"\xa1\x01\n" +
+	"\tprocesses\x18\x02 \x03(\v2(.remote.code.v1.BatchDeleteProcessResultR\tprocesses\"\xb2\x02\n" +
 	"\fQueryRequest\x12\x16\n" +
 	"\x06prompt\x18\x01 \x01(\tR\x06prompt\x12\"\n" +
 	"\n" +
 	"session_id\x18\x02 \x01(\tH\x00R\tsessionId\x88\x01\x01\x120\n" +
-	"\x11working_directory\x18\x03 \x01(\tH\x01R\x10workingDirectory\x88\x01\x01B\r\n" +
+	"\x11working_directory\x18\x03 \x01(\tH\x01R\x10workingDirectory\x88\x01\x01\x12O\n" +
+	"\venvironment\x18\x04 \x03(\v2-.remote.code.v1.QueryRequest.EnvironmentEntryR\venvironment\x1a>\n" +
+	"\x10EnvironmentEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\r\n" +
 	"\v_session_idB\x14\n" +
 	"\x12_working_directory\"4\n" +
 	"\x13CloseSessionRequest\x12\x1d\n" +
@@ -9805,7 +9830,7 @@ func file_remote_code_v1_remote_code_proto_rawDescGZIP() []byte {
 }
 
 var file_remote_code_v1_remote_code_proto_enumTypes = make([]protoimpl.EnumInfo, 16)
-var file_remote_code_v1_remote_code_proto_msgTypes = make([]protoimpl.MessageInfo, 127)
+var file_remote_code_v1_remote_code_proto_msgTypes = make([]protoimpl.MessageInfo, 128)
 var file_remote_code_v1_remote_code_proto_goTypes = []any{
 	(ControllerLogLevel)(0),                  // 0: remote.code.v1.ControllerLogLevel
 	(ControllerLogEndReason)(0),              // 1: remote.code.v1.ControllerLogEndReason
@@ -9950,15 +9975,16 @@ var file_remote_code_v1_remote_code_proto_goTypes = []any{
 	(*AgentInfo)(nil),                        // 140: remote.code.v1.AgentInfo
 	nil,                                      // 141: remote.code.v1.ControllerLogEntry.FieldsEntry
 	nil,                                      // 142: remote.code.v1.StartProcessRequest.EnvironmentEntry
-	(*timestamppb.Timestamp)(nil),            // 143: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),                  // 144: google.protobuf.Struct
-	(*status.Status)(nil),                    // 145: google.rpc.Status
+	nil,                                      // 143: remote.code.v1.QueryRequest.EnvironmentEntry
+	(*timestamppb.Timestamp)(nil),            // 144: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),                  // 145: google.protobuf.Struct
+	(*status.Status)(nil),                    // 146: google.rpc.Status
 }
 var file_remote_code_v1_remote_code_proto_depIdxs = []int32{
 	25,  // 0: remote.code.v1.GetInfoResponse.file_transfers:type_name -> remote.code.v1.FileTransferCapabilities
 	18,  // 1: remote.code.v1.GetInfoResponse.controller_logs:type_name -> remote.code.v1.ControllerLogCapabilities
 	140, // 2: remote.code.v1.GetInfoResponse.agent:type_name -> remote.code.v1.AgentInfo
-	143, // 3: remote.code.v1.ControllerLogEntry.timestamp:type_name -> google.protobuf.Timestamp
+	144, // 3: remote.code.v1.ControllerLogEntry.timestamp:type_name -> google.protobuf.Timestamp
 	0,   // 4: remote.code.v1.ControllerLogEntry.level:type_name -> remote.code.v1.ControllerLogLevel
 	141, // 5: remote.code.v1.ControllerLogEntry.fields:type_name -> remote.code.v1.ControllerLogEntry.FieldsEntry
 	1,   // 6: remote.code.v1.ControllerLogEnd.reason:type_name -> remote.code.v1.ControllerLogEndReason
@@ -9967,7 +9993,7 @@ var file_remote_code_v1_remote_code_proto_depIdxs = []int32{
 	22,  // 9: remote.code.v1.ObserveControllerLogsResponse.checkpoint:type_name -> remote.code.v1.ControllerLogCheckpoint
 	23,  // 10: remote.code.v1.ObserveControllerLogsResponse.end:type_name -> remote.code.v1.ControllerLogEnd
 	2,   // 11: remote.code.v1.FileInfo.type:type_name -> remote.code.v1.FileType
-	143, // 12: remote.code.v1.FileInfo.modified_at:type_name -> google.protobuf.Timestamp
+	144, // 12: remote.code.v1.FileInfo.modified_at:type_name -> google.protobuf.Timestamp
 	26,  // 13: remote.code.v1.StatResponse.file:type_name -> remote.code.v1.FileInfo
 	26,  // 14: remote.code.v1.ListResponse.files:type_name -> remote.code.v1.FileInfo
 	26,  // 15: remote.code.v1.TreeNode.file:type_name -> remote.code.v1.FileInfo
@@ -9979,7 +10005,7 @@ var file_remote_code_v1_remote_code_proto_depIdxs = []int32{
 	38,  // 21: remote.code.v1.DownloadResponse.metadata:type_name -> remote.code.v1.DownloadMetadata
 	39,  // 22: remote.code.v1.DownloadResponse.summary:type_name -> remote.code.v1.DownloadSummary
 	3,   // 23: remote.code.v1.UploadSession.state:type_name -> remote.code.v1.UploadSessionState
-	143, // 24: remote.code.v1.UploadSession.expires_at:type_name -> google.protobuf.Timestamp
+	144, // 24: remote.code.v1.UploadSession.expires_at:type_name -> google.protobuf.Timestamp
 	36,  // 25: remote.code.v1.UploadSession.result:type_name -> remote.code.v1.UploadResponse
 	42,  // 26: remote.code.v1.CreateUploadSessionResponse.session:type_name -> remote.code.v1.UploadSession
 	44,  // 27: remote.code.v1.TransferUploadRequest.open:type_name -> remote.code.v1.TransferUploadOpen
@@ -10001,9 +10027,9 @@ var file_remote_code_v1_remote_code_proto_depIdxs = []int32{
 	26,  // 43: remote.code.v1.MkdirResponse.file:type_name -> remote.code.v1.FileInfo
 	5,   // 44: remote.code.v1.ProcessInfo.io_mode:type_name -> remote.code.v1.ProcessIOMode
 	6,   // 45: remote.code.v1.ProcessInfo.state:type_name -> remote.code.v1.ProcessState
-	143, // 46: remote.code.v1.ProcessInfo.started_at:type_name -> google.protobuf.Timestamp
-	143, // 47: remote.code.v1.ProcessInfo.exited_at:type_name -> google.protobuf.Timestamp
-	143, // 48: remote.code.v1.ProcessInfo.created_at:type_name -> google.protobuf.Timestamp
+	144, // 46: remote.code.v1.ProcessInfo.started_at:type_name -> google.protobuf.Timestamp
+	144, // 47: remote.code.v1.ProcessInfo.exited_at:type_name -> google.protobuf.Timestamp
+	144, // 48: remote.code.v1.ProcessInfo.created_at:type_name -> google.protobuf.Timestamp
 	10,  // 49: remote.code.v1.ProcessInfo.input_mode:type_name -> remote.code.v1.ProcessInputMode
 	11,  // 50: remote.code.v1.ProcessInfo.input_state:type_name -> remote.code.v1.ProcessInputState
 	5,   // 51: remote.code.v1.StartProcessRequest.io_mode:type_name -> remote.code.v1.ProcessIOMode
@@ -10014,10 +10040,10 @@ var file_remote_code_v1_remote_code_proto_depIdxs = []int32{
 	5,   // 56: remote.code.v1.ProcessTemplateSummary.io_mode:type_name -> remote.code.v1.ProcessIOMode
 	10,  // 57: remote.code.v1.ProcessTemplateSummary.input_mode:type_name -> remote.code.v1.ProcessInputMode
 	74,  // 58: remote.code.v1.ProcessTemplate.summary:type_name -> remote.code.v1.ProcessTemplateSummary
-	144, // 59: remote.code.v1.ProcessTemplate.parameters_schema:type_name -> google.protobuf.Struct
+	145, // 59: remote.code.v1.ProcessTemplate.parameters_schema:type_name -> google.protobuf.Struct
 	74,  // 60: remote.code.v1.ListProcessTemplatesResponse.templates:type_name -> remote.code.v1.ProcessTemplateSummary
 	75,  // 61: remote.code.v1.GetProcessTemplateResponse.template:type_name -> remote.code.v1.ProcessTemplate
-	144, // 62: remote.code.v1.StartProcessFromTemplateRequest.parameters:type_name -> google.protobuf.Struct
+	145, // 62: remote.code.v1.StartProcessFromTemplateRequest.parameters:type_name -> google.protobuf.Struct
 	94,  // 63: remote.code.v1.StartProcessFromTemplateRequest.terminal_size:type_name -> remote.code.v1.TerminalSize
 	70,  // 64: remote.code.v1.StartProcessFromTemplateResponse.process:type_name -> remote.code.v1.ProcessInfo
 	70,  // 65: remote.code.v1.ListProcessesResponse.processes:type_name -> remote.code.v1.ProcessInfo
@@ -10027,7 +10053,7 @@ var file_remote_code_v1_remote_code_proto_depIdxs = []int32{
 	8,   // 69: remote.code.v1.ObserveProcessLogsRequest.streams:type_name -> remote.code.v1.ProcessLogStream
 	5,   // 70: remote.code.v1.ProcessLogHeader.io_mode:type_name -> remote.code.v1.ProcessIOMode
 	8,   // 71: remote.code.v1.ProcessLogHeader.streams:type_name -> remote.code.v1.ProcessLogStream
-	143, // 72: remote.code.v1.ProcessLogChunk.timestamp:type_name -> google.protobuf.Timestamp
+	144, // 72: remote.code.v1.ProcessLogChunk.timestamp:type_name -> google.protobuf.Timestamp
 	8,   // 73: remote.code.v1.ProcessLogChunk.stream:type_name -> remote.code.v1.ProcessLogStream
 	9,   // 74: remote.code.v1.ProcessLogEnd.reason:type_name -> remote.code.v1.ProcessLogEndReason
 	6,   // 75: remote.code.v1.ProcessLogEnd.state:type_name -> remote.code.v1.ProcessState
@@ -10054,109 +10080,110 @@ var file_remote_code_v1_remote_code_proto_depIdxs = []int32{
 	70,  // 96: remote.code.v1.DeleteProcessResponse.process:type_name -> remote.code.v1.ProcessInfo
 	71,  // 97: remote.code.v1.ProcessSelector.reference:type_name -> remote.code.v1.ProcessReference
 	106, // 98: remote.code.v1.BatchDeleteProcessesRequest.selectors:type_name -> remote.code.v1.ProcessSelector
-	145, // 99: remote.code.v1.BatchDeleteSelectorResult.status:type_name -> google.rpc.Status
+	146, // 99: remote.code.v1.BatchDeleteSelectorResult.status:type_name -> google.rpc.Status
 	6,   // 100: remote.code.v1.ProcessDeleteTarget.state:type_name -> remote.code.v1.ProcessState
 	109, // 101: remote.code.v1.BatchDeleteProcessResult.process:type_name -> remote.code.v1.ProcessDeleteTarget
-	145, // 102: remote.code.v1.BatchDeleteProcessResult.status:type_name -> google.rpc.Status
+	146, // 102: remote.code.v1.BatchDeleteProcessResult.status:type_name -> google.rpc.Status
 	108, // 103: remote.code.v1.BatchDeleteProcessesResponse.selectors:type_name -> remote.code.v1.BatchDeleteSelectorResult
 	110, // 104: remote.code.v1.BatchDeleteProcessesResponse.processes:type_name -> remote.code.v1.BatchDeleteProcessResult
-	130, // 105: remote.code.v1.QueryResponse.session_started:type_name -> remote.code.v1.AgentSessionStarted
-	131, // 106: remote.code.v1.QueryResponse.message:type_name -> remote.code.v1.AgentMessage
-	132, // 107: remote.code.v1.QueryResponse.thought:type_name -> remote.code.v1.AgentThought
-	133, // 108: remote.code.v1.QueryResponse.tool_call:type_name -> remote.code.v1.AgentToolCall
-	135, // 109: remote.code.v1.QueryResponse.plan:type_name -> remote.code.v1.AgentPlan
-	137, // 110: remote.code.v1.QueryResponse.usage:type_name -> remote.code.v1.AgentUsage
-	139, // 111: remote.code.v1.QueryResponse.completed:type_name -> remote.code.v1.AgentTurnCompleted
-	14,  // 112: remote.code.v1.AgentQueryHeader.state:type_name -> remote.code.v1.AgentQueryState
-	13,  // 113: remote.code.v1.AgentQueryEnd.reason:type_name -> remote.code.v1.AgentQueryEndReason
-	117, // 114: remote.code.v1.ObserveQueryResponse.header:type_name -> remote.code.v1.AgentQueryHeader
-	115, // 115: remote.code.v1.ObserveQueryResponse.event:type_name -> remote.code.v1.QueryResponse
-	118, // 116: remote.code.v1.ObserveQueryResponse.end:type_name -> remote.code.v1.AgentQueryEnd
-	14,  // 117: remote.code.v1.ListQueriesRequest.states:type_name -> remote.code.v1.AgentQueryState
-	14,  // 118: remote.code.v1.AgentQueryInfo.state:type_name -> remote.code.v1.AgentQueryState
-	143, // 119: remote.code.v1.AgentQueryInfo.created_at:type_name -> google.protobuf.Timestamp
-	143, // 120: remote.code.v1.AgentQueryInfo.settled_at:type_name -> google.protobuf.Timestamp
-	145, // 121: remote.code.v1.AgentQueryInfo.terminal_status:type_name -> google.rpc.Status
-	123, // 122: remote.code.v1.ListQueriesResponse.queries:type_name -> remote.code.v1.AgentQueryInfo
-	15,  // 123: remote.code.v1.ListSessionsRequest.states:type_name -> remote.code.v1.AgentSessionState
-	15,  // 124: remote.code.v1.AgentSessionInfo.state:type_name -> remote.code.v1.AgentSessionState
-	143, // 125: remote.code.v1.AgentSessionInfo.created_at:type_name -> google.protobuf.Timestamp
-	143, // 126: remote.code.v1.AgentSessionInfo.last_activity_at:type_name -> google.protobuf.Timestamp
-	126, // 127: remote.code.v1.ListSessionsResponse.sessions:type_name -> remote.code.v1.AgentSessionInfo
-	134, // 128: remote.code.v1.AgentToolCall.locations:type_name -> remote.code.v1.AgentToolCallLocation
-	136, // 129: remote.code.v1.AgentPlan.entries:type_name -> remote.code.v1.AgentPlanEntry
-	138, // 130: remote.code.v1.AgentUsage.cost:type_name -> remote.code.v1.AgentCost
-	128, // 131: remote.code.v1.AgentInfo.replay:type_name -> remote.code.v1.AgentReplayInfo
-	129, // 132: remote.code.v1.AgentInfo.listing:type_name -> remote.code.v1.AgentListCapabilities
-	16,  // 133: remote.code.v1.ControllerService.GetInfo:input_type -> remote.code.v1.GetInfoRequest
-	19,  // 134: remote.code.v1.ControllerService.ObserveControllerLogs:input_type -> remote.code.v1.ObserveControllerLogsRequest
-	27,  // 135: remote.code.v1.FileService.Stat:input_type -> remote.code.v1.StatRequest
-	29,  // 136: remote.code.v1.FileService.List:input_type -> remote.code.v1.ListRequest
-	32,  // 137: remote.code.v1.FileService.Tree:input_type -> remote.code.v1.TreeRequest
-	35,  // 138: remote.code.v1.FileService.Upload:input_type -> remote.code.v1.UploadRequest
-	37,  // 139: remote.code.v1.FileService.Download:input_type -> remote.code.v1.DownloadRequest
-	41,  // 140: remote.code.v1.FileService.CreateUploadSession:input_type -> remote.code.v1.CreateUploadSessionRequest
-	47,  // 141: remote.code.v1.FileService.TransferUpload:input_type -> remote.code.v1.TransferUploadRequest
-	52,  // 142: remote.code.v1.FileService.GetUploadSession:input_type -> remote.code.v1.GetUploadSessionRequest
-	54,  // 143: remote.code.v1.FileService.AbortUploadSession:input_type -> remote.code.v1.AbortUploadSessionRequest
-	56,  // 144: remote.code.v1.FileService.DownloadRange:input_type -> remote.code.v1.DownloadRangeRequest
-	62,  // 145: remote.code.v1.FileService.Remove:input_type -> remote.code.v1.RemoveRequest
-	64,  // 146: remote.code.v1.FileService.Move:input_type -> remote.code.v1.MoveRequest
-	66,  // 147: remote.code.v1.FileService.Chmod:input_type -> remote.code.v1.ChmodRequest
-	68,  // 148: remote.code.v1.FileService.Mkdir:input_type -> remote.code.v1.MkdirRequest
-	72,  // 149: remote.code.v1.ProcessService.StartProcess:input_type -> remote.code.v1.StartProcessRequest
-	76,  // 150: remote.code.v1.ProcessService.ListProcessTemplates:input_type -> remote.code.v1.ListProcessTemplatesRequest
-	78,  // 151: remote.code.v1.ProcessService.GetProcessTemplate:input_type -> remote.code.v1.GetProcessTemplateRequest
-	80,  // 152: remote.code.v1.ProcessService.StartProcessFromTemplate:input_type -> remote.code.v1.StartProcessFromTemplateRequest
-	82,  // 153: remote.code.v1.ProcessService.ListProcesses:input_type -> remote.code.v1.ListProcessesRequest
-	84,  // 154: remote.code.v1.ProcessService.SignalProcess:input_type -> remote.code.v1.SignalProcessRequest
-	104, // 155: remote.code.v1.ProcessService.DeleteProcess:input_type -> remote.code.v1.DeleteProcessRequest
-	107, // 156: remote.code.v1.ProcessService.BatchDeleteProcesses:input_type -> remote.code.v1.BatchDeleteProcessesRequest
-	86,  // 157: remote.code.v1.ProcessService.ObserveProcessLogs:input_type -> remote.code.v1.ObserveProcessLogsRequest
-	98,  // 158: remote.code.v1.ProcessService.StreamProcessInput:input_type -> remote.code.v1.StreamProcessInputRequest
-	112, // 159: remote.code.v1.AgentService.Query:input_type -> remote.code.v1.QueryRequest
-	116, // 160: remote.code.v1.AgentService.ObserveQuery:input_type -> remote.code.v1.ObserveQueryRequest
-	120, // 161: remote.code.v1.AgentService.CancelQuery:input_type -> remote.code.v1.CancelQueryRequest
-	122, // 162: remote.code.v1.AgentService.ListQueries:input_type -> remote.code.v1.ListQueriesRequest
-	125, // 163: remote.code.v1.AgentService.ListSessions:input_type -> remote.code.v1.ListSessionsRequest
-	113, // 164: remote.code.v1.AgentService.CloseSession:input_type -> remote.code.v1.CloseSessionRequest
-	17,  // 165: remote.code.v1.ControllerService.GetInfo:output_type -> remote.code.v1.GetInfoResponse
-	24,  // 166: remote.code.v1.ControllerService.ObserveControllerLogs:output_type -> remote.code.v1.ObserveControllerLogsResponse
-	28,  // 167: remote.code.v1.FileService.Stat:output_type -> remote.code.v1.StatResponse
-	30,  // 168: remote.code.v1.FileService.List:output_type -> remote.code.v1.ListResponse
-	33,  // 169: remote.code.v1.FileService.Tree:output_type -> remote.code.v1.TreeResponse
-	36,  // 170: remote.code.v1.FileService.Upload:output_type -> remote.code.v1.UploadResponse
-	40,  // 171: remote.code.v1.FileService.Download:output_type -> remote.code.v1.DownloadResponse
-	43,  // 172: remote.code.v1.FileService.CreateUploadSession:output_type -> remote.code.v1.CreateUploadSessionResponse
-	51,  // 173: remote.code.v1.FileService.TransferUpload:output_type -> remote.code.v1.TransferUploadResponse
-	53,  // 174: remote.code.v1.FileService.GetUploadSession:output_type -> remote.code.v1.GetUploadSessionResponse
-	55,  // 175: remote.code.v1.FileService.AbortUploadSession:output_type -> remote.code.v1.AbortUploadSessionResponse
-	60,  // 176: remote.code.v1.FileService.DownloadRange:output_type -> remote.code.v1.DownloadRangeResponse
-	63,  // 177: remote.code.v1.FileService.Remove:output_type -> remote.code.v1.RemoveResponse
-	65,  // 178: remote.code.v1.FileService.Move:output_type -> remote.code.v1.MoveResponse
-	67,  // 179: remote.code.v1.FileService.Chmod:output_type -> remote.code.v1.ChmodResponse
-	69,  // 180: remote.code.v1.FileService.Mkdir:output_type -> remote.code.v1.MkdirResponse
-	73,  // 181: remote.code.v1.ProcessService.StartProcess:output_type -> remote.code.v1.StartProcessResponse
-	77,  // 182: remote.code.v1.ProcessService.ListProcessTemplates:output_type -> remote.code.v1.ListProcessTemplatesResponse
-	79,  // 183: remote.code.v1.ProcessService.GetProcessTemplate:output_type -> remote.code.v1.GetProcessTemplateResponse
-	81,  // 184: remote.code.v1.ProcessService.StartProcessFromTemplate:output_type -> remote.code.v1.StartProcessFromTemplateResponse
-	83,  // 185: remote.code.v1.ProcessService.ListProcesses:output_type -> remote.code.v1.ListProcessesResponse
-	85,  // 186: remote.code.v1.ProcessService.SignalProcess:output_type -> remote.code.v1.SignalProcessResponse
-	105, // 187: remote.code.v1.ProcessService.DeleteProcess:output_type -> remote.code.v1.DeleteProcessResponse
-	111, // 188: remote.code.v1.ProcessService.BatchDeleteProcesses:output_type -> remote.code.v1.BatchDeleteProcessesResponse
-	91,  // 189: remote.code.v1.ProcessService.ObserveProcessLogs:output_type -> remote.code.v1.ObserveProcessLogsResponse
-	103, // 190: remote.code.v1.ProcessService.StreamProcessInput:output_type -> remote.code.v1.StreamProcessInputResponse
-	115, // 191: remote.code.v1.AgentService.Query:output_type -> remote.code.v1.QueryResponse
-	119, // 192: remote.code.v1.AgentService.ObserveQuery:output_type -> remote.code.v1.ObserveQueryResponse
-	121, // 193: remote.code.v1.AgentService.CancelQuery:output_type -> remote.code.v1.CancelQueryResponse
-	124, // 194: remote.code.v1.AgentService.ListQueries:output_type -> remote.code.v1.ListQueriesResponse
-	127, // 195: remote.code.v1.AgentService.ListSessions:output_type -> remote.code.v1.ListSessionsResponse
-	114, // 196: remote.code.v1.AgentService.CloseSession:output_type -> remote.code.v1.CloseSessionResponse
-	165, // [165:197] is the sub-list for method output_type
-	133, // [133:165] is the sub-list for method input_type
-	133, // [133:133] is the sub-list for extension type_name
-	133, // [133:133] is the sub-list for extension extendee
-	0,   // [0:133] is the sub-list for field type_name
+	143, // 105: remote.code.v1.QueryRequest.environment:type_name -> remote.code.v1.QueryRequest.EnvironmentEntry
+	130, // 106: remote.code.v1.QueryResponse.session_started:type_name -> remote.code.v1.AgentSessionStarted
+	131, // 107: remote.code.v1.QueryResponse.message:type_name -> remote.code.v1.AgentMessage
+	132, // 108: remote.code.v1.QueryResponse.thought:type_name -> remote.code.v1.AgentThought
+	133, // 109: remote.code.v1.QueryResponse.tool_call:type_name -> remote.code.v1.AgentToolCall
+	135, // 110: remote.code.v1.QueryResponse.plan:type_name -> remote.code.v1.AgentPlan
+	137, // 111: remote.code.v1.QueryResponse.usage:type_name -> remote.code.v1.AgentUsage
+	139, // 112: remote.code.v1.QueryResponse.completed:type_name -> remote.code.v1.AgentTurnCompleted
+	14,  // 113: remote.code.v1.AgentQueryHeader.state:type_name -> remote.code.v1.AgentQueryState
+	13,  // 114: remote.code.v1.AgentQueryEnd.reason:type_name -> remote.code.v1.AgentQueryEndReason
+	117, // 115: remote.code.v1.ObserveQueryResponse.header:type_name -> remote.code.v1.AgentQueryHeader
+	115, // 116: remote.code.v1.ObserveQueryResponse.event:type_name -> remote.code.v1.QueryResponse
+	118, // 117: remote.code.v1.ObserveQueryResponse.end:type_name -> remote.code.v1.AgentQueryEnd
+	14,  // 118: remote.code.v1.ListQueriesRequest.states:type_name -> remote.code.v1.AgentQueryState
+	14,  // 119: remote.code.v1.AgentQueryInfo.state:type_name -> remote.code.v1.AgentQueryState
+	144, // 120: remote.code.v1.AgentQueryInfo.created_at:type_name -> google.protobuf.Timestamp
+	144, // 121: remote.code.v1.AgentQueryInfo.settled_at:type_name -> google.protobuf.Timestamp
+	146, // 122: remote.code.v1.AgentQueryInfo.terminal_status:type_name -> google.rpc.Status
+	123, // 123: remote.code.v1.ListQueriesResponse.queries:type_name -> remote.code.v1.AgentQueryInfo
+	15,  // 124: remote.code.v1.ListSessionsRequest.states:type_name -> remote.code.v1.AgentSessionState
+	15,  // 125: remote.code.v1.AgentSessionInfo.state:type_name -> remote.code.v1.AgentSessionState
+	144, // 126: remote.code.v1.AgentSessionInfo.created_at:type_name -> google.protobuf.Timestamp
+	144, // 127: remote.code.v1.AgentSessionInfo.last_activity_at:type_name -> google.protobuf.Timestamp
+	126, // 128: remote.code.v1.ListSessionsResponse.sessions:type_name -> remote.code.v1.AgentSessionInfo
+	134, // 129: remote.code.v1.AgentToolCall.locations:type_name -> remote.code.v1.AgentToolCallLocation
+	136, // 130: remote.code.v1.AgentPlan.entries:type_name -> remote.code.v1.AgentPlanEntry
+	138, // 131: remote.code.v1.AgentUsage.cost:type_name -> remote.code.v1.AgentCost
+	128, // 132: remote.code.v1.AgentInfo.replay:type_name -> remote.code.v1.AgentReplayInfo
+	129, // 133: remote.code.v1.AgentInfo.listing:type_name -> remote.code.v1.AgentListCapabilities
+	16,  // 134: remote.code.v1.ControllerService.GetInfo:input_type -> remote.code.v1.GetInfoRequest
+	19,  // 135: remote.code.v1.ControllerService.ObserveControllerLogs:input_type -> remote.code.v1.ObserveControllerLogsRequest
+	27,  // 136: remote.code.v1.FileService.Stat:input_type -> remote.code.v1.StatRequest
+	29,  // 137: remote.code.v1.FileService.List:input_type -> remote.code.v1.ListRequest
+	32,  // 138: remote.code.v1.FileService.Tree:input_type -> remote.code.v1.TreeRequest
+	35,  // 139: remote.code.v1.FileService.Upload:input_type -> remote.code.v1.UploadRequest
+	37,  // 140: remote.code.v1.FileService.Download:input_type -> remote.code.v1.DownloadRequest
+	41,  // 141: remote.code.v1.FileService.CreateUploadSession:input_type -> remote.code.v1.CreateUploadSessionRequest
+	47,  // 142: remote.code.v1.FileService.TransferUpload:input_type -> remote.code.v1.TransferUploadRequest
+	52,  // 143: remote.code.v1.FileService.GetUploadSession:input_type -> remote.code.v1.GetUploadSessionRequest
+	54,  // 144: remote.code.v1.FileService.AbortUploadSession:input_type -> remote.code.v1.AbortUploadSessionRequest
+	56,  // 145: remote.code.v1.FileService.DownloadRange:input_type -> remote.code.v1.DownloadRangeRequest
+	62,  // 146: remote.code.v1.FileService.Remove:input_type -> remote.code.v1.RemoveRequest
+	64,  // 147: remote.code.v1.FileService.Move:input_type -> remote.code.v1.MoveRequest
+	66,  // 148: remote.code.v1.FileService.Chmod:input_type -> remote.code.v1.ChmodRequest
+	68,  // 149: remote.code.v1.FileService.Mkdir:input_type -> remote.code.v1.MkdirRequest
+	72,  // 150: remote.code.v1.ProcessService.StartProcess:input_type -> remote.code.v1.StartProcessRequest
+	76,  // 151: remote.code.v1.ProcessService.ListProcessTemplates:input_type -> remote.code.v1.ListProcessTemplatesRequest
+	78,  // 152: remote.code.v1.ProcessService.GetProcessTemplate:input_type -> remote.code.v1.GetProcessTemplateRequest
+	80,  // 153: remote.code.v1.ProcessService.StartProcessFromTemplate:input_type -> remote.code.v1.StartProcessFromTemplateRequest
+	82,  // 154: remote.code.v1.ProcessService.ListProcesses:input_type -> remote.code.v1.ListProcessesRequest
+	84,  // 155: remote.code.v1.ProcessService.SignalProcess:input_type -> remote.code.v1.SignalProcessRequest
+	104, // 156: remote.code.v1.ProcessService.DeleteProcess:input_type -> remote.code.v1.DeleteProcessRequest
+	107, // 157: remote.code.v1.ProcessService.BatchDeleteProcesses:input_type -> remote.code.v1.BatchDeleteProcessesRequest
+	86,  // 158: remote.code.v1.ProcessService.ObserveProcessLogs:input_type -> remote.code.v1.ObserveProcessLogsRequest
+	98,  // 159: remote.code.v1.ProcessService.StreamProcessInput:input_type -> remote.code.v1.StreamProcessInputRequest
+	112, // 160: remote.code.v1.AgentService.Query:input_type -> remote.code.v1.QueryRequest
+	116, // 161: remote.code.v1.AgentService.ObserveQuery:input_type -> remote.code.v1.ObserveQueryRequest
+	120, // 162: remote.code.v1.AgentService.CancelQuery:input_type -> remote.code.v1.CancelQueryRequest
+	122, // 163: remote.code.v1.AgentService.ListQueries:input_type -> remote.code.v1.ListQueriesRequest
+	125, // 164: remote.code.v1.AgentService.ListSessions:input_type -> remote.code.v1.ListSessionsRequest
+	113, // 165: remote.code.v1.AgentService.CloseSession:input_type -> remote.code.v1.CloseSessionRequest
+	17,  // 166: remote.code.v1.ControllerService.GetInfo:output_type -> remote.code.v1.GetInfoResponse
+	24,  // 167: remote.code.v1.ControllerService.ObserveControllerLogs:output_type -> remote.code.v1.ObserveControllerLogsResponse
+	28,  // 168: remote.code.v1.FileService.Stat:output_type -> remote.code.v1.StatResponse
+	30,  // 169: remote.code.v1.FileService.List:output_type -> remote.code.v1.ListResponse
+	33,  // 170: remote.code.v1.FileService.Tree:output_type -> remote.code.v1.TreeResponse
+	36,  // 171: remote.code.v1.FileService.Upload:output_type -> remote.code.v1.UploadResponse
+	40,  // 172: remote.code.v1.FileService.Download:output_type -> remote.code.v1.DownloadResponse
+	43,  // 173: remote.code.v1.FileService.CreateUploadSession:output_type -> remote.code.v1.CreateUploadSessionResponse
+	51,  // 174: remote.code.v1.FileService.TransferUpload:output_type -> remote.code.v1.TransferUploadResponse
+	53,  // 175: remote.code.v1.FileService.GetUploadSession:output_type -> remote.code.v1.GetUploadSessionResponse
+	55,  // 176: remote.code.v1.FileService.AbortUploadSession:output_type -> remote.code.v1.AbortUploadSessionResponse
+	60,  // 177: remote.code.v1.FileService.DownloadRange:output_type -> remote.code.v1.DownloadRangeResponse
+	63,  // 178: remote.code.v1.FileService.Remove:output_type -> remote.code.v1.RemoveResponse
+	65,  // 179: remote.code.v1.FileService.Move:output_type -> remote.code.v1.MoveResponse
+	67,  // 180: remote.code.v1.FileService.Chmod:output_type -> remote.code.v1.ChmodResponse
+	69,  // 181: remote.code.v1.FileService.Mkdir:output_type -> remote.code.v1.MkdirResponse
+	73,  // 182: remote.code.v1.ProcessService.StartProcess:output_type -> remote.code.v1.StartProcessResponse
+	77,  // 183: remote.code.v1.ProcessService.ListProcessTemplates:output_type -> remote.code.v1.ListProcessTemplatesResponse
+	79,  // 184: remote.code.v1.ProcessService.GetProcessTemplate:output_type -> remote.code.v1.GetProcessTemplateResponse
+	81,  // 185: remote.code.v1.ProcessService.StartProcessFromTemplate:output_type -> remote.code.v1.StartProcessFromTemplateResponse
+	83,  // 186: remote.code.v1.ProcessService.ListProcesses:output_type -> remote.code.v1.ListProcessesResponse
+	85,  // 187: remote.code.v1.ProcessService.SignalProcess:output_type -> remote.code.v1.SignalProcessResponse
+	105, // 188: remote.code.v1.ProcessService.DeleteProcess:output_type -> remote.code.v1.DeleteProcessResponse
+	111, // 189: remote.code.v1.ProcessService.BatchDeleteProcesses:output_type -> remote.code.v1.BatchDeleteProcessesResponse
+	91,  // 190: remote.code.v1.ProcessService.ObserveProcessLogs:output_type -> remote.code.v1.ObserveProcessLogsResponse
+	103, // 191: remote.code.v1.ProcessService.StreamProcessInput:output_type -> remote.code.v1.StreamProcessInputResponse
+	115, // 192: remote.code.v1.AgentService.Query:output_type -> remote.code.v1.QueryResponse
+	119, // 193: remote.code.v1.AgentService.ObserveQuery:output_type -> remote.code.v1.ObserveQueryResponse
+	121, // 194: remote.code.v1.AgentService.CancelQuery:output_type -> remote.code.v1.CancelQueryResponse
+	124, // 195: remote.code.v1.AgentService.ListQueries:output_type -> remote.code.v1.ListQueriesResponse
+	127, // 196: remote.code.v1.AgentService.ListSessions:output_type -> remote.code.v1.ListSessionsResponse
+	114, // 197: remote.code.v1.AgentService.CloseSession:output_type -> remote.code.v1.CloseSessionResponse
+	166, // [166:198] is the sub-list for method output_type
+	134, // [134:166] is the sub-list for method input_type
+	134, // [134:134] is the sub-list for extension type_name
+	134, // [134:134] is the sub-list for extension extendee
+	0,   // [0:134] is the sub-list for field type_name
 }
 
 func init() { file_remote_code_v1_remote_code_proto_init() }
@@ -10261,7 +10288,7 @@ func file_remote_code_v1_remote_code_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_remote_code_v1_remote_code_proto_rawDesc), len(file_remote_code_v1_remote_code_proto_rawDesc)),
 			NumEnums:      16,
-			NumMessages:   127,
+			NumMessages:   128,
 			NumExtensions: 0,
 			NumServices:   4,
 		},

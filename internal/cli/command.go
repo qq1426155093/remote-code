@@ -179,9 +179,9 @@ var defaultCommandRegistry = mustCommandRegistry([]commandSpec{
 		complete:   (*commandCompleter).completeControllerLogs,
 	},
 	{
-		name: "agent", aliases: []string{"agent-query"}, arguments: "[--session ID] [--cwd REMOTE_DIR] PROMPT",
+		name: "agent", aliases: []string{"agent-query"}, arguments: "[--session ID] [--cwd REMOTE_DIR] [--env KEY=VALUE]... PROMPT",
 		listSuffix: "(Ctrl-C cancels the turn)",
-		details:    "Send one prompt to the code agent; without --session the last session is reused; the printed query id replays with 'agent-observe'",
+		details:    "Send one prompt to the code agent; without --session the last session is resumed; --env overrides the agent child's environment for this turn; the printed query id replays with 'agent-observe'",
 		handler:    (*REPL).agentQuery,
 		complete:   completeRemotePathWithOption("--cwd", 1, completeDirectories),
 	},

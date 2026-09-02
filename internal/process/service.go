@@ -791,29 +791,42 @@ func validateTerminalSize(size *codev1.TerminalSize) error {
 	return nil
 }
 
-func buildEnvironment(overrides map[string]string, ioMode codev1.ProcessIOMode) ([]string, []string, error) {
+// ValidateEnvironment checks environment overrides against the budget every
+// child process must satisfy: key shape, NUL-free values, per-entry and total
+// size, and the variable count. It returns the override keys in sorted order.
+// The same rules govern any executable the controller starts, agent children
+// included.
+func ValidateEnvironment(overrides map[string]string) ([]string, error) {
 	if len(overrides) > maxEnvironmentVariables {
-		return nil, nil, status.Errorf(codes.InvalidArgument, "process accepts at most %d environment overrides", maxEnvironmentVariables)
+		return nil, status.Errorf(codes.InvalidArgument, "environment accepts at most %d overrides", maxEnvironmentVariables)
 	}
 	total := 0
 	keys := make([]string, 0, len(overrides))
 	for key, value := range overrides {
 		if !environmentKeyPattern.MatchString(key) {
-			return nil, nil, status.Errorf(codes.InvalidArgument, "environment key %q is invalid", key)
+			return nil, status.Errorf(codes.InvalidArgument, "environment key %q is invalid", key)
 		}
 		if strings.IndexByte(value, 0) >= 0 {
-			return nil, nil, status.Errorf(codes.InvalidArgument, "environment value for %q contains a NUL byte", key)
+			return nil, status.Errorf(codes.InvalidArgument, "environment value for %q contains a NUL byte", key)
 		}
 		if len(key)+len(value) > maxEnvironmentEntryBytes {
-			return nil, nil, status.Errorf(codes.InvalidArgument, "environment entry %q exceeds %d bytes", key, maxEnvironmentEntryBytes)
+			return nil, status.Errorf(codes.InvalidArgument, "environment entry %q exceeds %d bytes", key, maxEnvironmentEntryBytes)
 		}
 		total += len(key) + len(value)
 		keys = append(keys, key)
 	}
 	if total > maxEnvironmentBytes {
-		return nil, nil, status.Errorf(codes.InvalidArgument, "environment overrides exceed %d bytes", maxEnvironmentBytes)
+		return nil, status.Errorf(codes.InvalidArgument, "environment overrides exceed %d bytes", maxEnvironmentBytes)
 	}
 	sort.Strings(keys)
+	return keys, nil
+}
+
+func buildEnvironment(overrides map[string]string, ioMode codev1.ProcessIOMode) ([]string, []string, error) {
+	keys, err := ValidateEnvironment(overrides)
+	if err != nil {
+		return nil, nil, err
+	}
 	values := make(map[string]string)
 	for _, entry := range os.Environ() {
 		key, value, ok := strings.Cut(entry, "=")

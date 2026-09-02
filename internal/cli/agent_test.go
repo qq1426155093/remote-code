@@ -34,6 +34,32 @@ func TestParseAgentQueryOptions(t *testing.T) {
 	}
 }
 
+func TestParseAgentQueryOptionsEnvironment(t *testing.T) {
+	options, err := parseAgentQueryOptions([]string{"--env", "FOO=bar", "--env", "EMPTY=", "--env", "URL=https://example.com/x?y=1", "go"})
+	if err != nil {
+		t.Fatalf("parseAgentQueryOptions() error = %v", err)
+	}
+	want := map[string]string{"FOO": "bar", "EMPTY": "", "URL": "https://example.com/x?y=1"}
+	if len(options.environment) != len(want) || options.environment["FOO"] != "bar" ||
+		options.environment["EMPTY"] != "" || options.environment["URL"] != "https://example.com/x?y=1" {
+		t.Fatalf("environment = %v, want %v", options.environment, want)
+	}
+	if options.prompt != "go" {
+		t.Fatalf("prompt = %q, want %q", options.prompt, "go")
+	}
+
+	for _, invalid := range [][]string{
+		{"--env", "NO_EQUALS", "go"},
+		{"--env", "=value", "go"},
+		{"--env"},
+		{"--env", "FOO=bar", "--env", "FOO=again", "go"},
+	} {
+		if _, err := parseAgentQueryOptions(invalid); err == nil {
+			t.Fatalf("parseAgentQueryOptions(%q) accepted an invalid --env", invalid)
+		}
+	}
+}
+
 func TestAgentEventRenderer(t *testing.T) {
 	line := int32(3)
 	events := []*codev1.QueryResponse{

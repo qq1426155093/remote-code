@@ -110,14 +110,8 @@ func TestStartTurn_RejectsInvalidRequests(t *testing.T) {
 	if _, err := h.service.StartTurn(context.Background(), TurnRequest{Prompt: "  "}); status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("empty prompt error = %v, want InvalidArgument", err)
 	}
-	if _, err := h.service.StartTurn(context.Background(), TurnRequest{Prompt: "hi", SessionID: "nope"}); status.Code(err) != codes.NotFound {
-		t.Fatalf("unknown session error = %v, want NotFound", err)
-	}
-	if _, err := h.service.StartTurn(context.Background(), TurnRequest{Prompt: "hi", SessionID: "nope"}); rpcerror.ReasonOf(err) != rpcerror.AgentSessionNotFound {
-		t.Fatalf("reason = %q, want %s", rpcerror.ReasonOf(err), rpcerror.AgentSessionNotFound)
-	}
 	if h.dialCount() != 0 {
-		t.Fatalf("dialed %d times, want 0 (session lookup must not start the process)", h.dialCount())
+		t.Fatalf("dialed %d times, want 0 (validation must not start the process)", h.dialCount())
 	}
 }
 
@@ -370,13 +364,18 @@ func TestStartTurn_ProcessCrash(t *testing.T) {
 		t.Fatal("crashed turn did not settle")
 	}
 
-	// The dead session is reported lost, not merely missing.
-	_, err = h.service.StartTurn(context.Background(), TurnRequest{Prompt: "again", SessionID: "sess-1"})
-	if status.Code(err) != codes.FailedPrecondition || rpcerror.ReasonOf(err) != rpcerror.AgentSessionLost {
-		t.Fatalf("lost session error = %v (reason %q), want FailedPrecondition %s", err, rpcerror.ReasonOf(err), rpcerror.AgentSessionLost)
+	// Sessions are disk-backed on the agent side, so the crashed generation's
+	// session resumes on the restarted child.
+	resumed, err := h.service.StartTurn(context.Background(), TurnRequest{Prompt: "resume", SessionID: "sess-1"})
+	if err != nil {
+		t.Fatalf("StartTurn(resume after crash) error = %v", err)
+	}
+	collectFrames(t, resumed)
+	if err := resumed.Wait(); err != nil {
+		t.Fatalf("resume after crash Wait() error = %v", err)
 	}
 
-	// The next query transparently restarts the agent process.
+	// A fresh query transparently restarts the agent process too.
 	revived, err := h.service.StartTurn(context.Background(), TurnRequest{Prompt: "revive"})
 	if err != nil {
 		t.Fatalf("StartTurn(after crash) error = %v", err)
@@ -474,42 +473,36 @@ func TestStartTurn_WorkingDirectoryConfined(t *testing.T) {
 	}
 }
 
+// TestCloseSession: sessions are turn-scoped and auto-close when their turn
+// settles, so CloseSession only refuses while the turn is still running —
+// every other id is already closed and closing it again is an idempotent
+// success that must not spam the agent with session/close.
 func TestCloseSession(t *testing.T) {
-	t.Run("forwarded when the agent advertises close", func(t *testing.T) {
+	t.Run("unknown or already auto-closed id is idempotent success", func(t *testing.T) {
 		h := newHarness(t, nil)
+		if err := h.service.CloseSession(context.Background(), "never-existed"); err != nil {
+			t.Fatalf("CloseSession(unknown) error = %v, want nil", err)
+		}
 		stream, err := h.service.StartTurn(context.Background(), TurnRequest{Prompt: "hi"})
 		if err != nil {
 			t.Fatal(err)
 		}
 		collectFrames(t, stream)
+		if err := stream.Wait(); err != nil {
+			t.Fatal(err)
+		}
 		if err := h.service.CloseSession(context.Background(), "sess-1"); err != nil {
-			t.Fatalf("CloseSession() error = %v", err)
+			t.Fatalf("CloseSession(after settle) error = %v, want nil", err)
 		}
 		if got := h.currentProcess(t).agent.closesReceived(); len(got) != 1 || got[0] != "sess-1" {
-			t.Fatalf("agent closes = %v, want [sess-1]", got)
-		}
-		if err := h.service.CloseSession(context.Background(), "sess-1"); status.Code(err) != codes.NotFound {
-			t.Fatalf("second CloseSession() error = %v, want NotFound", err)
+			t.Fatalf("agent closes = %v, want exactly the one auto-close of [sess-1]", got)
 		}
 	})
 
-	t.Run("local cleanup when close is not advertised", func(t *testing.T) {
-		h := newHarness(t, func(a *scriptedAgent) {
-			a.caps.SessionCapabilities.Close = nil
-		})
-		stream, err := h.service.StartTurn(context.Background(), TurnRequest{Prompt: "hi"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		collectFrames(t, stream)
-		if err := h.service.CloseSession(context.Background(), "sess-1"); err != nil {
-			t.Fatalf("CloseSession() error = %v", err)
-		}
-		if got := h.currentProcess(t).agent.closesReceived(); got != nil {
-			t.Fatalf("agent closes = %v, want none without the capability", got)
-		}
-		if _, err := h.service.StartTurn(context.Background(), TurnRequest{Prompt: "hi", SessionID: "sess-1"}); status.Code(err) != codes.NotFound {
-			t.Fatalf("reusing closed session error = %v, want NotFound", err)
+	t.Run("empty session id is invalid", func(t *testing.T) {
+		h := newHarness(t, nil)
+		if err := h.service.CloseSession(context.Background(), ""); status.Code(err) != codes.InvalidArgument {
+			t.Fatalf("CloseSession(empty) error = %v, want InvalidArgument", err)
 		}
 	})
 
@@ -546,6 +539,9 @@ func TestCloseSession(t *testing.T) {
 				t.Fatalf("CloseSession() error = %v, want FailedPrecondition", err)
 			}
 			time.Sleep(10 * time.Millisecond)
+		}
+		if got := h.currentProcess(t).agent.closesReceived(); got != nil {
+			t.Fatalf("agent closes while busy = %v, want none", got)
 		}
 		if err := h.service.CancelQuery(<-queryIDs); err != nil {
 			t.Fatalf("CancelQuery() error = %v", err)

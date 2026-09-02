@@ -12,11 +12,15 @@ import (
 
 // AgentQueryOptions selects the conversation one agent turn runs in. An empty
 // SessionID starts a new session at the workspace root, or in
-// WorkingDirectory when set; a non-empty SessionID reuses an existing session
-// and ignores WorkingDirectory.
+// WorkingDirectory when set; a non-empty SessionID resumes that agent-side
+// conversation by id. Environment overrides merge over the controller's
+// operator baseline for the child that runs the turn; a value that requires a
+// different child than the running one is refused while that child still has
+// work in flight.
 type AgentQueryOptions struct {
 	SessionID        string
 	WorkingDirectory string
+	Environment      map[string]string
 }
 
 // AgentQueryListOptions filters and paginates retained agent turns. Empty
@@ -28,9 +32,10 @@ type AgentQueryListOptions struct {
 	PageToken string
 }
 
-// AgentSessionListOptions filters and paginates sessions reusable in the
-// controller's current agent process generation. Empty States includes idle
-// and running sessions.
+// AgentSessionListOptions filters and paginates agent sessions. Sessions are
+// turn-scoped, so listing shows only sessions whose turn is currently
+// running; settled conversations live on in the agent's own disk-backed
+// transcripts and resume by id.
 type AgentSessionListOptions struct {
 	States    []codev1.AgentSessionState
 	PageSize  uint32
@@ -58,11 +63,16 @@ func (c *Client) AgentQuery(ctx context.Context, prompt string, options AgentQue
 	if options.WorkingDirectory != "" {
 		request.WorkingDirectory = &options.WorkingDirectory
 	}
+	if len(options.Environment) > 0 {
+		request.Environment = options.Environment
+	}
 	return c.agent.Query(ctx, request)
 }
 
-// CloseAgentSession ends one agent session on the controller. It fails while
-// the session still has a running turn.
+// CloseAgentSession ends one agent session on the controller. Sessions are
+// turn-scoped and already auto-close when their turn settles, so this fails
+// only while the turn is still running and is an idempotent success for
+// every other id.
 func (c *Client) CloseAgentSession(ctx context.Context, sessionID string) error {
 	if err := c.requireAgentService(); err != nil {
 		return err
@@ -90,8 +100,8 @@ func (c *Client) ListAgentQueries(ctx context.Context, options AgentQueryListOpt
 	return c.agent.ListQueries(ctx, request)
 }
 
-// ListAgentSessions returns only session ids that can be reused by AgentQuery
-// on the current controller/agent generation.
+// ListAgentSessions returns the sessions currently running a turn on the
+// controller's agent child.
 func (c *Client) ListAgentSessions(ctx context.Context, options AgentSessionListOptions) (*codev1.ListSessionsResponse, error) {
 	if err := c.requireAgentSessionListing(); err != nil {
 		return nil, err

@@ -191,12 +191,12 @@ Controller 还会再次实施路径校验。
 
 | 命令 | 功能 |
 | --- | --- |
-| `agent` / `agent-query` `[--session ID] [--cwd REMOTE_DIR] PROMPT` | 向共享 Code Agent 发送一个 prompt，流式渲染回复 |
+| `agent` / `agent-query` `[--session ID] [--cwd REMOTE_DIR] [--env KEY=VALUE]... PROMPT` | 向共享 Code Agent 发送一个 prompt，流式渲染回复 |
 | `agent-observe [--from SEQUENCE] [--no-follow] QUERY_ID` | 从保留序号回放 query；运行中默认继续 follow |
 | `agent-cancel QUERY_ID` | 显式取消运行中的 query |
 | `agent-queries [--session ID] [--state STATE] [--page-size N] [--page-token TOKEN]` | 分页列出仍在保留期内的 query |
-| `agent-sessions [--state idle\|running] [--page-size N] [--page-token TOKEN]` | 分页列出当前进程代内可复用的 session |
-| `agent-close [SESSION]` | 结束 Agent 会话；省略 id 时关闭 REPL 记住的会话 |
+| `agent-sessions [--state idle\|running] [--page-size N] [--page-token TOKEN]` | 分页列出正在运行 turn 的 session |
+| `agent-close [SESSION]` | 遗忘/结束 Agent 会话；turn 落定后已自动关闭，此命令幂等 |
 
 Agent 会话按 turn 交互：一次 `agent` 命令就是一个 turn，事件按到达顺序渲染——消息文本直接输出，
 thought 以 `· ` 前缀标识，工具调用显示为一行（`→` 创建、`~` 更新、`(status)` 与 `path:line` 附注），
@@ -219,16 +219,21 @@ closed agent session 8f3c…
 
 行为要点：
 
-- REPL 记住最近一次会话 id，后续 `agent` 命令默认接续同一对话；`--session` 显式指定，`agent-close`
-  后回到新会话；
+- REPL 记住最近一次会话 id，后续 `agent` 命令默认按 agent 侧磁盘转录恢复同一对话；`--session`
+  显式指定，`agent-close` 后回到新会话；
 - `--cwd` 只对新会话生效，按 REPL 当前远端目录解析，且不能越出 workspace；
+- `--env KEY=VALUE`（可重复）为该 turn 覆盖 Agent 子进程环境，调用方胜出地合并过
+  `[agent].environment`；环境不同时 Controller 在空闲当口换代重启子进程，忙时返回
+  `AGENT_ENV_CONFLICT`（稍后重试即可）；
 - gRPC `Query` 流断开只会 detach，远端 turn 会继续运行并持久化事件；CLI 的 Ctrl-C 会额外调用
-  `CancelQuery` 显式取消该 turn，不会结束会话或停止 Agent 进程；
-- `agent-queries` 返回 `RUNNING`、`SETTLED`、`LOST` 中仍受事件保留策略覆盖的记录；`agent-sessions`
-  只返回当前 Agent 进程代内可继续传给 `agent --session` 的会话，Controller 重启后的旧会话不会出现；
+  `CancelQuery` 显式取消该 turn，不会停止 Agent 进程；
+- `agent-queries` 返回 `RUNNING`、`SETTLED`、`LOST` 中仍受事件保留策略覆盖的记录；会话按 turn
+  存活，`agent-sessions` 只列出正在运行 turn 的会话——已落定的会话自动关闭但按 id 依旧可恢复，
+  Controller 重启后列表为空而 resume 不受影响；
 - 首次 `agent` 命令才会懒启动 Agent 子进程；Controller 未启用 Agent 服务时命令返回
   `AGENT_DISABLED`，`info` 的 `Agent:` 行也会显示 `disabled`；
-- Agent 进程崩溃后，旧会话 id 返回 `AGENT_SESSION_LOST`，需要开新会话重试。
+- Agent 进程崩溃只终止在飞 turn（`AGENT_PROCESS_LOST`）；恢复对话不依赖 controller 内存，新一代
+  子进程按 id resume 即可，agent 未广告恢复能力时返回 `AGENT_SESSION_NOT_RESUMABLE`。
 
 ## 5. 文件操作详解
 
@@ -746,8 +751,12 @@ offset 继续，而不重复处理已经确认的记录。
 ### 9.6 Agent 会话
 
 `AgentQuery` 发送一个 turn 并返回服务端流。取消 context 或停止读取只会 detach；turn 在 Controller
-继续运行并持久化，显式停止使用 `CancelAgentQuery`，续读使用 `ObserveAgentQuery`。会话由调用方持有：
-首个事件携带 `session_started` 的 id，之后用 `AgentQueryOptions.SessionID` 接续对话。
+继续运行并持久化，显式停止使用 `CancelAgentQuery`，续读使用 `ObserveAgentQuery`。会话按 turn 存活：
+新建会话的 turn 落定后自动关闭，接续对话用 `AgentQueryOptions.SessionID` 恢复（agent 侧磁盘转录，
+Controller 或 Agent 进程重启后依然可用），恢复后的 turn 结束时同样自动关闭。
+`AgentQueryOptions.Environment` 携带按查询的环境覆盖（调用方胜出地合并过 controller 的
+`[agent].environment`）；环境不同的查询在子进程空闲时触发换代重启，忙时返回
+`AGENT_ENV_CONFLICT`。
 
 ```go
 stream, err := client.AgentQuery(ctx, "summarize the failing tests", remoteclient.AgentQueryOptions{})
@@ -785,8 +794,9 @@ sessions, err := client.ListAgentSessions(ctx, remoteclient.AgentSessionListOpti
 if err != nil {
     log.Fatal(err)
 }
-fmt.Printf("reusable sessions: %d\n", len(sessions.GetSessions()))
+fmt.Printf("sessions running a turn: %d\n", len(sessions.GetSessions()))
 
+// 已落定的会话无需手动关闭（turn 结束即自动关闭），此调用幂等。
 if err := client.CloseAgentSession(ctx, sessionID); err != nil {
     log.Fatal(err)
 }
@@ -797,13 +807,17 @@ if err := client.CloseAgentSession(ctx, sessionID); err != nil {
 - Controller 未启用 Agent 服务时，client 方法直接返回 `FailedPrecondition`（客户端依据连接时的
   `Info().Agent` 预判）；列表方法还会检查 `Info().Agent.Listing`，无需依赖 `Unimplemented` 探测；
 - `ListAgentQueries` 仅在 replay store 可用时启用，默认按创建时间从新到旧返回保留记录；
-  `ListAgentSessions` 只返回当前进程代内可复用会话。两者都使用不透明 `NextPageToken` 继续同一过滤条件；
+  `ListAgentSessions` 只返回正在运行 turn 的会话（turn 级会话，落定即自动关闭）。两者都使用不透明
+  `NextPageToken` 继续同一过滤条件；
 - `WorkingDirectory` 只在新建会话时生效，必须是 workspace 相对路径，否则返回
   `AGENT_WORKING_DIRECTORY`；
-- 复用不存在或已丢失的会话分别返回 `AGENT_SESSION_NOT_FOUND` 与 `AGENT_SESSION_LOST`；同一会话
-  并发 turn 返回 `AGENT_TURN_ACTIVE`；
-- turn 进行中 Agent 进程退出返回 `AGENT_PROCESS_LOST`，Agent 自身的 JSON-RPC 错误映射为
-  `AGENT_REQUEST_ERROR`（`metadata.jsonrpc_code` 保留原始码）。
+- `Environment` 键名或预算非法返回 `AGENT_ENVIRONMENT`；环境与运行中子进程不同且桥仍忙返回
+  `AGENT_ENV_CONFLICT`（空闲则自动换代重启）；
+- 恢复会话要求 agent 广告 `session/resume` 能力，否则返回 `AGENT_SESSION_NOT_RESUMABLE`；恢复不
+  存在的 id 由 agent 侧错误透传（`AGENT_REQUEST_ERROR`）；同一会话并发 turn 返回
+  `AGENT_TURN_ACTIVE`；
+- turn 进行中 Agent 进程退出返回 `AGENT_PROCESS_LOST`（之后按 id resume 依旧可用），Agent 自身的
+  JSON-RPC 错误映射为 `AGENT_REQUEST_ERROR`（`metadata.jsonrpc_code` 保留原始码）。
 
 ## 10. 错误处理与兼容性
 

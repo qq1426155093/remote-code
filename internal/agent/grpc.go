@@ -32,6 +32,7 @@ func (r *RPC) Query(request *codev1.QueryRequest, stream codev1.AgentService_Que
 		Prompt:           request.GetPrompt(),
 		SessionID:        request.GetSessionId(),
 		WorkingDirectory: request.GetWorkingDirectory(),
+		Environment:      request.GetEnvironment(),
 	})
 	if err != nil {
 		return err
@@ -80,7 +81,9 @@ func (r *RPC) ListQueries(ctx context.Context, request *codev1.ListQueriesReques
 	return r.bridge.ListQueries(ctx, request)
 }
 
-// ListSessions returns sessions reusable in the current process generation.
+// ListSessions returns the sessions currently running a turn; sessions are
+// turn-scoped, so settled conversations live on only in the agent's own
+// disk-backed transcripts (resumable by id via Query).
 func (r *RPC) ListSessions(ctx context.Context, request *codev1.ListSessionsRequest) (*codev1.ListSessionsResponse, error) {
 	if r.bridge == nil {
 		return nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.AgentDisabled, "the agent service is disabled in controller configuration")

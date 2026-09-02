@@ -265,11 +265,16 @@ func TestAgentQueryOverGRPCHappyPath(t *testing.T) {
 		t.Fatalf("last event = %+v, want completed end_turn", events[len(events)-1])
 	}
 
+	// The turn settled, so its session already auto-closed: closing again is
+	// an idempotent success, as is closing an id that never existed.
 	if _, err := agentClient.CloseSession(ctx, &codev1.CloseSessionRequest{SessionId: "helper-1"}); err != nil {
 		t.Fatalf("CloseSession() error = %v", err)
 	}
-	if _, err := agentClient.CloseSession(ctx, &codev1.CloseSessionRequest{SessionId: "helper-1"}); status.Code(err) != codes.NotFound || rpcerror.ReasonOf(err) != rpcerror.AgentSessionNotFound {
-		t.Fatalf("double close error = %v, want NotFound/AGENT_SESSION_NOT_FOUND", err)
+	if _, err := agentClient.CloseSession(ctx, &codev1.CloseSessionRequest{SessionId: "helper-1"}); err != nil {
+		t.Fatalf("double close error = %v, want nil", err)
+	}
+	if _, err := agentClient.CloseSession(ctx, &codev1.CloseSessionRequest{SessionId: "never-existed"}); err != nil {
+		t.Fatalf("close of an unknown session error = %v, want nil", err)
 	}
 }
 

@@ -28,18 +28,13 @@ import (
 // agentProcessName is the registry name of the shared agent child.
 const agentProcessName = "agent"
 
-// lostSessionHistory bounds how many crashed-generation session ids are
-// remembered so a reuse attempt can be answered with AGENT_SESSION_LOST
-// instead of the less specific AGENT_SESSION_NOT_FOUND.
-const lostSessionHistory = 1024
-
 // streamBufferCapacity bounds how many frames one TurnStream may queue for its
 // consumer; beyond it, forwarding to that consumer fails and the turn detaches.
 const streamBufferCapacity = 16
 
 // Config wires the agent bridge. Command/Arguments/Environment form the agent
-// child command line; the environment must come from operator configuration
-// or controller inheritance, never from callers.
+// child command line; Environment is the operator baseline that every query's
+// overrides merge over.
 type Config struct {
 	Enabled     bool
 	Command     string
@@ -86,11 +81,13 @@ type Service struct {
 	queries *QueryStore
 	now     func() time.Time
 
-	mu           sync.Mutex
-	sessions     map[string]*session
-	lostSessions map[string]struct{}
-	lostOrder    []string
-	liveQueries  map[string]*agentQuery
+	mu          sync.Mutex
+	sessions    map[string]*session
+	liveQueries map[string]*agentQuery
+	// pendingEnvs holds the launch environments of queries that passed
+	// validation but have not registered their session yet; an arrival here is
+	// invisible to the session table, so environment switches must respect it.
+	pendingEnvs  []map[string]string
 	shuttingDown bool
 	// stop is closed once at shutdown; every turn pump selects on it so a
 	// shutdown interrupts even a blocked event emit.
@@ -121,14 +118,13 @@ func New(config Config) (*Service, error) {
 		logger = slog.Default()
 	}
 	service := &Service{
-		config:       config,
-		logger:       logger,
-		processes:    config.Processes,
-		sessions:     make(map[string]*session),
-		lostSessions: make(map[string]struct{}),
-		liveQueries:  make(map[string]*agentQuery),
-		now:          time.Now,
-		stop:         make(chan struct{}),
+		config:      config,
+		logger:      logger,
+		processes:   config.Processes,
+		sessions:    make(map[string]*session),
+		liveQueries: make(map[string]*agentQuery),
+		now:         time.Now,
+		stop:        make(chan struct{}),
 	}
 	if config.replayEnabled() {
 		events := config.Events
@@ -146,20 +142,68 @@ func New(config Config) (*Service, error) {
 		dial = service.dialProcess
 	}
 	service.process = &agentProcess{
-		logger:  logger,
-		dial:    dial,
-		sink:    service,
-		onCrash: service.handleCrash,
+		logger:    logger,
+		dial:      dial,
+		sink:      service,
+		onCrash:   service.handleCrash,
+		maySwitch: service.maySwitchEnvironment,
 	}
 	return service, nil
 }
 
-// TurnRequest is one query: a prompt for an existing session, or for a new
-// session created at the workspace root (or the request's working directory).
+// TurnRequest is one query. A prompt without SessionID starts a fresh session
+// (at the workspace root, or the request's working directory) that
+// auto-closes when the turn settles; a prompt with SessionID resumes that
+// agent-side conversation first. Environment carries caller-supplied
+// overrides merged over the operator baseline for whichever child runs the
+// turn; a value that requires a different child than the running one is
+// refused while that child still has work in flight.
 type TurnRequest struct {
 	Prompt           string
 	SessionID        string
 	WorkingDirectory string
+	Environment      map[string]string
+}
+
+// launchEnvironment validates the caller's overrides and merges them over the
+// operator's [agent].environment — caller wins. The merged map is the child's
+// launch environment (and generation identity); the sorted override keys are
+// all that records ever retain.
+func (s *Service) launchEnvironment(overrides map[string]string) (map[string]string, []string, error) {
+	keys, err := process.ValidateEnvironment(overrides)
+	if err != nil {
+		return nil, nil, rpcerror.Errorf(codes.InvalidArgument, rpcerror.AgentEnvironment, "%s", status.Convert(err).Message())
+	}
+	merged := make(map[string]string, len(s.config.Environment)+len(overrides))
+	for key, value := range s.config.Environment {
+		merged[key] = value
+	}
+	for key, value := range overrides {
+		merged[key] = value
+	}
+	if _, err := process.ValidateEnvironment(merged); err != nil {
+		return nil, nil, rpcerror.Errorf(codes.InvalidArgument, rpcerror.AgentEnvironment, "operator baseline plus overrides: %s", status.Convert(err).Message())
+	}
+	return merged, keys, nil
+}
+
+// maySwitchEnvironment reports whether the shared child may be replaced by a
+// generation launched for environment: the bridge must be idle — no sessions
+// in the table, no live queries — and every still-arriving query must want
+// that same environment. It runs with the process mutex held, so it must
+// never call back into the process.
+func (s *Service) maySwitchEnvironment(environment map[string]string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.sessions) > 0 || len(s.liveQueries) > 0 {
+		return false
+	}
+	for _, pending := range s.pendingEnvs {
+		if !environmentsEqual(pending, environment) {
+			return false
+		}
+	}
+	return true
 }
 
 // TurnStream is the event stream of one running turn. Events yields turn
@@ -212,12 +256,17 @@ func (t *TurnStream) finish() {
 	close(t.done)
 }
 
-// StartTurn validates the request, resolves (or creates) the session, claims
-// its single turn slot, and starts the prompt pump. The returned stream ends
-// with a Completed event (or a Wait error when the turn failed).
+// StartTurn validates the request, resolves the child for its environment,
+// creates or resumes the session, claims its single turn slot, and starts the
+// prompt pump. The returned stream ends with a Completed event (or a Wait
+// error when the turn failed); the session auto-closes as the stream ends.
 func (s *Service) StartTurn(ctx context.Context, request TurnRequest) (*TurnStream, error) {
 	if strings.TrimSpace(request.Prompt) == "" {
 		return nil, status.Error(codes.InvalidArgument, "prompt must not be empty")
+	}
+	environment, environmentKeys, err := s.launchEnvironment(request.Environment)
+	if err != nil {
+		return nil, err
 	}
 
 	s.mu.Lock()
@@ -225,34 +274,39 @@ func (s *Service) StartTurn(ctx context.Context, request TurnRequest) (*TurnStre
 		s.mu.Unlock()
 		return nil, status.Error(codes.Unavailable, "agent service is shutting down")
 	}
-	var existing *session
+	// Fast-fail a resume whose session already runs a turn; the authoritative
+	// check happens again at table registration, which closes the race.
 	if request.SessionID != "" {
-		existing = s.sessions[request.SessionID]
-		if existing == nil {
-			_, lost := s.lostSessions[request.SessionID]
+		if _, busy := s.sessions[request.SessionID]; busy {
 			s.mu.Unlock()
-			if lost {
-				return nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.AgentSessionLost, "session %q was lost when the agent process restarted", request.SessionID)
-			}
-			return nil, rpcerror.Errorf(codes.NotFound, rpcerror.AgentSessionNotFound, "session %q was not found", request.SessionID)
+			return nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.AgentTurnActive, "session %q already has an active turn", request.SessionID)
 		}
 	}
+	// Claim the arrival before touching the child: a query between here and
+	// its session registration is invisible to the session table, and an
+	// environment switch must not restart the child under it.
+	s.pendingEnvs = append(s.pendingEnvs, environment)
 	s.mu.Unlock()
+	dropArrival := func() {
+		s.mu.Lock()
+		s.dropArrivalLocked(environment)
+		s.mu.Unlock()
+	}
 
-	connection, err := s.process.ensure(ctx)
+	connection, err := s.process.ensure(ctx, environment)
 	if err != nil {
+		dropArrival()
 		return nil, err
 	}
 
+	cwd, err := s.resolveWorkingDirectory(request.WorkingDirectory)
+	if err != nil {
+		dropArrival()
+		return nil, err
+	}
 	var sess *session
 	created := false
-	if existing != nil {
-		sess = existing
-	} else {
-		cwd, err := s.resolveWorkingDirectory(request.WorkingDirectory)
-		if err != nil {
-			return nil, err
-		}
+	if request.SessionID == "" {
 		newSessionCtx, cancel := context.WithTimeout(ctx, initializeTimeout)
 		response, err := connection.conn.NewSession(newSessionCtx, acp.NewSessionRequest{
 			Cwd:        cwd,
@@ -260,27 +314,40 @@ func (s *Service) StartTurn(ctx context.Context, request TurnRequest) (*TurnStre
 		})
 		cancel()
 		if err != nil {
+			dropArrival()
 			return nil, mapAgentRequestError("create session", err)
 		}
 		sess = newSession(response.SessionId, s.displaySessionWorkingDirectory(cwd), connection.generation, s.now())
 		created = true
-		s.mu.Lock()
-		if s.shuttingDown {
-			s.mu.Unlock()
-			return nil, status.Error(codes.Unavailable, "agent service is shutting down")
+	} else {
+		if connection.caps.SessionCapabilities.Resume == nil {
+			dropArrival()
+			return nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.AgentSessionNotResumable, "agent %q does not advertise session/resume", processLabel(connection.transport))
 		}
-		s.sessions[string(sess.id)] = sess
-		s.mu.Unlock()
+		resumeCtx, cancel := context.WithTimeout(ctx, initializeTimeout)
+		_, err = connection.conn.ResumeSession(resumeCtx, acp.ResumeSessionRequest{
+			Cwd:        cwd,
+			SessionId:  acp.SessionId(request.SessionID),
+			McpServers: []acp.McpServer{},
+		})
+		cancel()
+		if err != nil {
+			dropArrival()
+			return nil, mapAgentRequestError("resume session", err)
+		}
+		sess = newSession(acp.SessionId(request.SessionID), s.displaySessionWorkingDirectory(cwd), connection.generation, s.now())
 	}
 
 	active, ok := sess.beginTurn(s.now())
 	if !ok {
+		dropArrival()
 		return nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.AgentTurnActive, "session %q already has an active turn", string(sess.id))
 	}
 
-	queryID, writer, err := s.beginQuery(sess)
+	queryID, writer, err := s.beginQuery(sess, environmentKeys)
 	if err != nil {
 		sess.endTurn(active, s.now())
+		dropArrival()
 		return nil, err
 	}
 
@@ -296,8 +363,19 @@ func (s *Service) StartTurn(ctx context.Context, request TurnRequest) (*TurnStre
 	if s.shuttingDown {
 		s.mu.Unlock()
 		sess.endTurn(active, s.now())
+		dropArrival()
 		return nil, status.Error(codes.Unavailable, "agent service is shutting down")
 	}
+	if _, clash := s.sessions[string(sess.id)]; clash {
+		// Two arrivals raced to the same session id; the loser unwinds without
+		// ever reaching the agent's prompt.
+		s.mu.Unlock()
+		sess.endTurn(active, s.now())
+		dropArrival()
+		return nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.AgentTurnActive, "session %q already has an active turn", string(sess.id))
+	}
+	s.sessions[string(sess.id)] = sess
+	s.dropArrivalLocked(environment)
 	s.liveQueries[queryID] = query
 	s.mu.Unlock()
 	s.turns.Add(1)
@@ -305,10 +383,23 @@ func (s *Service) StartTurn(ctx context.Context, request TurnRequest) (*TurnStre
 	return stream, nil
 }
 
-// beginQuery allocates the turn's query id and opens its event record. A nil
-// writer means replay is disabled: the turn still streams and carries its id,
-// but nothing is retained.
-func (s *Service) beginQuery(sess *session) (string, *QueryWriter, error) {
+// dropArrivalLocked removes one pending-arrival claim for environment. Callers
+// on error paths hold no lock and wrap it themselves; the registration path
+// already holds mu.
+func (s *Service) dropArrivalLocked(environment map[string]string) {
+	for index, pending := range s.pendingEnvs {
+		if environmentsEqual(pending, environment) {
+			s.pendingEnvs = append(s.pendingEnvs[:index], s.pendingEnvs[index+1:]...)
+			return
+		}
+	}
+}
+
+// beginQuery allocates the turn's query id and opens its event record,
+// retaining the environment override keys (never values). A nil writer means
+// replay is disabled: the turn still streams and carries its id, but nothing
+// is retained.
+func (s *Service) beginQuery(sess *session, environmentKeys []string) (string, *QueryWriter, error) {
 	if s.queries == nil {
 		id, err := newQueryUUID()
 		if err != nil {
@@ -319,6 +410,7 @@ func (s *Service) beginQuery(sess *session) (string, *QueryWriter, error) {
 	id, writer, err := s.queries.Begin(QueryMetadata{
 		SessionID:        string(sess.id),
 		WorkingDirectory: strings.TrimPrefix(sess.workingDirectory, "/"),
+		EnvironmentKeys:  environmentKeys,
 	})
 	if err != nil {
 		return "", nil, status.Errorf(codes.Unavailable, "open query record: %v", err)
@@ -503,6 +595,7 @@ func (s *Service) runTurn(ctx context.Context, sess *session, connection *agentC
 	defer func() {
 		sess.endTurn(active, s.now())
 		s.forgetQuery(query)
+		s.retireSession(sess)
 		if !recordSettled && query.writer != nil {
 			_ = query.writer.Lost(status.Error(codes.Internal, "turn pump exited without settling"))
 		}
@@ -639,13 +732,15 @@ func (s *Service) runTurn(ctx context.Context, sess *session, connection *agentC
 	}
 
 settled:
-	// Release the session's turn slot as soon as the outcome is known: the
-	// caller acts on the completed frame (or the stream error) immediately —
-	// reusing or closing the session — while settling the record below may
-	// still be flushing to disk. Both calls are idempotent, so the deferred
-	// release stays as the abnormal-exit safety net.
+	// Release the session's turn slot and retire the turn-scoped session as
+	// soon as the outcome is known: the caller acts on the completed frame (or
+	// the stream error) immediately — closing the session, resuming it, or
+	// switching the environment — while the record below may still be flushing
+	// to disk. Both calls are idempotent, so the deferred release stays as the
+	// abnormal-exit safety net.
 	sess.endTurn(active, s.now())
 	s.forgetQuery(query)
+	s.retireSession(sess)
 	if terminalErr == nil {
 		forward(Event{Kind: EventKindCompleted, Completed: Completed{StopReason: stopReason}})
 		recordSettled = true
@@ -657,7 +752,37 @@ settled:
 	} else {
 		settleRecord(terminalErr)
 	}
+	s.closeAgentSession(sess, connection)
 	stream.setErr(terminalErr)
+}
+
+// retireSession drops a turn-scoped session from the table once its turn's
+// outcome is known — before the caller sees the completed frame — so
+// follow-up calls (CloseSession, an environment switch) never race the
+// stream's tail.
+func (s *Service) retireSession(sess *session) {
+	s.mu.Lock()
+	if registered, ok := s.sessions[string(sess.id)]; ok && registered == sess {
+		delete(s.sessions, string(sess.id))
+	}
+	s.mu.Unlock()
+}
+
+// closeAgentSession forwards session/close for a settled turn-scoped session
+// on a live connection that advertised the capability, bounded in time.
+// Failures only log — the turn is over and its record is already written.
+func (s *Service) closeAgentSession(sess *session, connection *agentConnection) {
+	s.mu.Lock()
+	shuttingDown := s.shuttingDown
+	s.mu.Unlock()
+	if shuttingDown || !connection.alive() || connection.caps.SessionCapabilities.Close == nil {
+		return
+	}
+	closeCtx, cancel := context.WithTimeout(context.Background(), sessionCloseWait)
+	defer cancel()
+	if _, err := connection.conn.CloseSession(closeCtx, acp.CloseSessionRequest{SessionId: sess.id}); err != nil {
+		s.logger.Warn("auto-close session failed", "session_id", string(sess.id), "err", err.Error())
+	}
 }
 
 // requestCancel sends the session/cancel notification. Fire and forget: the
@@ -697,9 +822,10 @@ func mapAgentRequestError(operation string, err error) error {
 	return status.Errorf(codes.Unknown, "%s failed: %v", operation, err)
 }
 
-// CloseSession ends a session. It refuses while a turn is active, forwards
-// session/close when the agent advertised the capability, and always removes
-// the local session entry.
+// CloseSession ends a session. Sessions are turn-scoped and already
+// auto-close when their turn settles, so this only refuses while the turn is
+// still running (cancel its query instead) and is an idempotent success for
+// every other id — there is nothing left to close.
 func (s *Service) CloseSession(ctx context.Context, sessionID string) error {
 	if sessionID == "" {
 		return status.Error(codes.InvalidArgument, "session id must not be empty")
@@ -709,30 +835,10 @@ func (s *Service) CloseSession(ctx context.Context, sessionID string) error {
 		s.mu.Unlock()
 		return status.Error(codes.Unavailable, "agent service is shutting down")
 	}
-	sess := s.sessions[sessionID]
-	if sess == nil {
-		_, lost := s.lostSessions[sessionID]
-		s.mu.Unlock()
-		if lost {
-			return rpcerror.Errorf(codes.FailedPrecondition, rpcerror.AgentSessionLost, "session %q was lost when the agent process restarted", sessionID)
-		}
-		return rpcerror.Errorf(codes.NotFound, rpcerror.AgentSessionNotFound, "session %q was not found", sessionID)
-	}
-	if sess.activeTurn() != nil {
-		s.mu.Unlock()
-		return rpcerror.Errorf(codes.FailedPrecondition, rpcerror.AgentTurnActive, "session %q has an active turn", sessionID)
-	}
-	delete(s.sessions, sessionID)
+	_, running := s.sessions[sessionID]
 	s.mu.Unlock()
-
-	connection, err := s.process.ensure(ctx)
-	if err != nil {
-		return err
-	}
-	if connection.caps.SessionCapabilities.Close != nil {
-		if _, err := connection.conn.CloseSession(ctx, acp.CloseSessionRequest{SessionId: sess.id}); err != nil {
-			return mapAgentRequestError("close session", err)
-		}
+	if running {
+		return rpcerror.Errorf(codes.FailedPrecondition, rpcerror.AgentTurnActive, "session %q has an active turn; cancel its query instead", sessionID)
 	}
 	return nil
 }
@@ -770,30 +876,15 @@ func (s *Service) Shutdown(ctx context.Context) error {
 	return stopErr
 }
 
-// handleCrash empties the session table after the agent process died. Every
-// session of the crashed generation is remembered as lost so reuse attempts
-// get AGENT_SESSION_LOST; in-flight turn pumps terminate on their own through
-// the transport done channel.
+// handleCrash empties the session table after the agent process died.
+// In-flight turn pumps settle on their own through the transport done
+// channel; their sessions are disk-backed on the agent side, so a later query
+// with the same session id resumes them on the next generation instead of
+// failing.
 func (s *Service) handleCrash() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	for id := range s.sessions {
-		s.rememberLostLocked(id)
-		delete(s.sessions, id)
-	}
-}
-
-func (s *Service) rememberLostLocked(id string) {
-	if _, ok := s.lostSessions[id]; ok {
-		return
-	}
-	if len(s.lostOrder) >= lostSessionHistory {
-		oldest := s.lostOrder[0]
-		s.lostOrder = s.lostOrder[1:]
-		delete(s.lostSessions, oldest)
-	}
-	s.lostSessions[id] = struct{}{}
-	s.lostOrder = append(s.lostOrder, id)
+	clear(s.sessions)
+	s.mu.Unlock()
 }
 
 // dispatchUpdate implements updateSink: the acpClient hands every session

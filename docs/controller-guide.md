@@ -32,7 +32,7 @@ Controller 是部署在远程开发机上的长期运行服务，也是远程工
 | 进程模板 | 已实现 | JSON Schema 参数校验、受限 Expr 渲染、启动参数脱敏 |
 | MCP Server | 已实现，默认关闭 | 从严格 `.mcp.yaml` 加载工具，并复用 Controller 内部服务 |
 | Workflow core | 已实现，默认关闭 | 内部 Go API、静态 DAG、Expr、Activity lease、人工介入和 bbolt 恢复；暂无公共 RPC/CLI |
-| ACP Agent bridge | 已实现，默认启用 | 流式 turn、显式取消、query 回放/列表、当前可复用 session 列表和关闭 |
+| ACP Agent bridge | 已实现，默认启用 | 流式 turn、显式取消、query 回放/列表、turn 级会话（自动关闭、按 id 恢复）、按查询环境变量 |
 | 多 Agent 角色与编排 | 尚未实现 | `designer`、`implementer`、`reviewer` 的调度、权限和协作仍属于后续规划 |
 | 操作系统沙箱 | 不提供 | workspace 边界不能替代容器、虚拟机或受限系统用户 |
 
@@ -237,9 +237,13 @@ sequence；事件逐帧写入 `runtime_directory/agent-events/<query-id>/`。
 `ObserveQuery`。`ListQueries` 按创建时间从新到旧分页列出保留期内的 `RUNNING`、`SETTLED` 和 `LOST`
 记录，可按 session/state 过滤。已落定记录受 `[agent.events]` 的保留时长和总容量 GC 约束。
 
-`ListSessions` 只返回当前 ACP 子进程代内可继续传给 `Query.session_id` 的 session，并区分 `IDLE` 与
-`RUNNING`、报告活动 query。ACP 子进程崩溃或 Controller 重启后旧 session 不可复用，因此不会出现在
-列表中；已落盘 query 仍可通过 `ListQueries` 和 `ObserveQuery` 做事后查看。
+会话按 turn 存活：`session_id` 为空的 `Query` 新建会话，turn 落定即自动 `session/close`；带
+`session_id` 的 `Query` 先经 ACP `session/resume` 恢复子进程侧磁盘转录再执行（agent 未广告该能力时
+返回 `AGENT_SESSION_NOT_RESUMABLE`）。`ListSessions` 因此只返回正在运行 turn 的会话并报告活动
+query——已落定会话自动关闭、不出现在列表中，但按 id resume 不依赖 controller 内存，ACP 子进程崩溃
+或 Controller 重启后依旧可用；`CloseSession` 仅拒绝运行中会话（`AGENT_TURN_ACTIVE`），对其它 id 幂
+等。每次 `Query` 还可用 `environment` 字段覆盖子进程环境（调用方胜出合并过 `[agent].environment`，
+键名规则与预算同进程服务）；环境不同触发子进程换代，桥仍忙时返回 `AGENT_ENV_CONFLICT`。
 
 ## 4. 构建与安装
 

@@ -49,9 +49,12 @@ func (h *cliAgentHelper) Authenticate(context.Context, acp.AuthenticateRequest) 
 
 func (h *cliAgentHelper) Initialize(context.Context, acp.InitializeRequest) (acp.InitializeResponse, error) {
 	return acp.InitializeResponse{
-		ProtocolVersion:   acp.ProtocolVersionNumber,
-		AgentCapabilities: acp.AgentCapabilities{SessionCapabilities: acp.SessionCapabilities{Close: &acp.SessionCloseCapabilities{}}},
-		AgentInfo:         &acp.Implementation{Name: "cli-agent-helper"},
+		ProtocolVersion: acp.ProtocolVersionNumber,
+		AgentCapabilities: acp.AgentCapabilities{SessionCapabilities: acp.SessionCapabilities{
+			Close:  &acp.SessionCloseCapabilities{},
+			Resume: &acp.SessionResumeCapabilities{},
+		}},
+		AgentInfo: &acp.Implementation{Name: "cli-agent-helper"},
 	}, nil
 }
 
@@ -207,7 +210,10 @@ func TestREPLAgentObserveReplaysAndCancels(t *testing.T) {
 	if err := repl.agentSessions(nil); err != nil {
 		t.Fatalf("agentSessions() error = %v", err)
 	}
-	if listed := output.String(); !strings.Contains(listed, "cli-helper-1") || !strings.Contains(listed, "idle") {
+	// Sessions are turn-scoped: the settled turn's session already
+	// auto-closed on the agent, so the running-only listing is empty even
+	// though the conversation resumes by id below.
+	if listed := output.String(); strings.Contains(listed, "cli-helper-1") {
 		t.Fatalf("agent session listing =\n%s", listed)
 	}
 
@@ -239,9 +245,28 @@ func TestREPLAgentObserveReplaysAndCancels(t *testing.T) {
 		t.Fatalf("resumed output =\n%s", resumed)
 	}
 
+	// The remembered session id resumes the conversation on the next `agent`
+	// command: the child answers with its lifetime turn counter and no new
+	// session is started, even though the previous turn auto-closed it.
+	output.mu.Lock()
+	output.buf.Reset()
+	output.mu.Unlock()
+	if err := repl.agentQuery([]string{"second"}); err != nil {
+		t.Fatalf("agentQuery(resume) error = %v", err)
+	}
+	if resumed := output.String(); !bytes.Contains([]byte(resumed), []byte("turn 2")) ||
+		!bytes.Contains([]byte(resumed), []byte("stop: end_turn")) ||
+		bytes.Contains([]byte(resumed), []byte("session: ")) {
+		t.Fatalf("resumed conversation output =\n%s", resumed)
+	}
+
 	// A stalled turn is stopped by agent-cancel and stays replayable. The
 	// prompt produces no output until it settles, so the query id only prints
-	// with the synthesized session_started of a fresh session.
+	// with the synthesized session_started of a fresh session. The buffer
+	// reset matters here: queryIDOf must not find the resume turn's id.
+	output.mu.Lock()
+	output.buf.Reset()
+	output.mu.Unlock()
 	repl.agentSession = ""
 	stalled := make(chan error, 1)
 	go func() { stalled <- repl.agentQuery([]string{"stall"}) }()

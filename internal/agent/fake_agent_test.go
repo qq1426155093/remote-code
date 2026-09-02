@@ -32,10 +32,13 @@ type scriptedAgent struct {
 	promptHook func(a *scriptedAgent, ctx context.Context, prompt acp.PromptRequest) (acp.PromptResponse, error)
 	// newSessionErr makes session/new fail with a JSON-RPC error.
 	newSessionErr bool
+	// resumeErr makes session/resume fail, emulating an unknown session id.
+	resumeErr bool
 
 	mu             sync.Mutex
 	cancelArrived  chan struct{}
 	sessionCwds    []string
+	resumes        []acp.ResumeSessionRequest
 	prompts        []acp.PromptRequest
 	cancels        []string
 	closedSessions []string
@@ -108,7 +111,13 @@ func (a *scriptedAgent) Prompt(ctx context.Context, params acp.PromptRequest) (a
 	return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
 }
 
-func (a *scriptedAgent) ResumeSession(context.Context, acp.ResumeSessionRequest) (acp.ResumeSessionResponse, error) {
+func (a *scriptedAgent) ResumeSession(_ context.Context, params acp.ResumeSessionRequest) (acp.ResumeSessionResponse, error) {
+	if a.resumeErr {
+		return acp.ResumeSessionResponse{}, acp.NewMethodNotFound("session/resume")
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.resumes = append(a.resumes, params)
 	return acp.ResumeSessionResponse{}, nil
 }
 
@@ -187,6 +196,12 @@ func (a *scriptedAgent) closesReceived() []string {
 	return append([]string(nil), a.closedSessions...)
 }
 
+func (a *scriptedAgent) resumesReceived() []acp.ResumeSessionRequest {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return append([]acp.ResumeSessionRequest(nil), a.resumes...)
+}
+
 func (a *scriptedAgent) sessionDirectory(index int) string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -221,11 +236,13 @@ func (f *fakeProcess) wasTerminated() bool {
 // harness wires the bridge to freshly spawned scripted agents, mirroring how
 // a real agent process is dialed once per generation.
 type harness struct {
-	service   *Service
-	workspace string
+	service    *Service
+	workspace  string
+	runtimeDir string
 
 	mu        sync.Mutex
 	dials     int
+	dialEnvs  []map[string]string
 	dialErr   error
 	processes []*fakeProcess
 }
@@ -244,6 +261,18 @@ func (h *harness) dialCount() int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return h.dials
+}
+
+// dialEnvironment reports the environment one dialed generation was asked to
+// start with, so tests can assert what the child would have inherited.
+func (h *harness) dialEnvironment(t *testing.T, index int) map[string]string {
+	t.Helper()
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if index >= len(h.dialEnvs) {
+		t.Fatalf("dial %d has no recorded environment (%d dials)", index, len(h.dialEnvs))
+	}
+	return h.dialEnvs[index]
 }
 
 func (h *harness) setDialError(err error) {
@@ -265,17 +294,26 @@ func newHarness(t *testing.T, configure func(*scriptedAgent)) *harness {
 // fields adopt the defaults exactly the way New does.
 func newHarnessWithEvents(t *testing.T, events EventLogConfig, configure func(*scriptedAgent)) *harness {
 	t.Helper()
+	return newHarnessWithConfig(t, events, nil, configure)
+}
+
+// newHarnessWithConfig is newHarnessWithEvents plus a hook over the bridge
+// Config, so tests can pin the operator-side [agent].environment.
+func newHarnessWithConfig(t *testing.T, events EventLogConfig, mutate func(*Config), configure func(*scriptedAgent)) *harness {
+	t.Helper()
 	workspace := t.TempDir()
-	h := &harness{workspace: workspace}
-	service, err := New(Config{
+	runtimeDir := t.TempDir()
+	h := &harness{workspace: workspace, runtimeDir: runtimeDir}
+	config := Config{
 		Enabled:          true,
 		WorkspaceRoot:    workspace,
-		RuntimeDirectory: t.TempDir(),
+		RuntimeDirectory: runtimeDir,
 		Events:           events,
 		Logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Dial: func(ctx context.Context) (transport, error) {
+		Dial: func(ctx context.Context, environment map[string]string) (transport, error) {
 			h.mu.Lock()
 			h.dials++
+			h.dialEnvs = append(h.dialEnvs, environment)
 			dialErr := h.dialErr
 			h.mu.Unlock()
 			if dialErr != nil {
@@ -287,7 +325,10 @@ func newHarnessWithEvents(t *testing.T, events EventLogConfig, configure func(*s
 
 			agent := &scriptedAgent{
 				caps: acp.AgentCapabilities{
-					SessionCapabilities: acp.SessionCapabilities{Close: &acp.SessionCloseCapabilities{}},
+					SessionCapabilities: acp.SessionCapabilities{
+						Close:  &acp.SessionCloseCapabilities{},
+						Resume: &acp.SessionResumeCapabilities{},
+					},
 				},
 				cancelArrived: make(chan struct{}, 1),
 			}
@@ -334,7 +375,11 @@ func newHarnessWithEvents(t *testing.T, events EventLogConfig, configure func(*s
 				},
 			}, nil
 		},
-	})
+	}
+	if mutate != nil {
+		mutate(&config)
+	}
+	service, err := New(config)
 	if err != nil {
 		t.Fatalf("assemble agent service: %v", err)
 	}

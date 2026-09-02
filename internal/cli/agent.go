@@ -15,6 +15,7 @@ import (
 type agentQueryOptions struct {
 	sessionID        string
 	workingDirectory string
+	environment      map[string]string
 	prompt           string
 }
 
@@ -40,6 +41,22 @@ func parseAgentQueryOptions(arguments []string) (agentQueryOptions, error) {
 			}
 			index++
 			options.workingDirectory = arguments[index]
+		case "--env":
+			if index+1 >= len(arguments) {
+				return agentQueryOptions{}, usageError()
+			}
+			index++
+			key, value, found := strings.Cut(arguments[index], "=")
+			if !found || key == "" {
+				return agentQueryOptions{}, usageErrorf("agent --env must be KEY=VALUE, got %q", arguments[index])
+			}
+			if _, duplicate := options.environment[key]; duplicate {
+				return agentQueryOptions{}, usageErrorf("agent --env %q given twice", key)
+			}
+			if options.environment == nil {
+				options.environment = make(map[string]string)
+			}
+			options.environment[key] = value
 		case "--":
 			words = append(words, arguments[index+1:]...)
 			index = len(arguments)
@@ -93,7 +110,7 @@ func (r *REPL) agentQuery(arguments []string) error {
 	}
 
 	stream, err := r.client.AgentQuery(streamContext, options.prompt, remoteclient.AgentQueryOptions{
-		SessionID: sessionID, WorkingDirectory: workingDirectory,
+		SessionID: sessionID, WorkingDirectory: workingDirectory, Environment: options.environment,
 	})
 	if err != nil {
 		if interrupted() {

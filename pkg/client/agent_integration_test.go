@@ -53,9 +53,12 @@ func (h *agentHelper) Authenticate(context.Context, acp.AuthenticateRequest) (ac
 
 func (h *agentHelper) Initialize(context.Context, acp.InitializeRequest) (acp.InitializeResponse, error) {
 	return acp.InitializeResponse{
-		ProtocolVersion:   acp.ProtocolVersionNumber,
-		AgentCapabilities: acp.AgentCapabilities{SessionCapabilities: acp.SessionCapabilities{Close: &acp.SessionCloseCapabilities{}}},
-		AgentInfo:         &acp.Implementation{Name: "client-agent-helper"},
+		ProtocolVersion: acp.ProtocolVersionNumber,
+		AgentCapabilities: acp.AgentCapabilities{SessionCapabilities: acp.SessionCapabilities{
+			Close:  &acp.SessionCloseCapabilities{},
+			Resume: &acp.SessionResumeCapabilities{},
+		}},
+		AgentInfo: &acp.Implementation{Name: "client-agent-helper"},
 	}, nil
 }
 
@@ -227,13 +230,15 @@ func TestClientAgentTurnLifecycleOverGRPC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(sessions.GetSessions()) != 1 || sessions.GetSessions()[0].GetSessionId() != sessionID ||
-		sessions.GetSessions()[0].GetState() != codev1.AgentSessionState_AGENT_SESSION_STATE_IDLE {
-		t.Fatalf("ListAgentSessions() = %+v, want idle %s", sessions, sessionID)
+	// Sessions are turn-scoped: the settled turn's session already
+	// auto-closed, so listing shows nothing even though the conversation
+	// remains resumable by id.
+	if len(sessions.GetSessions()) != 0 {
+		t.Fatalf("ListAgentSessions() = %+v, want none after the turn settled", sessions)
 	}
 
-	// The second turn reuses the session: the shared child answers with its
-	// lifetime turn counter instead of starting another session.
+	// The second turn resumes the conversation by id: the shared child answers
+	// with its lifetime turn counter instead of starting another session.
 	stream, err = remote.AgentQuery(ctx, "second", remoteclient.AgentQueryOptions{SessionID: sessionID})
 	if err != nil {
 		t.Fatal(err)
@@ -249,12 +254,15 @@ func TestClientAgentTurnLifecycleOverGRPC(t *testing.T) {
 	if _, err := remote.AgentQuery(ctx, "   ", remoteclient.AgentQueryOptions{}); err == nil || status.Code(err) != codes.Unknown {
 		t.Fatalf("blank prompt error = %v, want client-side rejection", err)
 	}
+	// Closing the (already auto-closed) session is an idempotent success.
 	if err := remote.CloseAgentSession(ctx, sessionID); err != nil {
 		t.Fatalf("CloseAgentSession() error = %v", err)
 	}
-	err = remote.CloseAgentSession(ctx, sessionID)
-	if status.Code(err) != codes.NotFound || rpcerror.ReasonOf(err) != rpcerror.AgentSessionNotFound {
-		t.Fatalf("double close error = %v, want NotFound/AGENT_SESSION_NOT_FOUND", err)
+	if err := remote.CloseAgentSession(ctx, sessionID); err != nil {
+		t.Fatalf("double close error = %v, want nil", err)
+	}
+	if err := remote.CloseAgentSession(ctx, "never-existed"); err != nil {
+		t.Fatalf("close of an unknown session error = %v, want nil", err)
 	}
 }
 

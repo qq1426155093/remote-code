@@ -104,9 +104,9 @@ func (s *Service) ListQueries(ctx context.Context, request *codev1.ListQueriesRe
 	return response, nil
 }
 
-// ListSessions returns only sessions accepted by a subsequent Query or
-// CloseSession call in this controller/agent generation. Historical ACP
-// sessions and the bounded lost-id cache are intentionally excluded.
+// ListSessions returns the sessions with a turn currently in flight.
+// Sessions are turn-scoped: the completed frame already retired the settled
+// ones, whose agent-side transcripts resume by session id through Query.
 func (s *Service) ListSessions(ctx context.Context, request *codev1.ListSessionsRequest) (*codev1.ListSessionsResponse, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, status.FromContextError(err).Err()

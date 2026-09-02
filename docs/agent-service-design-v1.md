@@ -136,7 +136,32 @@ internal/agent/
   等 turn 落定(上限 5s)→ 关 agent stdin(claude-agent-acp 在 stdin EOF 时干净退出)
   → 超时 SIGTERM → 再超时 SIGKILL(对照 simple-client.ts 关停顺序)。
 
+> **修订(2026-09-02,按查询环境变量)**:`QueryRequest.environment` 允许每次查询
+> 携带覆盖变量,以调用方胜出的规则合并过 `[agent].environment`;预算与键名规则
+> 复用进程服务的校验(256 项 / 单项 4 KiB / 总 64 KiB / `^[A-Za-z_][A-Za-z0-9_]*$`,
+> 先验覆盖、再验合并结果,原因 `AGENT_ENVIRONMENT`)。环境只能在 spawn 时给定,
+> 因此**合并环境即子进程 generation 的身份**:环境不同的查询在桥仍忙(会话表非空、
+> 有在飞 query、或仍有异环境的 pending 查询)时以 `AGENT_ENV_CONFLICT`
+> (FailedPrecondition)拒绝,空闲时停旧子进程(stdin EOF 优雅 → TERM)并按新环境
+> 重新 spawn。pending 到达声明(pendingEnvs)关闭"环境校验之后、会话登记之前"的
+> 换代竞态;锁序固定为 `agentProcess.mu` → `Service.mu`。query 记录只保留排序后的
+> 键名(`environment_keys`),controllerlog 等诊断日志不落值。
+
 ### 4.2 会话与 turn(session.go)
+
+> **修订(2026-09-02,turn 级会话 + 按 id 恢复)**:会话不再跨 turn 存活。
+> `session_id` 为空的 Query 新建会话,turn 落定(completed / 失败 / 取消)时
+> controller **先**把会话从表中退役、**再**下发 completed 帧,随后向 agent 转发
+> `session/close`(连接存活且广告 close 能量时;上限 5s,失败仅记日志,关停中跳过)
+> ——先退役保证 CloseSession / 环境换代永远不会和流尾部竞态。带 `session_id` 的
+> Query 先经 SDK `ResumeSession`(方法 `client_gen.go:300`,cwd 必填)恢复 agent
+> 侧**磁盘转录**再执行,turn 结束后同样自动关闭;agent 未广告
+> `sessionCapabilities.resume` 时拒绝(`AGENT_SESSION_NOT_RESUMABLE`),agent 侧
+> 恢复失败原样透传。因此:会话表只含在飞 turn,`ListSessions` 只列运行中(IDLE
+> 保留为过滤兼容,永不出现);`CloseSession` 对未知/已落定 id 幂等成功,仅对在飞
+> turn 拒绝(`AGENT_TURN_ACTIVE`);子进程崩溃只终止在飞 turn
+> (`AGENT_PROCESS_LOST`),controller 不再维护 lost-id 缓存——之后按 id resume
+> 由新一代子进程的磁盘转录完成。
 
 - 会话表 `map[acpSessionID]*session`,创建于 Query(`session_id` 为空)时,
   `NewSession` 的 cwd 取 workspace 根,或请求内 `working_directory`(复用 workspace
@@ -286,3 +311,18 @@ arguments = ["@agentclientprotocol/claude-agent-acp"]
   与当前 generation 内 session 列表是不同契约。
 - `AgentInfo.listing` 发布 query/session listing 与分页大小能力；CLI 对应
   `agent-queries` / `agent-sessions`。
+
+## 11. 实现修订记录（2026-09-02）
+
+- **turn 级会话**：每次 Query 独占一个会话——`session_id` 为空则新建、落定后自动
+  `session/close`；非空则先 `session/resume` 恢复 agent 侧磁盘会话再执行，结束后
+  同样自动关闭。会话表只含在飞 turn，`ListSessions` 只列运行中；`CloseSession`
+  幂等化（未知/已落定 id 成功，在飞 turn `AGENT_TURN_ACTIVE` 拒绝）。上一节
+  "崩溃代会话以 `AGENT_SESSION_LOST` 拒绝复用"的机制整体移除：resume 不依赖
+  controller 内存，崩溃/重启后按 id resume 由新子进程的磁盘转录完成；未广告
+  resume 能力报 `AGENT_SESSION_NOT_RESUMABLE`。
+- **按查询环境变量**：`QueryRequest.environment` 每次查询可带，调用方胜出地合并过
+  `[agent].environment`；合并环境是子进程 generation 的身份，桥忙时异环境查询报
+  `AGENT_ENV_CONFLICT`，空闲则换代重启。记录只留 `environment_keys`（键名），
+  值不落盘不落日志。CLI：`agent --env KEY=VALUE ...`（可重复）；键值规则与
+  进程服务 env 预算一致。

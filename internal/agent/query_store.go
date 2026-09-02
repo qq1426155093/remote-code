@@ -94,10 +94,13 @@ var (
 // once settled: a running record's window is recovered by scanning segments,
 // and a running record found at startup is rewritten as lost.
 type queryStateFile struct {
-	FormatVersion    int         `json:"format_version"`
-	QueryID          string      `json:"query_id"`
-	SessionID        string      `json:"session_id"`
-	WorkingDirectory string      `json:"working_directory,omitempty"`
+	FormatVersion    int    `json:"format_version"`
+	QueryID          string `json:"query_id"`
+	SessionID        string `json:"session_id"`
+	WorkingDirectory string `json:"working_directory,omitempty"`
+	// EnvironmentKeys names the caller-supplied environment overrides the turn
+	// ran with. Key names only — values never reach disk.
+	EnvironmentKeys  []string    `json:"environment_keys,omitempty"`
 	State            string      `json:"state"`
 	StopReason       string      `json:"stop_reason,omitempty"`
 	Error            *QueryError `json:"error,omitempty"`
@@ -120,11 +123,14 @@ type QuerySnapshot struct {
 	CreatedAt  time.Time
 }
 
-// QueryMetadata identifies the turn a record belongs to. The prompt itself is
-// deliberately not persisted: the replaying client already knows what it sent.
+// QueryMetadata identifies the turn a record belongs to. The prompt and the
+// environment override values are deliberately not persisted — the replaying
+// client already knows what it sent, and values must never reach disk.
 type QueryMetadata struct {
 	SessionID        string
 	WorkingDirectory string
+	// EnvironmentKeys carries the sorted override key names for debugging.
+	EnvironmentKeys []string
 }
 
 // queryDirectoryName matches the UUID query ids handed to clients.
@@ -297,6 +303,7 @@ func (s *QueryStore) Begin(metadata QueryMetadata) (string, *QueryWriter, error)
 		QueryID:          id,
 		SessionID:        metadata.SessionID,
 		WorkingDirectory: metadata.WorkingDirectory,
+		EnvironmentKeys:  metadata.EnvironmentKeys,
 		State:            string(QueryStateRunning),
 		CreatedAt:        s.now(),
 	}

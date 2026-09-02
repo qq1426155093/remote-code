@@ -60,13 +60,26 @@ const (
 
 	// Agent service. The agent bridges gRPC queries to an ACP agent child
 	// process; these reasons describe that bridge, not the child's own errors.
-	AgentDisabled         Reason = "AGENT_DISABLED"
-	AgentStartFailed      Reason = "AGENT_START_FAILED"
-	AgentSessionNotFound  Reason = "AGENT_SESSION_NOT_FOUND"
-	AgentSessionLost      Reason = "AGENT_SESSION_LOST"
-	AgentTurnActive       Reason = "AGENT_TURN_ACTIVE"
-	AgentProcessLost      Reason = "AGENT_PROCESS_LOST"
-	AgentWorkingDirectory Reason = "AGENT_WORKING_DIRECTORY"
+	AgentDisabled    Reason = "AGENT_DISABLED"
+	AgentStartFailed Reason = "AGENT_START_FAILED"
+	// Retained for API stability: turn-scoped sessions (2026-09) stopped
+	// emitting both — unknown resume ids surface the agent's own error, and a
+	// crash ends the in-flight turn with AgentProcessLost instead.
+	AgentSessionNotFound Reason = "AGENT_SESSION_NOT_FOUND"
+	AgentSessionLost     Reason = "AGENT_SESSION_LOST"
+	// AgentSessionNotResumable marks a Query carrying session_id while the
+	// agent child never advertised the session/resume capability.
+	AgentSessionNotResumable Reason = "AGENT_SESSION_NOT_RESUMABLE"
+	AgentTurnActive          Reason = "AGENT_TURN_ACTIVE"
+	AgentProcessLost         Reason = "AGENT_PROCESS_LOST"
+	AgentWorkingDirectory    Reason = "AGENT_WORKING_DIRECTORY"
+	// AgentEnvironment marks a request environment rejected on validation:
+	// malformed keys or a size-budget overflow.
+	AgentEnvironment Reason = "AGENT_ENVIRONMENT"
+	// AgentEnvConflict marks a request whose environment requires restarting
+	// the agent child while the current generation still has sessions or
+	// running turns; the caller retries after they end.
+	AgentEnvConflict Reason = "AGENT_ENV_CONFLICT"
 	// AgentRequestError wraps a JSON-RPC error the agent itself returned; the
 	// metadata carries the raw jsonrpc_code.
 	AgentRequestError Reason = "AGENT_REQUEST_ERROR"

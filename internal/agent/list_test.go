@@ -113,7 +113,10 @@ func TestListQueries_ReportsLostTerminalStatusAndDisabledStore(t *testing.T) {
 	}
 }
 
-func TestListSessions_ReturnsOnlyReusableCurrentGeneration(t *testing.T) {
+// TestListSessions_ShowsOnlyInFlightSessions: sessions are turn-scoped — the
+// table holds a session exactly while its turn runs, so listing shows running
+// sessions only and empties as turns settle (auto-close) or the process dies.
+func TestListSessions_ShowsOnlyInFlightSessions(t *testing.T) {
 	h := newHarness(t, func(agent *scriptedAgent) {
 		agent.promptHook = func(agent *scriptedAgent, ctx context.Context, prompt acp.PromptRequest) (acp.PromptResponse, error) {
 			if len(prompt.Prompt) > 0 && prompt.Prompt[0].Text != nil && prompt.Prompt[0].Text.Text == "stall" {
@@ -130,15 +133,14 @@ func TestListSessions_ReturnsOnlyReusableCurrentGeneration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	idleTurn, err := h.service.StartTurn(context.Background(), TurnRequest{Prompt: "idle"})
+	settledTurn, err := h.service.StartTurn(context.Background(), TurnRequest{Prompt: "settled"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	idleFrames := collectFrames(t, idleTurn)
-	if err := idleTurn.Wait(); err != nil {
+	collectFrames(t, settledTurn)
+	if err := settledTurn.Wait(); err != nil {
 		t.Fatal(err)
 	}
-	idleID := idleFrames[0].GetSessionStarted().GetSessionId()
 
 	clock.advance(time.Second)
 	runningTurn, err := h.service.StartTurn(context.Background(), TurnRequest{Prompt: "stall", WorkingDirectory: "nested"})
@@ -149,12 +151,12 @@ func TestListSessions_ReturnsOnlyReusableCurrentGeneration(t *testing.T) {
 	runningID := runningFirst.GetSessionStarted().GetSessionId()
 	runningQueryID := runningFirst.GetQueryId()
 
-	page, err := h.service.ListSessions(context.Background(), &codev1.ListSessionsRequest{PageSize: 1})
+	page, err := h.service.ListSessions(context.Background(), &codev1.ListSessionsRequest{PageSize: 5})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(page.GetSessions()) != 1 || page.GetSessions()[0].GetSessionId() != runningID || page.GetNextPageToken() == "" {
-		t.Fatalf("first session page = %+v, want running session plus token", page)
+	if len(page.GetSessions()) != 1 || page.GetSessions()[0].GetSessionId() != runningID || page.GetNextPageToken() != "" {
+		t.Fatalf("session page = %+v, want only the running %s and no token", page, runningID)
 	}
 	running := page.GetSessions()[0]
 	if running.GetState() != codev1.AgentSessionState_AGENT_SESSION_STATE_RUNNING || running.GetActiveQueryId() != runningQueryID ||
@@ -162,22 +164,17 @@ func TestListSessions_ReturnsOnlyReusableCurrentGeneration(t *testing.T) {
 		t.Fatalf("running session = %+v", running)
 	}
 
-	next, err := h.service.ListSessions(context.Background(), &codev1.ListSessionsRequest{
-		PageSize: 1, PageToken: page.GetNextPageToken(),
-	})
-	if err != nil || len(next.GetSessions()) != 1 || next.GetSessions()[0].GetSessionId() != idleID {
-		t.Fatalf("second session page = %+v, %v", next, err)
-	}
-	idle := next.GetSessions()[0]
-	if idle.GetState() != codev1.AgentSessionState_AGENT_SESSION_STATE_IDLE || idle.GetWorkingDirectory() != "/" {
-		t.Fatalf("idle session = %+v", idle)
-	}
-
 	filtered, err := h.service.ListSessions(context.Background(), &codev1.ListSessionsRequest{
 		States: []codev1.AgentSessionState{codev1.AgentSessionState_AGENT_SESSION_STATE_RUNNING},
 	})
 	if err != nil || len(filtered.GetSessions()) != 1 || filtered.GetSessions()[0].GetSessionId() != runningID {
 		t.Fatalf("running session filter = %+v, %v", filtered, err)
+	}
+	idleOnly, err := h.service.ListSessions(context.Background(), &codev1.ListSessionsRequest{
+		States: []codev1.AgentSessionState{codev1.AgentSessionState_AGENT_SESSION_STATE_IDLE},
+	})
+	if err != nil || len(idleOnly.GetSessions()) != 0 {
+		t.Fatalf("idle session filter = %+v, %v; settled sessions auto-close and never linger", idleOnly, err)
 	}
 
 	if err := h.service.CancelQuery(runningQueryID); err != nil {
@@ -187,13 +184,9 @@ func TestListSessions_ReturnsOnlyReusableCurrentGeneration(t *testing.T) {
 	if err := runningTurn.Wait(); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.service.CloseSession(context.Background(), idleID); err != nil {
-		t.Fatal(err)
-	}
 	remaining, err := h.service.ListSessions(context.Background(), &codev1.ListSessionsRequest{})
-	if err != nil || len(remaining.GetSessions()) != 1 || remaining.GetSessions()[0].GetSessionId() != runningID ||
-		remaining.GetSessions()[0].GetState() != codev1.AgentSessionState_AGENT_SESSION_STATE_IDLE {
-		t.Fatalf("sessions after settle and close = %+v, %v", remaining, err)
+	if err != nil || len(remaining.GetSessions()) != 0 {
+		t.Fatalf("sessions after settle = %+v, %v, want none", remaining, err)
 	}
 
 	h.currentProcess(t).kill()

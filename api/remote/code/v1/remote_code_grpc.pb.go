@@ -1220,8 +1220,12 @@ type AgentServiceClient interface {
 	CancelQuery(ctx context.Context, in *CancelQueryRequest, opts ...grpc.CallOption) (*CancelQueryResponse, error)
 	// List query records still retained by the replay store.
 	ListQueries(ctx context.Context, in *ListQueriesRequest, opts ...grpc.CallOption) (*ListQueriesResponse, error)
-	// List sessions that are reusable in the current agent process generation.
+	// List sessions currently running a turn on the agent child; settled turns
+	// auto-close their session, which stays resumable by id on the agent side.
 	ListSessions(ctx context.Context, in *ListSessionsRequest, opts ...grpc.CallOption) (*ListSessionsResponse, error)
+	// Close a session manually: refused with AGENT_TURN_ACTIVE while its turn
+	// runs, an idempotent success for any other id (including auto-closed,
+	// unknown, and pre-restart ones).
 	CloseSession(ctx context.Context, in *CloseSessionRequest, opts ...grpc.CallOption) (*CloseSessionResponse, error)
 }
 
@@ -1328,8 +1332,12 @@ type AgentServiceServer interface {
 	CancelQuery(context.Context, *CancelQueryRequest) (*CancelQueryResponse, error)
 	// List query records still retained by the replay store.
 	ListQueries(context.Context, *ListQueriesRequest) (*ListQueriesResponse, error)
-	// List sessions that are reusable in the current agent process generation.
+	// List sessions currently running a turn on the agent child; settled turns
+	// auto-close their session, which stays resumable by id on the agent side.
 	ListSessions(context.Context, *ListSessionsRequest) (*ListSessionsResponse, error)
+	// Close a session manually: refused with AGENT_TURN_ACTIVE while its turn
+	// runs, an idempotent success for any other id (including auto-closed,
+	// unknown, and pre-restart ones).
 	CloseSession(context.Context, *CloseSessionRequest) (*CloseSessionResponse, error)
 	mustEmbedUnimplementedAgentServiceServer()
 }
