@@ -103,7 +103,7 @@ forget PROCESS_OR_GLOB [PROCESS_OR_GLOB ...]
 logs [-f] [-n LINES|--offset OFFSET] [--stdout|--stderr] PROCESS_ID (Ctrl-C stops following; process continues)
 controller-logs | clogs [-f] [-n LINES|--tail LINES|--offset OFFSET] (Ctrl-C stops following)
 agent | agent-query [--verbose] [--session ID] [--cwd REMOTE_DIR] [--env KEY=VALUE]... PROMPT (Ctrl-C cancels the turn)
-agent-observe [--from SEQUENCE] [--no-follow] [--verbose] QUERY_ID (Ctrl-C stops observing; the turn keeps running)
+agent-observe [--from SEQUENCE] [--no-follow] [--compact] QUERY_ID (Ctrl-C stops observing; the turn keeps running)
 agent-cancel QUERY_ID
 agent-queries [--session ID] [--state running|settled|lost] [--page-size N] [--page-token TOKEN]
 agent-sessions [--state idle|running] [--page-size N] [--page-token TOKEN]

@@ -208,12 +208,15 @@ func TestParseAgentObserveOptions(t *testing.T) {
 	if _, err := parseAgentObserveOptions([]string{"-f", "q"}); err == nil {
 		t.Fatal("accepted an unknown agent-observe option")
 	}
-	options, err = parseAgentObserveOptions([]string{"--verbose", "--no-follow", "q-3"})
-	if err != nil || !options.verbose || options.follow || options.queryID != "q-3" {
-		t.Fatalf("parseAgentObserveOptions(--verbose) = %+v, %v", options, err)
+	if _, err := parseAgentObserveOptions([]string{"--verbose", "q"}); err == nil {
+		t.Fatal("accepted --verbose; tool content is the observe default now")
 	}
-	if _, err := parseAgentObserveOptions([]string{"--verbose", "--verbose", "q"}); err == nil {
-		t.Fatal("accepted a repeated --verbose")
+	options, err = parseAgentObserveOptions([]string{"--compact", "--no-follow", "q-3"})
+	if err != nil || !options.compact || options.follow || options.queryID != "q-3" {
+		t.Fatalf("parseAgentObserveOptions(--compact) = %+v, %v", options, err)
+	}
+	if _, err := parseAgentObserveOptions([]string{"--compact", "--compact", "q"}); err == nil {
+		t.Fatal("accepted a repeated --compact")
 	}
 	if _, err := parseAgentObserveOptions(nil); err == nil {
 		t.Fatal("accepted a missing query id")

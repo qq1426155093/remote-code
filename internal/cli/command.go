@@ -186,9 +186,9 @@ var defaultCommandRegistry = mustCommandRegistry([]commandSpec{
 		complete:   completeRemotePathWithOption("--cwd", 1, completeDirectories),
 	},
 	{
-		name: "agent-observe", arguments: "[--from SEQUENCE] [--no-follow] [--verbose] QUERY_ID",
+		name: "agent-observe", arguments: "[--from SEQUENCE] [--no-follow] [--compact] QUERY_ID",
 		listSuffix: "(Ctrl-C stops observing; the turn keeps running)",
-		details:    "Replay a query's frames from a sequence; a running turn is followed unless --no-follow; --verbose prints tool inputs, outputs, and diffs",
+		details:    "Replay a query's frames from a sequence, tool inputs, outputs, and diffs included; a running turn is followed unless --no-follow; --compact hides the tool payloads",
 		handler:    (*REPL).agentObserve,
 	},
 	{name: "agent-cancel", arguments: "QUERY_ID", details: "Stop a running agent query; it settles as cancelled", handler: (*REPL).agentCancel},

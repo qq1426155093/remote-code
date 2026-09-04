@@ -170,11 +170,13 @@ func (r *REPL) cancelInterruptedTurn(commandContext context.Context, queryID str
 
 // agentObserveOptions selects the replay window of `agent-observe`. A running
 // query is followed by default; --no-follow drains the retained events only.
+// Tool payloads print by default — replay is the investigation view — and
+// --compact restores the progress-only rendering.
 type agentObserveOptions struct {
 	queryID      string
 	fromSequence uint64
 	follow       bool
-	verbose      bool
+	compact      bool
 }
 
 // parseAgentObserveOptions splits `agent-observe` arguments into the replay
@@ -183,6 +185,7 @@ func parseAgentObserveOptions(arguments []string) (agentObserveOptions, error) {
 	options := agentObserveOptions{follow: true}
 	fromSet := false
 	noFollowSet := false
+	compactSet := false
 	words := make([]string, 0, 1)
 	for index := 0; index < len(arguments); index++ {
 		switch argument := arguments[index]; argument {
@@ -203,11 +206,12 @@ func parseAgentObserveOptions(arguments []string) (agentObserveOptions, error) {
 			}
 			noFollowSet = true
 			options.follow = false
-		case "--verbose":
-			if options.verbose {
+		case "--compact":
+			if compactSet {
 				return agentObserveOptions{}, usageError()
 			}
-			options.verbose = true
+			compactSet = true
+			options.compact = true
 		case "--":
 			words = append(words, arguments[index+1:]...)
 			index = len(arguments)
@@ -251,7 +255,7 @@ func (r *REPL) agentObserve(arguments []string) error {
 		}
 		return err
 	}
-	renderer := &agentEventRenderer{output: r.stdout, ShowToolContent: options.verbose}
+	renderer := &agentEventRenderer{output: r.stdout, ShowToolContent: !options.compact}
 	for {
 		response, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
