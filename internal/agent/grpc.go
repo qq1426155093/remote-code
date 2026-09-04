@@ -173,6 +173,13 @@ func queryResponseOf(event Event) *codev1.QueryResponse {
 			Kind:       event.ToolCall.Kind,
 			Status:     event.ToolCall.Status,
 			Update:     event.ToolCall.Update,
+			RawInput:   toolCallValue(event.ToolCall.RawInput),
+			RawOutput:  toolCallValue(event.ToolCall.RawOutput),
+		}
+		for _, block := range event.ToolCall.Content {
+			if wire := toolCallContentValue(block); wire != nil {
+				call.Content = append(call.Content, wire)
+			}
 		}
 		for _, location := range event.ToolCall.Locations {
 			wire := &codev1.AgentToolCallLocation{Path: location.Path}

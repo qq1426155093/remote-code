@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -621,13 +622,27 @@ func TestEventFromSessionUpdate_MapsKinds(t *testing.T) {
 		t.Fatalf("agent_message_chunk mapped to %+v, %v", event, ok)
 	}
 	line := 12
-	event, ok = eventFromSessionUpdate(notification(acp.StartToolCall("call_1", "Edit file", acp.WithStartKind(acp.ToolKindEdit), acp.WithStartLocations([]acp.ToolCallLocation{{Path: "a.go", Line: &line}}))))
+	event, ok = eventFromSessionUpdate(notification(acp.StartToolCall("call_1", "Edit file",
+		acp.WithStartKind(acp.ToolKindEdit),
+		acp.WithStartLocations([]acp.ToolCallLocation{{Path: "a.go", Line: &line}}),
+		acp.WithStartRawInput(map[string]any{"path": "a.go"}),
+	)))
 	if !ok || event.Kind != EventKindToolCall || event.ToolCall.ToolCallID != "call_1" || event.ToolCall.Status != "" || len(event.ToolCall.Locations) != 1 || event.ToolCall.Locations[0].Line != 12 {
 		t.Fatalf("tool_call mapped to %+v, %v", event, ok)
 	}
-	event, ok = eventFromSessionUpdate(notification(acp.UpdateToolCall("call_1", acp.WithUpdateStatus(acp.ToolCallStatusCompleted))))
+	if input := event.ToolCall.RawInput; !reflect.DeepEqual(input, map[string]any{"path": "a.go"}) {
+		t.Fatalf("tool_call raw input = %#v, want the ACP value unmodified", input)
+	}
+	event, ok = eventFromSessionUpdate(notification(acp.UpdateToolCall("call_1",
+		acp.WithUpdateStatus(acp.ToolCallStatusCompleted),
+		acp.WithUpdateRawOutput("done"),
+		acp.WithUpdateContent([]acp.ToolCallContent{{Terminal: &acp.ToolCallContentTerminal{Type: "terminal", TerminalId: "t1"}}}),
+	)))
 	if !ok || !event.ToolCall.Update || event.ToolCall.Status != "completed" {
 		t.Fatalf("tool_call_update mapped to %+v, %v", event, ok)
+	}
+	if event.ToolCall.RawOutput != "done" || len(event.ToolCall.Content) != 1 || event.ToolCall.Content[0].Terminal == nil || event.ToolCall.Content[0].Terminal.TerminalId != "t1" {
+		t.Fatalf("tool_call_update payloads = %#v / %#v, want raw output and terminal content", event.ToolCall.RawOutput, event.ToolCall.Content)
 	}
 	event, ok = eventFromSessionUpdate(notification(acp.UpdatePlan(acp.PlanEntry{Content: "step", Priority: acp.PlanEntryPriorityMedium, Status: acp.PlanEntryStatusInProgress})))
 	if !ok || event.Kind != EventKindPlan || len(event.Plan.Entries) != 1 {

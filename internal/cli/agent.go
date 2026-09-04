@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -10,12 +11,14 @@ import (
 
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
 	remoteclient "github.com/qq1426155093/remote-code/pkg/client"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 type agentQueryOptions struct {
 	sessionID        string
 	workingDirectory string
 	environment      map[string]string
+	verbose          bool
 	prompt           string
 }
 
@@ -57,6 +60,11 @@ func parseAgentQueryOptions(arguments []string) (agentQueryOptions, error) {
 				options.environment = make(map[string]string)
 			}
 			options.environment[key] = value
+		case "--verbose":
+			if options.verbose {
+				return agentQueryOptions{}, usageError()
+			}
+			options.verbose = true
 		case "--":
 			words = append(words, arguments[index+1:]...)
 			index = len(arguments)
@@ -118,7 +126,7 @@ func (r *REPL) agentQuery(arguments []string) error {
 		}
 		return err
 	}
-	renderer := &agentEventRenderer{output: r.stdout}
+	renderer := &agentEventRenderer{output: r.stdout, ShowToolContent: options.verbose}
 	queryID := ""
 	for {
 		response, err := stream.Recv()
@@ -166,6 +174,7 @@ type agentObserveOptions struct {
 	queryID      string
 	fromSequence uint64
 	follow       bool
+	verbose      bool
 }
 
 // parseAgentObserveOptions splits `agent-observe` arguments into the replay
@@ -194,6 +203,11 @@ func parseAgentObserveOptions(arguments []string) (agentObserveOptions, error) {
 			}
 			noFollowSet = true
 			options.follow = false
+		case "--verbose":
+			if options.verbose {
+				return agentObserveOptions{}, usageError()
+			}
+			options.verbose = true
 		case "--":
 			words = append(words, arguments[index+1:]...)
 			index = len(arguments)
@@ -237,7 +251,7 @@ func (r *REPL) agentObserve(arguments []string) error {
 		}
 		return err
 	}
-	renderer := &agentEventRenderer{output: r.stdout}
+	renderer := &agentEventRenderer{output: r.stdout, ShowToolContent: options.verbose}
 	for {
 		response, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
@@ -347,6 +361,9 @@ type agentEventRenderer struct {
 	// textKind is the kind currently streaming inline, empty at line start.
 	textKind string
 	midLine  bool
+	// ShowToolContent prints raw input, raw output, and content blocks under
+	// tool call lines; the compact default shows progress only.
+	ShowToolContent bool
 }
 
 func (a *agentEventRenderer) write(response *codev1.QueryResponse) error {
@@ -364,7 +381,18 @@ func (a *agentEventRenderer) write(response *codev1.QueryResponse) error {
 		if err := a.breakText(); err != nil {
 			return err
 		}
-		return a.printf("%s\n", formatAgentToolCall(payload.ToolCall))
+		if err := a.printf("%s\n", formatAgentToolCall(payload.ToolCall)); err != nil {
+			return err
+		}
+		if !a.ShowToolContent {
+			return nil
+		}
+		for _, line := range formatAgentToolPayloads(payload.ToolCall) {
+			if err := a.printf("%s\n", line); err != nil {
+				return err
+			}
+		}
+		return nil
 	case *codev1.QueryResponse_Plan:
 		if err := a.breakText(); err != nil {
 			return err
@@ -476,6 +504,103 @@ func formatAgentToolCallLocation(location *codev1.AgentToolCallLocation) string 
 		return fmt.Sprintf("%s:%d", location.GetPath(), location.GetLine())
 	}
 	return location.GetPath()
+}
+
+// formatAgentToolPayloads renders the payloads a verbose observer wants under
+// the tool call line: the raw input, the raw output (text blocks joined when
+// the value has the shape tool results use), and the content blocks (diffs as
+// -/+ line pairs).
+func formatAgentToolPayloads(call *codev1.AgentToolCall) []string {
+	if call == nil {
+		return nil
+	}
+	var lines []string
+	if input := call.GetRawInput(); input != nil {
+		lines = append(lines, indentAgentPayload("in  "+agentValueJSON(input))...)
+	}
+	if output := call.GetRawOutput(); output != nil {
+		if text := agentTextOfValue(output); text != "" {
+			lines = append(lines, indentAgentPayload(text)...)
+		} else {
+			lines = append(lines, indentAgentPayload(agentValueJSON(output))...)
+		}
+	}
+	for _, block := range call.GetContent() {
+		lines = append(lines, formatAgentToolContentBlock(block)...)
+	}
+	return lines
+}
+
+// formatAgentToolContentBlock renders one ACP content variant; diffs become
+// readable -/+ lines, anything else falls back to JSON.
+func formatAgentToolContentBlock(block *structpb.Value) []string {
+	fields := block.GetStructValue().GetFields()
+	var lines []string
+	switch fields["type"].GetStringValue() {
+	case "diff":
+		lines = append(lines, "diff "+fields["path"].GetStringValue())
+		if old := fields["oldText"].GetStringValue(); old != "" {
+			for _, line := range strings.Split(old, "\n") {
+				lines = append(lines, "- "+line)
+			}
+		}
+		for _, line := range strings.Split(fields["newText"].GetStringValue(), "\n") {
+			lines = append(lines, "+ "+line)
+		}
+	case "content":
+		if text := fields["content"].GetStructValue().GetFields()["text"].GetStringValue(); text != "" {
+			lines = append(lines, strings.Split(text, "\n")...)
+		} else {
+			lines = append(lines, agentValueJSON(block))
+		}
+	default:
+		lines = append(lines, agentValueJSON(block))
+	}
+	return indentAgentPayload(lines...)
+}
+
+// indentAgentPayload tucks payload lines under the call line that owns them;
+// embedded newlines indent like separate lines.
+func indentAgentPayload(lines ...string) []string {
+	indented := make([]string, 0, len(lines))
+	for _, line := range lines {
+		for _, part := range strings.Split(line, "\n") {
+			indented = append(indented, "  "+part)
+		}
+	}
+	return indented
+}
+
+// agentValueJSON renders a wire value as one compact JSON line.
+func agentValueJSON(value *structpb.Value) string {
+	if value == nil {
+		return ""
+	}
+	data, err := json.Marshal(value.AsInterface())
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+// agentTextOfValue extracts concatenated text when the value is the block
+// list shape tool results use ([{"type":"text","text":...}]); empty when the
+// value is any other shape, so the caller can fall back to JSON.
+func agentTextOfValue(value *structpb.Value) string {
+	list := value.GetListValue()
+	if list == nil {
+		return ""
+	}
+	texts := make([]string, 0, len(list.Values))
+	for _, item := range list.Values {
+		fields := item.GetStructValue().GetFields()
+		text := fields["text"].GetStringValue()
+		if fields["type"].GetStringValue() != "text" || text == "" {
+			return ""
+		}
+		texts = append(texts, text)
+	}
+	return strings.Join(texts, "\n")
 }
 
 func formatAgentPlanEntry(entry *codev1.AgentPlanEntry) string {

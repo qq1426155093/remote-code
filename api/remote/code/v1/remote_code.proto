@@ -1032,6 +1032,16 @@ message AgentToolCall {
   string status = 4;
   bool update = 5;
   repeated AgentToolCallLocation locations = 6;
+  // Raw input parameters sent to the tool (ACP rawInput), when the agent
+  // reports them. Arbitrary JSON; absent on frames that leave it unchanged.
+  google.protobuf.Value raw_input = 7;
+  // Raw output returned by the tool (ACP rawOutput), when the agent reports
+  // it — typically on the update that settles the call. Arbitrary JSON.
+  google.protobuf.Value raw_output = 8;
+  // Content blocks produced by the call (ACP content): edits report diff
+  // blocks, others may report text or embedded resources. Each value is one
+  // ACP tool call content variant serialized as JSON.
+  repeated google.protobuf.Value content = 9;
 }
 
 message AgentToolCallLocation {

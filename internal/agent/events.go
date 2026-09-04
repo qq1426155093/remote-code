@@ -53,6 +53,12 @@ type ToolCall struct {
 	Status     string
 	Update     bool
 	Locations  []ToolLocation
+	// RawInput and RawOutput carry the JSON values the agent attached to the
+	// call (ACP rawInput/rawOutput); Content carries its structured output
+	// blocks (diffs for edits). Each is nil/empty on frames that omit it.
+	RawInput  any
+	RawOutput any
+	Content   []acp.ToolCallContent
 }
 
 // ToolLocation points at a file (and optional line) a tool call touched.
@@ -116,6 +122,9 @@ func eventFromSessionUpdate(notification acp.SessionNotification) (Event, bool) 
 			Kind:       string(call.Kind),
 			Status:     string(call.Status),
 			Locations:  locationsOf(call.Locations),
+			RawInput:   call.RawInput,
+			RawOutput:  call.RawOutput,
+			Content:    call.Content,
 		}}, true
 	case update.ToolCallUpdate != nil:
 		call := update.ToolCallUpdate
@@ -123,6 +132,9 @@ func eventFromSessionUpdate(notification acp.SessionNotification) (Event, bool) 
 			ToolCallID: string(call.ToolCallId),
 			Update:     true,
 			Locations:  locationsOf(call.Locations),
+			RawInput:   call.RawInput,
+			RawOutput:  call.RawOutput,
+			Content:    call.Content,
 		}
 		if call.Title != nil {
 			event.Title = *call.Title

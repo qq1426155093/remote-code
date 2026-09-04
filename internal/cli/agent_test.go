@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 func TestParseAgentQueryOptions(t *testing.T) {
@@ -106,6 +107,78 @@ func TestAgentEventRenderer(t *testing.T) {
 	}
 }
 
+func TestAgentEventRendererToolContent(t *testing.T) {
+	inputStruct, err := structpb.NewStruct(map[string]any{"command": "ls"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := structpb.NewStructValue(inputStruct)
+	outputBlock, err := structpb.NewStruct(map[string]any{"type": "text", "text": "notes.txt\nreply.md"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := structpb.NewListValue(&structpb.ListValue{Values: []*structpb.Value{structpb.NewStructValue(outputBlock)}})
+	diff, err := structpb.NewStruct(map[string]any{"type": "diff", "path": "reply.md", "newText": "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := []*codev1.QueryResponse{
+		{Event: &codev1.QueryResponse_ToolCall{ToolCall: &codev1.AgentToolCall{
+			ToolCallId: "call_1", Kind: "execute", Title: "run ls", Status: "pending", RawInput: input,
+		}}},
+		{Event: &codev1.QueryResponse_ToolCall{ToolCall: &codev1.AgentToolCall{
+			ToolCallId: "call_1", Update: true, Status: "completed", RawOutput: output,
+		}}},
+		{Event: &codev1.QueryResponse_ToolCall{ToolCall: &codev1.AgentToolCall{
+			ToolCallId: "call_2", Update: true, Kind: "edit", Status: "completed",
+			Content: []*structpb.Value{structpb.NewStructValue(diff)},
+		}}},
+	}
+
+	var compact bytes.Buffer
+	compactRenderer := &agentEventRenderer{output: &compact}
+	for _, event := range events {
+		if err := compactRenderer.write(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wantCompact := "→ [execute] run ls (pending)\n" +
+		"~ (completed)\n" +
+		"~ [edit] (completed)\n"
+	if got := compact.String(); got != wantCompact {
+		t.Fatalf("compact output =\n%q\nwant:\n%q", got, wantCompact)
+	}
+
+	var verbose bytes.Buffer
+	verboseRenderer := &agentEventRenderer{output: &verbose, ShowToolContent: true}
+	for _, event := range events {
+		if err := verboseRenderer.write(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wantVerbose := "→ [execute] run ls (pending)\n" +
+		"  in  {\"command\":\"ls\"}\n" +
+		"~ (completed)\n" +
+		"  notes.txt\n" +
+		"  reply.md\n" +
+		"~ [edit] (completed)\n" +
+		"  diff reply.md\n" +
+		"  + hello\n"
+	if got := verbose.String(); got != wantVerbose {
+		t.Fatalf("verbose output =\n%q\nwant:\n%q", got, wantVerbose)
+	}
+}
+
+func TestParseAgentQueryOptionsVerbose(t *testing.T) {
+	options, err := parseAgentQueryOptions([]string{"--verbose", "go"})
+	if err != nil || !options.verbose || options.prompt != "go" {
+		t.Fatalf("parseAgentQueryOptions(--verbose) = %+v, %v", options, err)
+	}
+	if _, err := parseAgentQueryOptions([]string{"--verbose", "--verbose", "go"}); err == nil {
+		t.Fatal("accepted a repeated --verbose")
+	}
+}
+
 func TestAgentCloseSessionWithoutSession(t *testing.T) {
 	var output bytes.Buffer
 	repl := &REPL{stdout: &output, commands: defaultCommandRegistry}
@@ -134,6 +207,13 @@ func TestParseAgentObserveOptions(t *testing.T) {
 	}
 	if _, err := parseAgentObserveOptions([]string{"-f", "q"}); err == nil {
 		t.Fatal("accepted an unknown agent-observe option")
+	}
+	options, err = parseAgentObserveOptions([]string{"--verbose", "--no-follow", "q-3"})
+	if err != nil || !options.verbose || options.follow || options.queryID != "q-3" {
+		t.Fatalf("parseAgentObserveOptions(--verbose) = %+v, %v", options, err)
+	}
+	if _, err := parseAgentObserveOptions([]string{"--verbose", "--verbose", "q"}); err == nil {
+		t.Fatal("accepted a repeated --verbose")
 	}
 	if _, err := parseAgentObserveOptions(nil); err == nil {
 		t.Fatal("accepted a missing query id")

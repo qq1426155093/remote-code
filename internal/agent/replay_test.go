@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -280,6 +281,67 @@ func TestService_ObserveQuery_ReplaysSettledFromSequence(t *testing.T) {
 	}
 	if end.GetNextSequence() != 5 || end.GetReason() != codev1.AgentQueryEndReason_AGENT_QUERY_END_REASON_SETTLED {
 		t.Fatalf("end = %+v, want next 5 SETTLED", end)
+	}
+}
+
+func TestService_ObserveQuery_ReplaysToolCallPayloads(t *testing.T) {
+	h := newHarness(t, func(a *scriptedAgent) {
+		a.promptHook = func(a *scriptedAgent, ctx context.Context, prompt acp.PromptRequest) (acp.PromptResponse, error) {
+			if err := a.update(ctx, prompt.SessionId, acp.StartToolCall("call_1", "read notes.txt",
+				acp.WithStartRawInput(map[string]any{"path": "notes.txt"}),
+			)); err != nil {
+				return acp.PromptResponse{}, err
+			}
+			oldText := "stale"
+			if err := a.update(ctx, prompt.SessionId, acp.UpdateToolCall("call_1",
+				acp.WithUpdateStatus(acp.ToolCallStatusCompleted),
+				acp.WithUpdateRawOutput([]any{map[string]any{"type": "text", "text": "42 lines"}}),
+				acp.WithUpdateContent([]acp.ToolCallContent{{Diff: &acp.ToolCallContentDiff{
+					Type: "diff", Path: "notes.txt", OldText: &oldText, NewText: "fresh",
+				}}}),
+			)); err != nil {
+				return acp.PromptResponse{}, err
+			}
+			return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
+		}
+	})
+
+	stream, err := h.service.StartTurn(context.Background(), TurnRequest{Prompt: "hello"})
+	if err != nil {
+		t.Fatalf("StartTurn() error = %v", err)
+	}
+	frames := collectFrames(t, stream)
+	if err := stream.Wait(); err != nil {
+		t.Fatalf("Wait() error = %v", err)
+	}
+	queryID := frames[0].GetQueryId()
+
+	recorder := &recordObserver{}
+	if err := observe(t, h.service, queryID, 0, false, recorder); err != nil {
+		t.Fatalf("ObserveQuery() error = %v", err)
+	}
+	_, observed, _ := recorder.snapshot()
+	wantOutput := []any{map[string]any{"text": "42 lines", "type": "text"}}
+	for _, frame := range observed {
+		call := frame.GetToolCall()
+		if call == nil {
+			continue
+		}
+		if !call.GetUpdate() {
+			if input := call.GetRawInput(); input == nil || input.GetStructValue().GetFields()["path"].GetStringValue() != "notes.txt" {
+				t.Fatalf("replayed raw input = %+v, want notes.txt path", call.GetRawInput())
+			}
+			continue
+		}
+		if output := call.GetRawOutput(); output == nil || !reflect.DeepEqual(output.AsInterface(), wantOutput) {
+			t.Fatalf("replayed raw output = %+v, want %v", call.GetRawOutput(), wantOutput)
+		}
+		content := call.GetContent()
+		if len(content) != 1 || content[0].GetStructValue().GetFields()["path"].GetStringValue() != "notes.txt" ||
+			content[0].GetStructValue().GetFields()["oldText"].GetStringValue() != "stale" ||
+			content[0].GetStructValue().GetFields()["newText"].GetStringValue() != "fresh" {
+			t.Fatalf("replayed content = %+v, want one stale→fresh diff on notes.txt", content)
+		}
 	}
 }
 

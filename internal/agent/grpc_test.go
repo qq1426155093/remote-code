@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net"
+	"reflect"
 	"testing"
 	"time"
 
@@ -66,15 +67,22 @@ func TestRPCQuery_MapsEveryEventKind(t *testing.T) {
 			if err := a.update(ctx, prompt.SessionId, acp.UpdateAgentMessageText("answer")); err != nil {
 				return acp.PromptResponse{}, err
 			}
-			if err := a.update(ctx, prompt.SessionId, acp.StartToolCall("call_1", "read notes.txt")); err != nil {
+			if err := a.update(ctx, prompt.SessionId, acp.StartToolCall("call_1", "read notes.txt",
+				acp.WithStartRawInput(map[string]any{"path": "notes.txt"}),
+			)); err != nil {
 				return acp.PromptResponse{}, err
 			}
 			line := 7
+			oldText := "stale"
 			if err := a.update(ctx, prompt.SessionId, acp.UpdateToolCall("call_1",
 				acp.WithUpdateTitle("read notes.txt"),
 				acp.WithUpdateKind(acp.ToolKindRead),
 				acp.WithUpdateStatus(acp.ToolCallStatusCompleted),
 				acp.WithUpdateLocations([]acp.ToolCallLocation{{Path: "notes.txt", Line: &line}}),
+				acp.WithUpdateRawOutput([]any{map[string]any{"type": "text", "text": "42 lines"}}),
+				acp.WithUpdateContent([]acp.ToolCallContent{{Diff: &acp.ToolCallContentDiff{
+					Type: "diff", Path: "notes.txt", OldText: &oldText, NewText: "fresh",
+				}}}),
 			)); err != nil {
 				return acp.PromptResponse{}, err
 			}
@@ -112,10 +120,23 @@ func TestRPCQuery_MapsEveryEventKind(t *testing.T) {
 	if creation == nil || creation.GetUpdate() || creation.GetTitle() != "read notes.txt" {
 		t.Fatalf("tool call creation = %+v", events[2])
 	}
+	if input := creation.GetRawInput(); input == nil || input.GetStructValue().GetFields()["path"].GetStringValue() != "notes.txt" {
+		t.Fatalf("tool call raw input = %+v, want notes.txt path", creation.GetRawInput())
+	}
 	update := events[3].GetToolCall()
 	if update == nil || !update.GetUpdate() || update.GetKind() != string(acp.ToolKindRead) ||
 		update.GetStatus() != string(acp.ToolCallStatusCompleted) {
 		t.Fatalf("tool call update = %+v", events[3])
+	}
+	wantOutput := []any{map[string]any{"text": "42 lines", "type": "text"}}
+	if output := update.GetRawOutput(); output == nil || !reflect.DeepEqual(output.AsInterface(), wantOutput) {
+		t.Fatalf("tool call raw output = %+v, want %v", update.GetRawOutput(), wantOutput)
+	}
+	content := update.GetContent()
+	if len(content) != 1 || content[0].GetStructValue().GetFields()["type"].GetStringValue() != "diff" ||
+		content[0].GetStructValue().GetFields()["newText"].GetStringValue() != "fresh" ||
+		content[0].GetStructValue().GetFields()["oldText"].GetStringValue() != "stale" {
+		t.Fatalf("tool call content = %+v, want one stale→fresh diff on notes.txt", content)
 	}
 	if locations := update.GetLocations(); len(locations) != 1 || locations[0].GetPath() != "notes.txt" ||
 		locations[0].GetLine() != 7 {
