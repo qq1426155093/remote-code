@@ -169,13 +169,16 @@ func TestAgentEventRendererToolContent(t *testing.T) {
 	}
 }
 
-func TestParseAgentQueryOptionsVerbose(t *testing.T) {
-	options, err := parseAgentQueryOptions([]string{"--verbose", "go"})
-	if err != nil || !options.verbose || options.prompt != "go" {
-		t.Fatalf("parseAgentQueryOptions(--verbose) = %+v, %v", options, err)
+func TestParseAgentQueryOptionsCompact(t *testing.T) {
+	options, err := parseAgentQueryOptions([]string{"--compact", "go"})
+	if err != nil || !options.compact || options.prompt != "go" {
+		t.Fatalf("parseAgentQueryOptions(--compact) = %+v, %v", options, err)
 	}
-	if _, err := parseAgentQueryOptions([]string{"--verbose", "--verbose", "go"}); err == nil {
-		t.Fatal("accepted a repeated --verbose")
+	if _, err := parseAgentQueryOptions([]string{"--compact", "--compact", "go"}); err == nil {
+		t.Fatal("accepted a repeated --compact")
+	}
+	if _, err := parseAgentQueryOptions([]string{"--verbose", "go"}); err == nil {
+		t.Fatal("accepted --verbose; tool content is the live default now")
 	}
 }
 

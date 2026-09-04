@@ -18,7 +18,7 @@ type agentQueryOptions struct {
 	sessionID        string
 	workingDirectory string
 	environment      map[string]string
-	verbose          bool
+	compact          bool
 	prompt           string
 }
 
@@ -60,11 +60,11 @@ func parseAgentQueryOptions(arguments []string) (agentQueryOptions, error) {
 				options.environment = make(map[string]string)
 			}
 			options.environment[key] = value
-		case "--verbose":
-			if options.verbose {
+		case "--compact":
+			if options.compact {
 				return agentQueryOptions{}, usageError()
 			}
-			options.verbose = true
+			options.compact = true
 		case "--":
 			words = append(words, arguments[index+1:]...)
 			index = len(arguments)
@@ -126,7 +126,7 @@ func (r *REPL) agentQuery(arguments []string) error {
 		}
 		return err
 	}
-	renderer := &agentEventRenderer{output: r.stdout, ShowToolContent: options.verbose}
+	renderer := &agentEventRenderer{output: r.stdout, ShowToolContent: !options.compact}
 	queryID := ""
 	for {
 		response, err := stream.Recv()
