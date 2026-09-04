@@ -172,10 +172,10 @@ func (r *REPL) agentQueries(arguments []string) error {
 		return err
 	}
 	writer := tabwriter.NewWriter(r.stdout, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(writer, "QUERY ID\tSESSION ID\tSTATE\tSEQUENCES\tCREATED\tSETTLED\tSTOP\tERROR")
+	fmt.Fprintln(writer, "QUERY ID\tSESSION ID\tAGENT\tSTATE\tSEQUENCES\tCREATED\tSETTLED\tSTOP\tERROR")
 	for _, query := range response.GetQueries() {
-		fmt.Fprintf(writer, "%s\t%s\t%s\t%d..%d\t%s\t%s\t%s\t%s\n",
-			query.GetQueryId(), query.GetSessionId(), agentQueryStateText(query.GetState()),
+		fmt.Fprintf(writer, "%s\t%s\t%s\t%s\t%d..%d\t%s\t%s\t%s\t%s\n",
+			query.GetQueryId(), query.GetSessionId(), query.GetAgent(), agentQueryStateText(query.GetState()),
 			query.GetEarliestSequence(), query.GetNextSequence(), agentListTime(query.GetCreatedAt()),
 			agentListTime(query.GetSettledAt()), query.GetStopReason(), agentTerminalStatus(query))
 	}

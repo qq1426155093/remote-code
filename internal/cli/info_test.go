@@ -81,3 +81,31 @@ func TestInfoCommandFetchesAndPrintsCurrentControllerInfo(t *testing.T) {
 		t.Fatalf("GetInfo calls = %d, want 2 (connect and info command)", got)
 	}
 }
+
+func TestAgentInfoSummary(t *testing.T) {
+	tests := []struct {
+		name  string
+		agent *codev1.AgentInfo
+		want  string
+	}{
+		{name: "disabled", agent: nil, want: "disabled"},
+		{name: "not started", agent: &codev1.AgentInfo{}, want: "enabled (not started)"},
+		{
+			name:  "started without personas",
+			agent: &codev1.AgentInfo{Started: true, ProcessId: "p-1", Generation: 1, Sessions: 2},
+			want:  "enabled (process p-1, generation 1, sessions 2)",
+		},
+		{
+			name:  "started with personas",
+			agent: &codev1.AgentInfo{Started: true, ProcessId: "p-2", Generation: 3, Sessions: 4, Agents: []string{"reviewer", "planner"}},
+			want:  "enabled (process p-2, generation 3, sessions 4, agents reviewer, planner)",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := agentInfoSummary(test.agent); got != test.want {
+				t.Fatalf("agentInfoSummary() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"strings"
 
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
 )
@@ -34,6 +35,10 @@ func agentInfoSummary(agent *codev1.AgentInfo) string {
 	if !agent.GetStarted() {
 		return "enabled (not started)"
 	}
-	return fmt.Sprintf("enabled (process %s, generation %d, sessions %d)",
+	summary := fmt.Sprintf("enabled (process %s, generation %d, sessions %d",
 		agent.GetProcessId(), agent.GetGeneration(), agent.GetSessions())
+	if names := agent.GetAgents(); len(names) > 0 {
+		summary += fmt.Sprintf(", agents %s", strings.Join(names, ", "))
+	}
+	return summary + ")"
 }

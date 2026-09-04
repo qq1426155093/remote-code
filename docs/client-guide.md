@@ -232,6 +232,8 @@ closed agent session 8f3c…
   Controller 重启后列表为空而 resume 不受影响；
 - 首次 `agent` 命令才会懒启动 Agent 子进程；Controller 未启用 Agent 服务时命令返回
   `AGENT_DISABLED`，`info` 的 `Agent:` 行也会显示 `disabled`；
+- `info` 的 `Agent:` 行在当前 generation 发现自定义 persona 时追加 `agents …` 名单；
+  `agent-queries` 的 `AGENT` 列记录每个 turn 实际使用的 persona（未指定则为空）；
 - Agent 进程崩溃只终止在飞 turn（`AGENT_PROCESS_LOST`）；恢复对话不依赖 controller 内存，新一代
   子进程按 id resume 即可，agent 未广告恢复能力时返回 `AGENT_SESSION_NOT_RESUMABLE`。
 
