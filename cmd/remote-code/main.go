@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/chzyer/readline"
+	"github.com/ergochat/readline"
 	"github.com/qq1426155093/remote-code/internal/auth"
 	"github.com/qq1426155093/remote-code/internal/cli"
 	"github.com/qq1426155093/remote-code/internal/version"
@@ -64,7 +64,7 @@ func run() error {
 	}
 	defer client.Close()
 
-	line, err := readline.NewEx(&readline.Config{
+	line, err := readline.NewFromConfig(&readline.Config{
 		Prompt:          "remote-code:/> ",
 		InterruptPrompt: "^C",
 		EOFPrompt:       "exit",

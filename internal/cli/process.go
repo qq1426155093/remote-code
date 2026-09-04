@@ -12,7 +12,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/chzyer/readline"
+	"github.com/ergochat/readline"
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
 	remoteclient "github.com/qq1426155093/remote-code/pkg/client"
 	"google.golang.org/grpc/codes"
@@ -270,10 +270,17 @@ func (r *REPL) writeProcessInput(arguments []string) error {
 	fmt.Fprintf(r.stdout, "attached to stdin of %s (%s); .detach leaves input open, .eof closes PIPE input, .eot sends Ctrl-D\n", process.GetName(), process.GetId())
 
 	var previousCompleter readline.AutoCompleter
-	if r.line.Config != nil {
-		previousCompleter = r.line.Config.AutoComplete
-		r.line.Config.AutoComplete = nil
-		defer func() { r.line.Config.AutoComplete = previousCompleter }()
+	if lineConfig := r.line.GetConfig(); lineConfig != nil {
+		previousCompleter = lineConfig.AutoComplete
+		lineConfig.AutoComplete = nil
+		if err := r.line.SetConfig(lineConfig); err != nil {
+			return fmt.Errorf("disable completion for stdin submode: %w", err)
+		}
+		defer func() {
+			restoreConfig := r.line.GetConfig()
+			restoreConfig.AutoComplete = previousCompleter
+			_ = r.line.SetConfig(restoreConfig)
+		}()
 	}
 	for {
 		r.line.SetPrompt("stdin:" + process.GetName() + "> ")

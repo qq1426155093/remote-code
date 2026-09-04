@@ -5,9 +5,9 @@ go 1.26
 require (
 	github.com/charmbracelet/x/ansi v0.11.7
 	github.com/charmbracelet/x/vt v0.0.0-20260816001655-68d539dca504
-	github.com/chzyer/readline v1.5.1
 	github.com/coder/acp-go-sdk v0.13.5
 	github.com/creack/pty v1.1.24
+	github.com/ergochat/readline v0.1.3
 	github.com/expr-lang/expr v1.17.8
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/modelcontextprotocol/go-sdk v1.7.0

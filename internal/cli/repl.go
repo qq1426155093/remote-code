@@ -14,7 +14,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/chzyer/readline"
+	"github.com/ergochat/readline"
 	"github.com/google/shlex"
 	codev1 "github.com/qq1426155093/remote-code/api/remote/code/v1"
 	remoteclient "github.com/qq1426155093/remote-code/pkg/client"
@@ -65,8 +65,12 @@ func New(client *remoteclient.Client, line *readline.Instance, config Config) *R
 			return signal.NotifyContext(parent, os.Interrupt)
 		},
 	}
-	if line != nil && line.Config != nil {
-		line.Config.AutoComplete = newCompleter(client, func() string { return repl.cwd }, config.Timeout, repl.commands)
+	if line != nil {
+		lineConfig := line.GetConfig()
+		lineConfig.AutoComplete = newCompleter(client, func() string { return repl.cwd }, config.Timeout, repl.commands)
+		if err := line.SetConfig(lineConfig); err != nil {
+			return nil
+		}
 	}
 	return repl
 }
