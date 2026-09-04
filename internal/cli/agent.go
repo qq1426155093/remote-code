@@ -18,6 +18,7 @@ type agentQueryOptions struct {
 	sessionID        string
 	workingDirectory string
 	environment      map[string]string
+	agent            string
 	compact          bool
 	prompt           string
 }
@@ -60,6 +61,12 @@ func parseAgentQueryOptions(arguments []string) (agentQueryOptions, error) {
 				options.environment = make(map[string]string)
 			}
 			options.environment[key] = value
+		case "--agent":
+			if index+1 >= len(arguments) || options.agent != "" {
+				return agentQueryOptions{}, usageError()
+			}
+			index++
+			options.agent = arguments[index]
 		case "--compact":
 			if options.compact {
 				return agentQueryOptions{}, usageError()
@@ -118,7 +125,7 @@ func (r *REPL) agentQuery(arguments []string) error {
 	}
 
 	stream, err := r.client.AgentQuery(streamContext, options.prompt, remoteclient.AgentQueryOptions{
-		SessionID: sessionID, WorkingDirectory: workingDirectory, Environment: options.environment,
+		SessionID: sessionID, WorkingDirectory: workingDirectory, Environment: options.environment, Agent: options.agent,
 	})
 	if err != nil {
 		if interrupted() {

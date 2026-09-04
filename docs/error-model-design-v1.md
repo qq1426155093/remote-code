@@ -134,6 +134,8 @@ case client.ReasonProcessNotRunning:
 | `AGENT_PROCESS_LOST` | `Unavailable` | turn 进行中 Agent 进程退出；之后按 id resume 依旧可用 |
 | `AGENT_WORKING_DIRECTORY` | `InvalidArgument` | 会话工作目录越出 workspace 或不可访问 |
 | `AGENT_REQUEST_ERROR` | `Unknown` | Agent 本身返回 JSON-RPC 错误；`metadata.jsonrpc_code` 给出原始码 |
+| `AGENT_SELECTION_UNSUPPORTED` | `FailedPrecondition` | Query 带 `agent` 而 agent 子进程的 session config options 未提供 agent 选择器（未配置自定义 agent 或非 claude-agent-acp 的 ACP agent） |
+| `AGENT_NAME_INVALID` | `InvalidArgument` | Query 的 `agent` 不在该会话提供的 persona 列表内；可用名单见 `AgentInfo.agents` |
 
 ## 7. 覆盖范围
 

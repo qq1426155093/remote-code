@@ -101,6 +101,7 @@ type queryStateFile struct {
 	// EnvironmentKeys names the caller-supplied environment overrides the turn
 	// ran with. Key names only — values never reach disk.
 	EnvironmentKeys  []string    `json:"environment_keys,omitempty"`
+	Agent            string      `json:"agent,omitempty"`
 	State            string      `json:"state"`
 	StopReason       string      `json:"stop_reason,omitempty"`
 	Error            *QueryError `json:"error,omitempty"`
@@ -118,6 +119,7 @@ type QuerySnapshot struct {
 	Earliest   uint64
 	Next       uint64
 	StopReason string
+	Agent      string
 	Err        *QueryError
 	SettledAt  time.Time
 	CreatedAt  time.Time
@@ -131,6 +133,9 @@ type QueryMetadata struct {
 	WorkingDirectory string
 	// EnvironmentKeys carries the sorted override key names for debugging.
 	EnvironmentKeys []string
+	// Agent names the persona the turn was requested to run as; empty means
+	// the child's default.
+	Agent string
 }
 
 // queryDirectoryName matches the UUID query ids handed to clients.
@@ -304,6 +309,7 @@ func (s *QueryStore) Begin(metadata QueryMetadata) (string, *QueryWriter, error)
 		SessionID:        metadata.SessionID,
 		WorkingDirectory: metadata.WorkingDirectory,
 		EnvironmentKeys:  metadata.EnvironmentKeys,
+		Agent:            metadata.Agent,
 		State:            string(QueryStateRunning),
 		CreatedAt:        s.now(),
 	}
@@ -520,6 +526,7 @@ func snapshotOf(state *queryStateFile) QuerySnapshot {
 		Earliest:   state.EarliestSequence,
 		Next:       state.NextSequence,
 		StopReason: state.StopReason,
+		Agent:      state.Agent,
 		Err:        state.Error,
 		CreatedAt:  state.CreatedAt,
 	}

@@ -35,6 +35,28 @@ func TestParseAgentQueryOptions(t *testing.T) {
 	}
 }
 
+func TestParseAgentQueryOptionsAgent(t *testing.T) {
+	options, err := parseAgentQueryOptions([]string{"--agent", "reviewer", "check", "this"})
+	if err != nil || options.agent != "reviewer" || options.prompt != "check this" {
+		t.Fatalf("parseAgentQueryOptions() = %+v, %v", options, err)
+	}
+	options, err = parseAgentQueryOptions([]string{"--session", "s1", "--agent", "reviewer", "again"})
+	if err != nil || options.agent != "reviewer" || options.sessionID != "s1" {
+		t.Fatalf("parseAgentQueryOptions() = %+v, %v", options, err)
+	}
+	for _, invalid := range [][]string{
+		{"--agent"},
+		{"--agent", "reviewer", "--agent", "planner", "go"},
+	} {
+		if _, err := parseAgentQueryOptions(invalid); err == nil {
+			t.Fatalf("parseAgentQueryOptions(%q) accepted an invalid --agent", invalid)
+		}
+	}
+	if options, err := parseAgentQueryOptions([]string{"go"}); err != nil || options.agent != "" {
+		t.Fatalf("parseAgentQueryOptions() = %+v, %v; agent must default to empty", options, err)
+	}
+}
+
 func TestParseAgentQueryOptionsEnvironment(t *testing.T) {
 	options, err := parseAgentQueryOptions([]string{"--env", "FOO=bar", "--env", "EMPTY=", "--env", "URL=https://example.com/x?y=1", "go"})
 	if err != nil {

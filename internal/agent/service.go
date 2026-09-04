@@ -84,6 +84,10 @@ type Service struct {
 	mu          sync.Mutex
 	sessions    map[string]*session
 	liveQueries map[string]*agentQuery
+	// agentNames caches the personas the generation numbered below offered in
+	// its sessions' config options; nil until that generation created one.
+	agentNames           []string
+	agentNamesGeneration uint64
 	// pendingEnvs holds the launch environments of queries that passed
 	// validation but have not registered their session yet; an arrival here is
 	// invisible to the session table, so environment switches must respect it.
@@ -157,12 +161,15 @@ func New(config Config) (*Service, error) {
 // agent-side conversation first. Environment carries caller-supplied
 // overrides merged over the operator baseline for whichever child runs the
 // turn; a value that requires a different child than the running one is
-// refused while that child still has work in flight.
+// refused while that child still has work in flight. Agent names the
+// main-thread persona the turn runs as, applied through the child's agent
+// session config option; empty keeps the default.
 type TurnRequest struct {
 	Prompt           string
 	SessionID        string
 	WorkingDirectory string
 	Environment      map[string]string
+	Agent            string
 }
 
 // launchEnvironment validates the caller's overrides and merges them over the
@@ -317,6 +324,12 @@ func (s *Service) StartTurn(ctx context.Context, request TurnRequest) (*TurnStre
 			dropArrival()
 			return nil, mapAgentRequestError("create session", err)
 		}
+		if err := s.applyAgentSelection(ctx, connection, response.SessionId, request.Agent, response.ConfigOptions); err != nil {
+			dropArrival()
+			// The session exists agent-side; give it back rather than leak it.
+			s.closeAgentSession(string(response.SessionId), connection)
+			return nil, err
+		}
 		sess = newSession(response.SessionId, s.displaySessionWorkingDirectory(cwd), connection.generation, s.now())
 		created = true
 	} else {
@@ -325,7 +338,7 @@ func (s *Service) StartTurn(ctx context.Context, request TurnRequest) (*TurnStre
 			return nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.AgentSessionNotResumable, "agent %q does not advertise session/resume", processLabel(connection.transport))
 		}
 		resumeCtx, cancel := context.WithTimeout(ctx, initializeTimeout)
-		_, err = connection.conn.ResumeSession(resumeCtx, acp.ResumeSessionRequest{
+		response, err := connection.conn.ResumeSession(resumeCtx, acp.ResumeSessionRequest{
 			Cwd:        cwd,
 			SessionId:  acp.SessionId(request.SessionID),
 			McpServers: []acp.McpServer{},
@@ -334,6 +347,12 @@ func (s *Service) StartTurn(ctx context.Context, request TurnRequest) (*TurnStre
 		if err != nil {
 			dropArrival()
 			return nil, mapAgentRequestError("resume session", err)
+		}
+		// A refused selection leaves the resumed conversation untouched — it
+		// predates this query, so closing it would destroy the caller's work.
+		if err := s.applyAgentSelection(ctx, connection, acp.SessionId(request.SessionID), request.Agent, response.ConfigOptions); err != nil {
+			dropArrival()
+			return nil, err
 		}
 		sess = newSession(acp.SessionId(request.SessionID), s.displaySessionWorkingDirectory(cwd), connection.generation, s.now())
 	}
@@ -344,7 +363,7 @@ func (s *Service) StartTurn(ctx context.Context, request TurnRequest) (*TurnStre
 		return nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.AgentTurnActive, "session %q already has an active turn", string(sess.id))
 	}
 
-	queryID, writer, err := s.beginQuery(sess, environmentKeys)
+	queryID, writer, err := s.beginQuery(sess, environmentKeys, request.Agent)
 	if err != nil {
 		sess.endTurn(active, s.now())
 		dropArrival()
@@ -396,10 +415,10 @@ func (s *Service) dropArrivalLocked(environment map[string]string) {
 }
 
 // beginQuery allocates the turn's query id and opens its event record,
-// retaining the environment override keys (never values). A nil writer means
-// replay is disabled: the turn still streams and carries its id, but nothing
-// is retained.
-func (s *Service) beginQuery(sess *session, environmentKeys []string) (string, *QueryWriter, error) {
+// retaining the environment override keys (never values) and the requested
+// agent persona. A nil writer means replay is disabled: the turn still
+// streams and carries its id, but nothing is retained.
+func (s *Service) beginQuery(sess *session, environmentKeys []string, agent string) (string, *QueryWriter, error) {
 	if s.queries == nil {
 		id, err := newQueryUUID()
 		if err != nil {
@@ -411,6 +430,7 @@ func (s *Service) beginQuery(sess *session, environmentKeys []string) (string, *
 		SessionID:        string(sess.id),
 		WorkingDirectory: strings.TrimPrefix(sess.workingDirectory, "/"),
 		EnvironmentKeys:  environmentKeys,
+		Agent:            agent,
 	})
 	if err != nil {
 		return "", nil, status.Errorf(codes.Unavailable, "open query record: %v", err)
@@ -494,6 +514,10 @@ func (s *Service) ObserveQuery(ctx context.Context, queryID string, from uint64,
 	if snapshot.State == QueryStateSettled && snapshot.Err == nil {
 		stopReason := snapshot.StopReason
 		header.StopReason = &stopReason
+	}
+	if snapshot.Agent != "" {
+		agent := snapshot.Agent
+		header.Agent = &agent
 	}
 	if err := observer.QueryHeader(header); err != nil {
 		return err
@@ -752,7 +776,7 @@ settled:
 	} else {
 		settleRecord(terminalErr)
 	}
-	s.closeAgentSession(sess, connection)
+	s.closeAgentSession(string(sess.id), connection)
 	stream.setErr(terminalErr)
 }
 
@@ -768,10 +792,11 @@ func (s *Service) retireSession(sess *session) {
 	s.mu.Unlock()
 }
 
-// closeAgentSession forwards session/close for a settled turn-scoped session
-// on a live connection that advertised the capability, bounded in time.
-// Failures only log — the turn is over and its record is already written.
-func (s *Service) closeAgentSession(sess *session, connection *agentConnection) {
+// closeAgentSession forwards session/close for a turn-scoped session on a
+// live connection that advertised the capability, bounded in time. Failures
+// only log — by the time it runs the turn is over and its record is already
+// written, or the query was refused before it ever prompted.
+func (s *Service) closeAgentSession(sessionID string, connection *agentConnection) {
 	s.mu.Lock()
 	shuttingDown := s.shuttingDown
 	s.mu.Unlock()
@@ -780,8 +805,8 @@ func (s *Service) closeAgentSession(sess *session, connection *agentConnection) 
 	}
 	closeCtx, cancel := context.WithTimeout(context.Background(), sessionCloseWait)
 	defer cancel()
-	if _, err := connection.conn.CloseSession(closeCtx, acp.CloseSessionRequest{SessionId: sess.id}); err != nil {
-		s.logger.Warn("auto-close session failed", "session_id", string(sess.id), "err", err.Error())
+	if _, err := connection.conn.CloseSession(closeCtx, acp.CloseSessionRequest{SessionId: acp.SessionId(sessionID)}); err != nil {
+		s.logger.Warn("auto-close session failed", "session_id", sessionID, "err", err.Error())
 	}
 }
 
@@ -960,6 +985,9 @@ type Status struct {
 	LoadSession    bool
 	CloseSupported bool
 	Sessions       int
+	// Agents lists the personas the current generation offered in its
+	// sessions' config options; nil until it created one.
+	Agents []string
 	// Replay reports the event-store bounds when query replay is enabled.
 	Replay *AgentReplayStatus
 }
@@ -993,5 +1021,6 @@ func (s *Service) Snapshot() Status {
 	snapshot.Generation = connection.generation
 	snapshot.LoadSession = connection.caps.LoadSession
 	snapshot.CloseSupported = connection.caps.SessionCapabilities.Close != nil
+	snapshot.Agents = s.agentNamesFor(connection.generation)
 	return snapshot
 }

@@ -34,6 +34,10 @@ type scriptedAgent struct {
 	newSessionErr bool
 	// resumeErr makes session/resume fail, emulating an unknown session id.
 	resumeErr bool
+	// configOptions is served by session/new and session/resume; nil reports
+	// no options at all, like an ACP agent without the config-options
+	// extension.
+	configOptions []acp.SessionConfigOption
 
 	mu             sync.Mutex
 	cancelArrived  chan struct{}
@@ -42,8 +46,11 @@ type scriptedAgent struct {
 	prompts        []acp.PromptRequest
 	cancels        []string
 	closedSessions []string
-	nextSession    int
-	selectedOption string
+	// agentSelections records the string-valued session/set_config_option
+	// calls the bridge made.
+	agentSelections []acp.SetSessionConfigOptionValueId
+	nextSession     int
+	selectedOption  string
 }
 
 func (a *scriptedAgent) setConn(conn *acp.AgentSideConnection) { a.conn = conn }
@@ -98,7 +105,10 @@ func (a *scriptedAgent) NewSession(_ context.Context, params acp.NewSessionReque
 	defer a.mu.Unlock()
 	a.nextSession++
 	a.sessionCwds = append(a.sessionCwds, params.Cwd)
-	return acp.NewSessionResponse{SessionId: acp.SessionId(fmt.Sprintf("sess-%d", a.nextSession))}, nil
+	return acp.NewSessionResponse{
+		SessionId:     acp.SessionId(fmt.Sprintf("sess-%d", a.nextSession)),
+		ConfigOptions: a.configOptions,
+	}, nil
 }
 
 func (a *scriptedAgent) Prompt(ctx context.Context, params acp.PromptRequest) (acp.PromptResponse, error) {
@@ -118,10 +128,15 @@ func (a *scriptedAgent) ResumeSession(_ context.Context, params acp.ResumeSessio
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.resumes = append(a.resumes, params)
-	return acp.ResumeSessionResponse{}, nil
+	return acp.ResumeSessionResponse{ConfigOptions: a.configOptions}, nil
 }
 
-func (a *scriptedAgent) SetSessionConfigOption(context.Context, acp.SetSessionConfigOptionRequest) (acp.SetSessionConfigOptionResponse, error) {
+func (a *scriptedAgent) SetSessionConfigOption(_ context.Context, params acp.SetSessionConfigOptionRequest) (acp.SetSessionConfigOptionResponse, error) {
+	if params.ValueId != nil {
+		a.mu.Lock()
+		a.agentSelections = append(a.agentSelections, *params.ValueId)
+		a.mu.Unlock()
+	}
 	return acp.SetSessionConfigOptionResponse{}, nil
 }
 
@@ -209,6 +224,14 @@ func (a *scriptedAgent) sessionDirectory(index int) string {
 		return ""
 	}
 	return a.sessionCwds[index]
+}
+
+// agentSelectionsReceived copies the recorded string-valued set_config_option
+// calls in order.
+func (a *scriptedAgent) agentSelectionsReceived() []acp.SetSessionConfigOptionValueId {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return append([]acp.SetSessionConfigOptionValueId(nil), a.agentSelections...)
 }
 
 // fakeProcess is one generation of the scripted agent child.

@@ -16,11 +16,14 @@ import (
 // conversation by id. Environment overrides merge over the controller's
 // operator baseline for the child that runs the turn; a value that requires a
 // different child than the running one is refused while that child still has
-// work in flight.
+// work in flight. Agent names the main-thread persona the turn runs as; empty
+// keeps the child's default, and a name the child does not offer fails the
+// call before any event streams.
 type AgentQueryOptions struct {
 	SessionID        string
 	WorkingDirectory string
 	Environment      map[string]string
+	Agent            string
 }
 
 // AgentQueryListOptions filters and paginates retained agent turns. Empty
@@ -62,6 +65,9 @@ func (c *Client) AgentQuery(ctx context.Context, prompt string, options AgentQue
 	}
 	if options.WorkingDirectory != "" {
 		request.WorkingDirectory = &options.WorkingDirectory
+	}
+	if options.Agent != "" {
+		request.Agent = &options.Agent
 	}
 	if len(options.Environment) > 0 {
 		request.Environment = options.Environment

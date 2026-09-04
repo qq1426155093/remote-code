@@ -7096,7 +7096,15 @@ type QueryRequest struct {
 	// the running child's fails with AGENT_ENV_CONFLICT while that child still
 	// has work in flight, and restarts the child once idle. Values live only in
 	// the child process and controller memory; records retain key names only.
-	Environment   map[string]string `protobuf:"bytes,4,rep,name=environment,proto3" json:"environment,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Environment map[string]string `protobuf:"bytes,4,rep,name=environment,proto3" json:"environment,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Main-thread agent persona the turn runs as, applied through the ACP
+	// session config option the agent child exposes (claude-agent-acp offers
+	// custom .claude/agents entries under config id "agent"; "default" selects
+	// the standard agent). Empty keeps whatever the session would use anyway.
+	// The name is validated against the session's own offered options: an
+	// unknown name fails with AGENT_NAME_INVALID, and a child without an agent
+	// picker fails with AGENT_SELECTION_UNSUPPORTED.
+	Agent         *string `protobuf:"bytes,5,opt,name=agent,proto3,oneof" json:"agent,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -7157,6 +7165,13 @@ func (x *QueryRequest) GetEnvironment() map[string]string {
 		return x.Environment
 	}
 	return nil
+}
+
+func (x *QueryRequest) GetAgent() string {
+	if x != nil && x.Agent != nil {
+		return *x.Agent
+	}
+	return ""
 }
 
 type CloseSessionRequest struct {
@@ -7508,8 +7523,10 @@ type AgentQueryHeader struct {
 	// The retention window dropped frames between zero and earliest_sequence.
 	HistoryTruncated bool `protobuf:"varint,7,opt,name=history_truncated,json=historyTruncated,proto3" json:"history_truncated,omitempty"`
 	// Terminal stop reason once settled or lost.
-	StopReason    *string `protobuf:"bytes,8,opt,name=stop_reason,json=stopReason,proto3,oneof" json:"stop_reason,omitempty"`
-	Follow        bool    `protobuf:"varint,9,opt,name=follow,proto3" json:"follow,omitempty"`
+	StopReason *string `protobuf:"bytes,8,opt,name=stop_reason,json=stopReason,proto3,oneof" json:"stop_reason,omitempty"`
+	Follow     bool    `protobuf:"varint,9,opt,name=follow,proto3" json:"follow,omitempty"`
+	// Agent persona the turn was requested to run as; empty means default.
+	Agent         *string `protobuf:"bytes,10,opt,name=agent,proto3,oneof" json:"agent,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -7605,6 +7622,13 @@ func (x *AgentQueryHeader) GetFollow() bool {
 		return x.Follow
 	}
 	return false
+}
+
+func (x *AgentQueryHeader) GetAgent() string {
+	if x != nil && x.Agent != nil {
+		return *x.Agent
+	}
+	return ""
 }
 
 type AgentQueryEnd struct {
@@ -7927,8 +7951,10 @@ type AgentQueryInfo struct {
 	SettledAt        *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=settled_at,json=settledAt,proto3" json:"settled_at,omitempty"`
 	// Present for failed or lost turns; matches the terminal ObserveQuery error.
 	TerminalStatus *status.Status `protobuf:"bytes,10,opt,name=terminal_status,json=terminalStatus,proto3" json:"terminal_status,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Agent persona the turn was requested to run as; empty means default.
+	Agent         *string `protobuf:"bytes,11,opt,name=agent,proto3,oneof" json:"agent,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *AgentQueryInfo) Reset() {
@@ -8029,6 +8055,13 @@ func (x *AgentQueryInfo) GetTerminalStatus() *status.Status {
 		return x.TerminalStatus
 	}
 	return nil
+}
+
+func (x *AgentQueryInfo) GetAgent() string {
+	if x != nil && x.Agent != nil {
+		return *x.Agent
+	}
+	return ""
 }
 
 type ListQueriesResponse struct {
@@ -9026,7 +9059,13 @@ type AgentInfo struct {
 	// store.
 	Replay *AgentReplayInfo `protobuf:"bytes,7,opt,name=replay,proto3,oneof" json:"replay,omitempty"`
 	// Absent on controllers that predate the listing RPCs.
-	Listing       *AgentListCapabilities `protobuf:"bytes,8,opt,name=listing,proto3,oneof" json:"listing,omitempty"`
+	Listing *AgentListCapabilities `protobuf:"bytes,8,opt,name=listing,proto3,oneof" json:"listing,omitempty"`
+	// Custom agent personas the current generation of the agent child offers,
+	// "default" excluded. The list is read when a query creates or resumes a
+	// session, so it stays empty until the generation's first query and an
+	// empty list also means the child configured no custom agents; an explicit
+	// QueryRequest.agent is the authoritative check either way.
+	Agents        []string `protobuf:"bytes,9,rep,name=agents,proto3" json:"agents,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -9113,6 +9152,13 @@ func (x *AgentInfo) GetReplay() *AgentReplayInfo {
 func (x *AgentInfo) GetListing() *AgentListCapabilities {
 	if x != nil {
 		return x.Listing
+	}
+	return nil
+}
+
+func (x *AgentInfo) GetAgents() []string {
+	if x != nil {
+		return x.Agents
 	}
 	return nil
 }
@@ -9552,18 +9598,20 @@ const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	"\x06status\x18\x03 \x01(\v2\x12.google.rpc.StatusR\x06status\"\xaf\x01\n" +
 	"\x1cBatchDeleteProcessesResponse\x12G\n" +
 	"\tselectors\x18\x01 \x03(\v2).remote.code.v1.BatchDeleteSelectorResultR\tselectors\x12F\n" +
-	"\tprocesses\x18\x02 \x03(\v2(.remote.code.v1.BatchDeleteProcessResultR\tprocesses\"\xb2\x02\n" +
+	"\tprocesses\x18\x02 \x03(\v2(.remote.code.v1.BatchDeleteProcessResultR\tprocesses\"\xd7\x02\n" +
 	"\fQueryRequest\x12\x16\n" +
 	"\x06prompt\x18\x01 \x01(\tR\x06prompt\x12\"\n" +
 	"\n" +
 	"session_id\x18\x02 \x01(\tH\x00R\tsessionId\x88\x01\x01\x120\n" +
 	"\x11working_directory\x18\x03 \x01(\tH\x01R\x10workingDirectory\x88\x01\x01\x12O\n" +
-	"\venvironment\x18\x04 \x03(\v2-.remote.code.v1.QueryRequest.EnvironmentEntryR\venvironment\x1a>\n" +
+	"\venvironment\x18\x04 \x03(\v2-.remote.code.v1.QueryRequest.EnvironmentEntryR\venvironment\x12\x19\n" +
+	"\x05agent\x18\x05 \x01(\tH\x02R\x05agent\x88\x01\x01\x1a>\n" +
 	"\x10EnvironmentEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\r\n" +
 	"\v_session_idB\x14\n" +
-	"\x12_working_directory\"4\n" +
+	"\x12_working_directoryB\b\n" +
+	"\x06_agent\"4\n" +
 	"\x13CloseSessionRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\"\x16\n" +
@@ -9583,7 +9631,7 @@ const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	"\bquery_id\x18\x01 \x01(\tR\aqueryId\x12#\n" +
 	"\rfrom_sequence\x18\x02 \x01(\x04R\ffromSequence\x12\x1b\n" +
 	"\x06follow\x18\x03 \x01(\bH\x00R\x06follow\x88\x01\x01B\t\n" +
-	"\a_follow\"\x97\x03\n" +
+	"\a_follow\"\xbc\x03\n" +
 	"\x10AgentQueryHeader\x12\x19\n" +
 	"\bquery_id\x18\x01 \x01(\tR\aqueryId\x12\x1d\n" +
 	"\n" +
@@ -9595,8 +9643,11 @@ const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	"\x11history_truncated\x18\a \x01(\bR\x10historyTruncated\x12$\n" +
 	"\vstop_reason\x18\b \x01(\tH\x00R\n" +
 	"stopReason\x88\x01\x01\x12\x16\n" +
-	"\x06follow\x18\t \x01(\bR\x06followB\x0e\n" +
-	"\f_stop_reason\"q\n" +
+	"\x06follow\x18\t \x01(\bR\x06follow\x12\x19\n" +
+	"\x05agent\x18\n" +
+	" \x01(\tH\x01R\x05agent\x88\x01\x01B\x0e\n" +
+	"\f_stop_reasonB\b\n" +
+	"\x06_agent\"q\n" +
 	"\rAgentQueryEnd\x12#\n" +
 	"\rnext_sequence\x18\x01 \x01(\x04R\fnextSequence\x12;\n" +
 	"\x06reason\x18\x02 \x01(\x0e2#.remote.code.v1.AgentQueryEndReasonR\x06reason\"\xc7\x01\n" +
@@ -9615,7 +9666,7 @@ const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	"\tpage_size\x18\x03 \x01(\rR\bpageSize\x12\x1d\n" +
 	"\n" +
 	"page_token\x18\x04 \x01(\tR\tpageTokenB\r\n" +
-	"\v_session_id\"\xe9\x03\n" +
+	"\v_session_id\"\x8e\x04\n" +
 	"\x0eAgentQueryInfo\x12\x19\n" +
 	"\bquery_id\x18\x01 \x01(\tR\aqueryId\x12\x1d\n" +
 	"\n" +
@@ -9631,8 +9682,10 @@ const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	"\n" +
 	"settled_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tsettledAt\x12;\n" +
 	"\x0fterminal_status\x18\n" +
-	" \x01(\v2\x12.google.rpc.StatusR\x0eterminalStatusB\x0e\n" +
-	"\f_stop_reason\"w\n" +
+	" \x01(\v2\x12.google.rpc.StatusR\x0eterminalStatus\x12\x19\n" +
+	"\x05agent\x18\v \x01(\tH\x01R\x05agent\x88\x01\x01B\x0e\n" +
+	"\f_stop_reasonB\b\n" +
+	"\x06_agent\"w\n" +
 	"\x13ListQueriesResponse\x128\n" +
 	"\aqueries\x18\x01 \x03(\v2\x1e.remote.code.v1.AgentQueryInfoR\aqueries\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x8c\x01\n" +
@@ -9708,7 +9761,7 @@ const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	"\bcurrency\x18\x02 \x01(\tR\bcurrency\"5\n" +
 	"\x12AgentTurnCompleted\x12\x1f\n" +
 	"\vstop_reason\x18\x01 \x01(\tR\n" +
-	"stopReason\"\xde\x02\n" +
+	"stopReason\"\xf6\x02\n" +
 	"\tAgentInfo\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x18\n" +
 	"\astarted\x18\x02 \x01(\bR\astarted\x12\x1d\n" +
@@ -9720,7 +9773,8 @@ const file_remote_code_v1_remote_code_proto_rawDesc = "" +
 	"\x0fclose_supported\x18\x05 \x01(\bR\x0ecloseSupported\x12\x1a\n" +
 	"\bsessions\x18\x06 \x01(\rR\bsessions\x12<\n" +
 	"\x06replay\x18\a \x01(\v2\x1f.remote.code.v1.AgentReplayInfoH\x00R\x06replay\x88\x01\x01\x12D\n" +
-	"\alisting\x18\b \x01(\v2%.remote.code.v1.AgentListCapabilitiesH\x01R\alisting\x88\x01\x01B\t\n" +
+	"\alisting\x18\b \x01(\v2%.remote.code.v1.AgentListCapabilitiesH\x01R\alisting\x88\x01\x01\x12\x16\n" +
+	"\x06agents\x18\t \x03(\tR\x06agentsB\t\n" +
 	"\a_replayB\n" +
 	"\n" +
 	"\b_listing*\xb8\x01\n" +

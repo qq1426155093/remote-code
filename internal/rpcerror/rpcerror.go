@@ -83,6 +83,13 @@ const (
 	// AgentRequestError wraps a JSON-RPC error the agent itself returned; the
 	// metadata carries the raw jsonrpc_code.
 	AgentRequestError Reason = "AGENT_REQUEST_ERROR"
+	// AgentSelectionUnsupported marks a Query carrying agent while the agent
+	// child exposes no agent picker among its session config options (no
+	// custom agents configured, or a non-claude-agent-acp ACP agent).
+	AgentSelectionUnsupported Reason = "AGENT_SELECTION_UNSUPPORTED"
+	// AgentNameInvalid marks a Query whose agent is not among the personas the
+	// agent child offered the session it created or resumed.
+	AgentNameInvalid Reason = "AGENT_NAME_INVALID"
 
 	// Query replay: addressing a retained turn's event stream.
 	AgentQueryNotFound        Reason = "AGENT_QUERY_NOT_FOUND"

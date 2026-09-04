@@ -326,3 +326,18 @@ arguments = ["@agentclientprotocol/claude-agent-acp"]
   `AGENT_ENV_CONFLICT`，空闲则换代重启。记录只留 `environment_keys`（键名），
   值不落盘不落日志。CLI：`agent --env KEY=VALUE ...`（可重复）；键值规则与
   进程服务 env 预算一致。
+
+## 12. 实现修订记录（2026-09-04）
+
+- **按查询 agent persona（标准路径）**：`QueryRequest.agent` 指定本 turn 的主线程 persona，
+  走 ACP v1 标准 session config options 扩展——桥在 `session/new`/`session/resume` 返回的
+  `configOptions` 里按 id 匹配 claude-agent-acp 的 `"agent"` 选择器（`"default"` + 自定义
+  agent 名单），校验通过后用 `session/set_config_option` 应用，再发 prompt。不走
+  `_meta.claudeCode` 私有扩展。
+- 名单按会话自身校验：未知名字 `AGENT_NAME_INVALID`（InvalidArgument），子进程无选择器
+  `AGENT_SELECTION_UNSUPPORTED`（FailedPrecondition）。新建会话上选择失败会把刚建的会话
+  关还（best-effort）；恢复会话上失败不动原会话。显式传 `"default"` 合法。
+- **发现面**：`AgentInfo.agents` 报告当前 generation 会话提供的自定义 persona（不含
+  `"default"`）；generation 建过首个会话后才有值，换代后随新会话刷新。查询记录
+  （`state.json`、`ListQueries` 行、`AgentQueryHeader`）保留请求的 `agent` 名。
+- CLI：`agent --agent NAME ...`；`pkg/client` 的 `AgentQueryOptions.Agent`。

@@ -33,6 +33,7 @@ func (r *RPC) Query(request *codev1.QueryRequest, stream codev1.AgentService_Que
 		SessionID:        request.GetSessionId(),
 		WorkingDirectory: request.GetWorkingDirectory(),
 		Environment:      request.GetEnvironment(),
+		Agent:            request.GetAgent(),
 	})
 	if err != nil {
 		return err
@@ -136,6 +137,7 @@ func (r *RPC) Info() *codev1.AgentInfo {
 		Generation:     snapshot.Generation,
 		CloseSupported: snapshot.CloseSupported,
 		Sessions:       uint32(snapshot.Sessions),
+		Agents:         snapshot.Agents,
 		Listing:        agentListCapabilities(snapshot.Replay != nil),
 	}
 	if snapshot.Replay != nil {

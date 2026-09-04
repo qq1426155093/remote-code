@@ -191,7 +191,7 @@ Controller 还会再次实施路径校验。
 
 | 命令 | 功能 |
 | --- | --- |
-| `agent` / `agent-query` `[--session ID] [--cwd REMOTE_DIR] [--env KEY=VALUE]... PROMPT` | 向共享 Code Agent 发送一个 prompt，流式渲染回复 |
+| `agent` / `agent-query` `[--session ID] [--cwd REMOTE_DIR] [--env KEY=VALUE]... [--agent NAME] PROMPT` | 向共享 Code Agent 发送一个 prompt，流式渲染回复；`--agent` 以指定自定义 agent persona 执行本 turn |
 | `agent-observe [--from SEQUENCE] [--no-follow] QUERY_ID` | 从保留序号回放 query；运行中默认继续 follow |
 | `agent-cancel QUERY_ID` | 显式取消运行中的 query |
 | `agent-queries [--session ID] [--state STATE] [--page-size N] [--page-token TOKEN]` | 分页列出仍在保留期内的 query |
@@ -813,6 +813,10 @@ if err := client.CloseAgentSession(ctx, sessionID); err != nil {
   `AGENT_WORKING_DIRECTORY`；
 - `Environment` 键名或预算非法返回 `AGENT_ENVIRONMENT`；环境与运行中子进程不同且桥仍忙返回
   `AGENT_ENV_CONFLICT`（空闲则自动换代重启）；
+- `Agent` 指定本 turn 的主线程 persona（对应 claude-agent-acp 暴露的自定义 agent，等价 CLI 的
+  `--agent`）：名字按该会话自身的 config options 校验，未知名字返回 `AGENT_NAME_INVALID`，子进程
+  无选择器返回 `AGENT_SELECTION_UNSUPPORTED`；可用名单在 `Info().Agent.Agents`（当前 generation
+  建过会话后才有值，空列表表示未配置自定义 agent）；
 - 恢复会话要求 agent 广告 `session/resume` 能力，否则返回 `AGENT_SESSION_NOT_RESUMABLE`；恢复不
   存在的 id 由 agent 侧错误透传（`AGENT_REQUEST_ERROR`）；同一会话并发 turn 返回
   `AGENT_TURN_ACTIVE`；

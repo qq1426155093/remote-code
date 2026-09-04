@@ -181,6 +181,10 @@ func queryInfoOf(snapshot QuerySnapshot) *codev1.AgentQueryInfo {
 		stopReason := snapshot.StopReason
 		info.StopReason = &stopReason
 	}
+	if snapshot.Agent != "" {
+		agent := snapshot.Agent
+		info.Agent = &agent
+	}
 	if snapshot.Err != nil {
 		info.TerminalStatus = status.Convert(snapshot.Err.status()).Proto()
 	}
