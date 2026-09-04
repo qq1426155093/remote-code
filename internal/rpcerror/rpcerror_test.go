@@ -82,7 +82,7 @@ func TestReasonValuesAreUniqueAndWellFormed(t *testing.T) {
 		AgentDisabled, AgentStartFailed, AgentSessionNotFound, AgentSessionLost,
 		AgentSessionNotResumable,
 		AgentTurnActive, AgentProcessLost, AgentWorkingDirectory, AgentRequestError,
-		AgentEnvironment, AgentEnvConflict,
+		AgentEnvironment,
 		AgentQueryNotFound, AgentQueryReplayDisabled, AgentQuerySequenceInvalid,
 		AgentQueryEventsPruned, AgentQueryObserverLimit, AgentQueryObserverLag,
 		TransferOffsetMismatch, TransferFileChanged, TransferPrefixMismatch,

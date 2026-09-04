@@ -88,11 +88,7 @@ type Service struct {
 	// its sessions' config options; nil until that generation created one.
 	agentNames           []string
 	agentNamesGeneration uint64
-	// pendingEnvs holds the launch environments of queries that passed
-	// validation but have not registered their session yet; an arrival here is
-	// invisible to the session table, so environment switches must respect it.
-	pendingEnvs  []map[string]string
-	shuttingDown bool
+	shuttingDown         bool
 	// stop is closed once at shutdown; every turn pump selects on it so a
 	// shutdown interrupts even a blocked event emit.
 	stop     chan struct{}
@@ -146,11 +142,10 @@ func New(config Config) (*Service, error) {
 		dial = service.dialProcess
 	}
 	service.process = &agentProcess{
-		logger:    logger,
-		dial:      dial,
-		sink:      service,
-		onCrash:   service.handleCrash,
-		maySwitch: service.maySwitchEnvironment,
+		logger:  logger,
+		dial:    dial,
+		sink:    service,
+		onCrash: service.handleCrash,
 	}
 	return service, nil
 }
@@ -159,11 +154,11 @@ func New(config Config) (*Service, error) {
 // (at the workspace root, or the request's working directory) that
 // auto-closes when the turn settles; a prompt with SessionID resumes that
 // agent-side conversation first. Environment carries caller-supplied
-// overrides merged over the operator baseline for whichever child runs the
-// turn; a value that requires a different child than the running one is
-// refused while that child still has work in flight. Agent names the
-// main-thread persona the turn runs as, applied through the child's agent
-// session config option; empty keeps the default.
+// overrides to the turn's session — they reach the agent-side process the
+// session runs on (per session, via `_meta`), never the shared child, so
+// concurrent queries may differ freely. Agent names the main-thread persona
+// the turn runs as, applied through the child's agent session config option;
+// empty keeps the default.
 type TurnRequest struct {
 	Prompt           string
 	SessionID        string
@@ -172,45 +167,33 @@ type TurnRequest struct {
 	Agent            string
 }
 
-// launchEnvironment validates the caller's overrides and merges them over the
-// operator's [agent].environment — caller wins. The merged map is the child's
-// launch environment (and generation identity); the sorted override keys are
-// all that records ever retain.
-func (s *Service) launchEnvironment(overrides map[string]string) (map[string]string, []string, error) {
-	keys, err := process.ValidateEnvironment(overrides)
-	if err != nil {
-		return nil, nil, rpcerror.Errorf(codes.InvalidArgument, rpcerror.AgentEnvironment, "%s", status.Convert(err).Message())
+// sessionEnvironmentMeta builds the ACP session `_meta` carrying the caller's
+// environment overrides to the agent's per-session process. claude-agent-acp
+// merges `_meta.claudeCode.options.env` over its own environment for the CLI
+// process it spawns per session; other agents ignore unknown `_meta` keys per
+// the protocol, so the extension degrades gracefully. A nil map (no overrides)
+// leaves `_meta` absent entirely.
+func sessionEnvironmentMeta(overrides map[string]string) map[string]any {
+	if len(overrides) == 0 {
+		return nil
 	}
-	merged := make(map[string]string, len(s.config.Environment)+len(overrides))
-	for key, value := range s.config.Environment {
-		merged[key] = value
+	return map[string]any{
+		"claudeCode": map[string]any{
+			"options": map[string]any{"env": overrides},
+		},
 	}
-	for key, value := range overrides {
-		merged[key] = value
-	}
-	if _, err := process.ValidateEnvironment(merged); err != nil {
-		return nil, nil, rpcerror.Errorf(codes.InvalidArgument, rpcerror.AgentEnvironment, "operator baseline plus overrides: %s", status.Convert(err).Message())
-	}
-	return merged, keys, nil
 }
 
-// maySwitchEnvironment reports whether the shared child may be replaced by a
-// generation launched for environment: the bridge must be idle — no sessions
-// in the table, no live queries — and every still-arriving query must want
-// that same environment. It runs with the process mutex held, so it must
-// never call back into the process.
-func (s *Service) maySwitchEnvironment(environment map[string]string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if len(s.sessions) > 0 || len(s.liveQueries) > 0 {
-		return false
+// validateEnvironment checks the caller's overrides against the budget every
+// child environment must satisfy and returns the override keys in sorted
+// order — the only form records ever retain. Overrides never touch the shared
+// child process; they ride the session request instead.
+func validateEnvironment(overrides map[string]string) ([]string, error) {
+	keys, err := process.ValidateEnvironment(overrides)
+	if err != nil {
+		return nil, rpcerror.Errorf(codes.InvalidArgument, rpcerror.AgentEnvironment, "%s", status.Convert(err).Message())
 	}
-	for _, pending := range s.pendingEnvs {
-		if !environmentsEqual(pending, environment) {
-			return false
-		}
-	}
-	return true
+	return keys, nil
 }
 
 // TurnStream is the event stream of one running turn. Events yields turn
@@ -263,18 +246,21 @@ func (t *TurnStream) finish() {
 	close(t.done)
 }
 
-// StartTurn validates the request, resolves the child for its environment,
-// creates or resumes the session, claims its single turn slot, and starts the
-// prompt pump. The returned stream ends with a Completed event (or a Wait
-// error when the turn failed); the session auto-closes as the stream ends.
+// StartTurn validates the request, resolves the shared child, creates or
+// resumes the session (carrying the caller's environment overrides to the
+// agent's per-session process through `_meta`), claims the session's single
+// turn slot, and starts the prompt pump. The returned stream ends with a
+// Completed event (or a Wait error when the turn failed); the session
+// auto-closes as the stream ends.
 func (s *Service) StartTurn(ctx context.Context, request TurnRequest) (*TurnStream, error) {
 	if strings.TrimSpace(request.Prompt) == "" {
 		return nil, status.Error(codes.InvalidArgument, "prompt must not be empty")
 	}
-	environment, environmentKeys, err := s.launchEnvironment(request.Environment)
+	environmentKeys, err := validateEnvironment(request.Environment)
 	if err != nil {
 		return nil, err
 	}
+	sessionMeta := sessionEnvironmentMeta(request.Environment)
 
 	s.mu.Lock()
 	if s.shuttingDown {
@@ -289,26 +275,15 @@ func (s *Service) StartTurn(ctx context.Context, request TurnRequest) (*TurnStre
 			return nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.AgentTurnActive, "session %q already has an active turn", request.SessionID)
 		}
 	}
-	// Claim the arrival before touching the child: a query between here and
-	// its session registration is invisible to the session table, and an
-	// environment switch must not restart the child under it.
-	s.pendingEnvs = append(s.pendingEnvs, environment)
 	s.mu.Unlock()
-	dropArrival := func() {
-		s.mu.Lock()
-		s.dropArrivalLocked(environment)
-		s.mu.Unlock()
-	}
 
-	connection, err := s.process.ensure(ctx, environment)
+	connection, err := s.process.ensure(ctx)
 	if err != nil {
-		dropArrival()
 		return nil, err
 	}
 
 	cwd, err := s.resolveWorkingDirectory(request.WorkingDirectory)
 	if err != nil {
-		dropArrival()
 		return nil, err
 	}
 	var sess *session
@@ -318,14 +293,13 @@ func (s *Service) StartTurn(ctx context.Context, request TurnRequest) (*TurnStre
 		response, err := connection.conn.NewSession(newSessionCtx, acp.NewSessionRequest{
 			Cwd:        cwd,
 			McpServers: []acp.McpServer{},
+			Meta:       sessionMeta,
 		})
 		cancel()
 		if err != nil {
-			dropArrival()
 			return nil, mapAgentRequestError("create session", err)
 		}
 		if err := s.applyAgentSelection(ctx, connection, response.SessionId, request.Agent, response.ConfigOptions); err != nil {
-			dropArrival()
 			// The session exists agent-side; give it back rather than leak it.
 			s.closeAgentSession(string(response.SessionId), connection)
 			return nil, err
@@ -334,7 +308,6 @@ func (s *Service) StartTurn(ctx context.Context, request TurnRequest) (*TurnStre
 		created = true
 	} else {
 		if connection.caps.SessionCapabilities.Resume == nil {
-			dropArrival()
 			return nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.AgentSessionNotResumable, "agent %q does not advertise session/resume", processLabel(connection.transport))
 		}
 		resumeCtx, cancel := context.WithTimeout(ctx, initializeTimeout)
@@ -342,16 +315,15 @@ func (s *Service) StartTurn(ctx context.Context, request TurnRequest) (*TurnStre
 			Cwd:        cwd,
 			SessionId:  acp.SessionId(request.SessionID),
 			McpServers: []acp.McpServer{},
+			Meta:       sessionMeta,
 		})
 		cancel()
 		if err != nil {
-			dropArrival()
 			return nil, mapAgentRequestError("resume session", err)
 		}
 		// A refused selection leaves the resumed conversation untouched — it
 		// predates this query, so closing it would destroy the caller's work.
 		if err := s.applyAgentSelection(ctx, connection, acp.SessionId(request.SessionID), request.Agent, response.ConfigOptions); err != nil {
-			dropArrival()
 			return nil, err
 		}
 		sess = newSession(acp.SessionId(request.SessionID), s.displaySessionWorkingDirectory(cwd), connection.generation, s.now())
@@ -359,14 +331,12 @@ func (s *Service) StartTurn(ctx context.Context, request TurnRequest) (*TurnStre
 
 	active, ok := sess.beginTurn(s.now())
 	if !ok {
-		dropArrival()
 		return nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.AgentTurnActive, "session %q already has an active turn", string(sess.id))
 	}
 
 	queryID, writer, err := s.beginQuery(sess, environmentKeys, request.Agent)
 	if err != nil {
 		sess.endTurn(active, s.now())
-		dropArrival()
 		return nil, err
 	}
 
@@ -382,7 +352,6 @@ func (s *Service) StartTurn(ctx context.Context, request TurnRequest) (*TurnStre
 	if s.shuttingDown {
 		s.mu.Unlock()
 		sess.endTurn(active, s.now())
-		dropArrival()
 		return nil, status.Error(codes.Unavailable, "agent service is shutting down")
 	}
 	if _, clash := s.sessions[string(sess.id)]; clash {
@@ -390,28 +359,14 @@ func (s *Service) StartTurn(ctx context.Context, request TurnRequest) (*TurnStre
 		// ever reaching the agent's prompt.
 		s.mu.Unlock()
 		sess.endTurn(active, s.now())
-		dropArrival()
 		return nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.AgentTurnActive, "session %q already has an active turn", string(sess.id))
 	}
 	s.sessions[string(sess.id)] = sess
-	s.dropArrivalLocked(environment)
 	s.liveQueries[queryID] = query
 	s.mu.Unlock()
 	s.turns.Add(1)
 	go s.runTurn(ctx, sess, connection, active, stream, request.Prompt, created, query)
 	return stream, nil
-}
-
-// dropArrivalLocked removes one pending-arrival claim for environment. Callers
-// on error paths hold no lock and wrap it themselves; the registration path
-// already holds mu.
-func (s *Service) dropArrivalLocked(environment map[string]string) {
-	for index, pending := range s.pendingEnvs {
-		if environmentsEqual(pending, environment) {
-			s.pendingEnvs = append(s.pendingEnvs[:index], s.pendingEnvs[index+1:]...)
-			return
-		}
-	}
 }
 
 // beginQuery allocates the turn's query id and opens its event record,

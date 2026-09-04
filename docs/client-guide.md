@@ -222,9 +222,10 @@ closed agent session 8f3c…
 - REPL 记住最近一次会话 id，后续 `agent` 命令默认按 agent 侧磁盘转录恢复同一对话；`--session`
   显式指定，`agent-close` 后回到新会话；
 - `--cwd` 只对新会话生效，按 REPL 当前远端目录解析，且不能越出 workspace；
-- `--env KEY=VALUE`（可重复）为该 turn 覆盖 Agent 子进程环境，调用方胜出地合并过
-  `[agent].environment`；环境不同时 Controller 在空闲当口换代重启子进程，忙时返回
-  `AGENT_ENV_CONFLICT`（稍后重试即可）；
+- `--env KEY=VALUE`（可重复）为该 turn 携带环境覆盖，经会话请求的
+  `_meta.claudeCode.options.env` 下发给该会话的 agent 侧进程（claude-agent-acp 合并过自身
+  环境后生效；其它 agent 忽略该扩展）；共享子进程环境固定为 `[agent].environment`，因此
+  不同环境的查询可以并发，互不冲突；
 - gRPC `Query` 流断开只会 detach，远端 turn 会继续运行并持久化事件；CLI 的 Ctrl-C 会额外调用
   `CancelQuery` 显式取消该 turn，不会停止 Agent 进程；
 - `agent-queries` 返回 `RUNNING`、`SETTLED`、`LOST` 中仍受事件保留策略覆盖的记录；会话按 turn
@@ -756,9 +757,9 @@ offset 继续，而不重复处理已经确认的记录。
 继续运行并持久化，显式停止使用 `CancelAgentQuery`，续读使用 `ObserveAgentQuery`。会话按 turn 存活：
 新建会话的 turn 落定后自动关闭，接续对话用 `AgentQueryOptions.SessionID` 恢复（agent 侧磁盘转录，
 Controller 或 Agent 进程重启后依然可用），恢复后的 turn 结束时同样自动关闭。
-`AgentQueryOptions.Environment` 携带按查询的环境覆盖（调用方胜出地合并过 controller 的
-`[agent].environment`）；环境不同的查询在子进程空闲时触发换代重启，忙时返回
-`AGENT_ENV_CONFLICT`。
+`AgentQueryOptions.Environment` 携带按查询的环境覆盖，经会话请求的
+`_meta.claudeCode.options.env` 下发给该会话的 agent 侧进程（共享子进程环境固定为
+controller 的 `[agent].environment`），因此不同环境的查询可以并发。
 
 ```go
 stream, err := client.AgentQuery(ctx, "summarize the failing tests", remoteclient.AgentQueryOptions{})
@@ -813,8 +814,8 @@ if err := client.CloseAgentSession(ctx, sessionID); err != nil {
   `NextPageToken` 继续同一过滤条件；
 - `WorkingDirectory` 只在新建会话时生效，必须是 workspace 相对路径，否则返回
   `AGENT_WORKING_DIRECTORY`；
-- `Environment` 键名或预算非法返回 `AGENT_ENVIRONMENT`；环境与运行中子进程不同且桥仍忙返回
-  `AGENT_ENV_CONFLICT`（空闲则自动换代重启）；
+- `Environment` 键名或预算非法返回 `AGENT_ENVIRONMENT`；覆盖按会话下发（`_meta`
+  扩展），不影响共享子进程，异环境查询可并发；
 - `Agent` 指定本 turn 的主线程 persona（对应 claude-agent-acp 暴露的自定义 agent，等价 CLI 的
   `--agent`）：名字按该会话自身的 config options 校验，未知名字返回 `AGENT_NAME_INVALID`，子进程
   无选择器返回 `AGENT_SELECTION_UNSUPPORTED`；可用名单在 `Info().Agent.Agents`（当前 generation

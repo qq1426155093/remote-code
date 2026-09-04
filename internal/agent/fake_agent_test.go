@@ -42,6 +42,7 @@ type scriptedAgent struct {
 	mu             sync.Mutex
 	cancelArrived  chan struct{}
 	sessionCwds    []string
+	sessionMetas   []map[string]any
 	resumes        []acp.ResumeSessionRequest
 	prompts        []acp.PromptRequest
 	cancels        []string
@@ -105,6 +106,7 @@ func (a *scriptedAgent) NewSession(_ context.Context, params acp.NewSessionReque
 	defer a.mu.Unlock()
 	a.nextSession++
 	a.sessionCwds = append(a.sessionCwds, params.Cwd)
+	a.sessionMetas = append(a.sessionMetas, params.Meta)
 	return acp.NewSessionResponse{
 		SessionId:     acp.SessionId(fmt.Sprintf("sess-%d", a.nextSession)),
 		ConfigOptions: a.configOptions,
@@ -226,6 +228,17 @@ func (a *scriptedAgent) sessionDirectory(index int) string {
 	return a.sessionCwds[index]
 }
 
+// sessionMeta reports the `_meta` one session/new carried, so tests can pin
+// what the turn's environment overrides handed the agent-side session.
+func (a *scriptedAgent) sessionMeta(index int) map[string]any {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if index >= len(a.sessionMetas) {
+		return nil
+	}
+	return a.sessionMetas[index]
+}
+
 // agentSelectionsReceived copies the recorded string-valued set_config_option
 // calls in order.
 func (a *scriptedAgent) agentSelectionsReceived() []acp.SetSessionConfigOptionValueId {
@@ -265,7 +278,6 @@ type harness struct {
 
 	mu        sync.Mutex
 	dials     int
-	dialEnvs  []map[string]string
 	dialErr   error
 	processes []*fakeProcess
 }
@@ -284,18 +296,6 @@ func (h *harness) dialCount() int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return h.dials
-}
-
-// dialEnvironment reports the environment one dialed generation was asked to
-// start with, so tests can assert what the child would have inherited.
-func (h *harness) dialEnvironment(t *testing.T, index int) map[string]string {
-	t.Helper()
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if index >= len(h.dialEnvs) {
-		t.Fatalf("dial %d has no recorded environment (%d dials)", index, len(h.dialEnvs))
-	}
-	return h.dialEnvs[index]
 }
 
 func (h *harness) setDialError(err error) {
@@ -333,10 +333,9 @@ func newHarnessWithConfig(t *testing.T, events EventLogConfig, mutate func(*Conf
 		RuntimeDirectory: runtimeDir,
 		Events:           events,
 		Logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Dial: func(ctx context.Context, environment map[string]string) (transport, error) {
+		Dial: func(ctx context.Context) (transport, error) {
 			h.mu.Lock()
 			h.dials++
-			h.dialEnvs = append(h.dialEnvs, environment)
 			dialErr := h.dialErr
 			h.mu.Unlock()
 			if dialErr != nil {

@@ -110,7 +110,7 @@ func (s *Service) StartRawProcess(ctx context.Context, spec RawProcessSpec) (*Ra
 | 不变量 | 落实 |
 |---|---|
 | Never log prompts / 上传内容 | 协议 stdout 为内存管道,不落盘;`<runtime-dir>/<uuid>/` 日志只有 stderr 诊断 |
-| env 只存 key 不存值 | 沿用 `EnvironmentKeys`(`record.go`),凭证经 `buildEnvironment` 的 `os.Environ` 继承或 `[agent.environment]`(操作者配置文件,不进任何记录) |
+| env 只存 key 不存值 | 沿用 `EnvironmentKeys`(`record.go`),凭证经 `buildEnvironment` 的 `os.Environ` 继承或 `[agent.environment]`(操作者配置文件);调用方覆盖值只随 ACP 会话请求 `_meta` 下发,不进任何记录 |
 | 退出/LOST 可观测 | 复用注册表 status/记录语义 |
 
 ## 4. `internal/agent` 包
@@ -136,16 +136,19 @@ internal/agent/
   等 turn 落定(上限 5s)→ 关 agent stdin(claude-agent-acp 在 stdin EOF 时干净退出)
   → 超时 SIGTERM → 再超时 SIGKILL(对照 simple-client.ts 关停顺序)。
 
-> **修订(2026-09-02,按查询环境变量)**:`QueryRequest.environment` 允许每次查询
-> 携带覆盖变量,以调用方胜出的规则合并过 `[agent].environment`;预算与键名规则
-> 复用进程服务的校验(256 项 / 单项 4 KiB / 总 64 KiB / `^[A-Za-z_][A-Za-z0-9_]*$`,
-> 先验覆盖、再验合并结果,原因 `AGENT_ENVIRONMENT`)。环境只能在 spawn 时给定,
-> 因此**合并环境即子进程 generation 的身份**:环境不同的查询在桥仍忙(会话表非空、
-> 有在飞 query、或仍有异环境的 pending 查询)时以 `AGENT_ENV_CONFLICT`
-> (FailedPrecondition)拒绝,空闲时停旧子进程(stdin EOF 优雅 → TERM)并按新环境
-> 重新 spawn。pending 到达声明(pendingEnvs)关闭"环境校验之后、会话登记之前"的
-> 换代竞态;锁序固定为 `agentProcess.mu` → `Service.mu`。query 记录只保留排序后的
-> 键名(`environment_keys`),controllerlog 等诊断日志不落值。
+> **修订(2026-09-04,查询环境变量改走会话通道;取代 2026-09-02 的
+> generation 方案)**:`QueryRequest.environment` 的覆盖变量不再作用于共享子进程,
+> 而是随 `session/new` / `session/resume` 的 `_meta.claudeCode.options.env`
+> 下发——claude-agent-acp 私有扩展,adapter 将其合并过自身 `process.env` 后交给
+> 按会话 spawn 的 CLI 进程;其他 ACP agent 按 protocol 忽略未知 `_meta` 键,
+> 优雅降级为"无按查询环境"。子进程环境就此静态化(整个生命周期固定为
+> `[agent].environment` 合并 controller 继承),generation 退回纯崩溃重启身份;
+> `AGENT_ENV_CONFLICT`、空闲换代与 pendingEnvs 到达声明整体移除(reason 退役)。
+> 并发查询可各带不同环境互不冲突。校验仍复用进程服务的预算与键名规则
+> (256 项 / 单项 4 KiB / 总 64 KiB / `^[A-Za-z_][A-Za-z0-9_]*$`,原因
+> `AGENT_ENVIRONMENT`),无覆盖时 `_meta` 整体缺省。query 记录仍只保留排序后的
+> 键名(`environment_keys`);覆盖值仅存在于 controller 内存与 ACP 会话请求,
+> 不进任何记录或诊断日志。
 
 ### 4.2 会话与 turn(session.go)
 
@@ -341,3 +344,10 @@ arguments = ["@agentclientprotocol/claude-agent-acp"]
   `"default"`）；generation 建过首个会话后才有值，换代后随新会话刷新。查询记录
   （`state.json`、`ListQueries` 行、`AgentQueryHeader`）保留请求的 `agent` 名。
 - CLI：`agent --agent NAME ...`；`pkg/client` 的 `AgentQueryOptions.Agent`。
+- **按查询环境变量改走会话通道（取代 2026-09-02 条目的机制）**：
+  `QueryRequest.environment` 不再合并进子进程启动环境（也不再是 generation 身份），
+  而是经 `session/new`/`session/resume` 的 `_meta.claudeCode.options.env` 按会话下发，
+  到达该会话的 agent 侧 CLI 进程；子进程环境静态化为 `[agent].environment`，
+  `AGENT_ENV_CONFLICT` 与空闲换代机制移除（reason 退役），并发查询可各带不同环境。
+  校验、`environment_keys` 记录与"值不落盘不落日志"不变；无覆盖时 `_meta` 缺省，
+  非 claude-agent-acp 的 agent 忽略该扩展。

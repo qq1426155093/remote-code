@@ -76,10 +76,6 @@ const (
 	// AgentEnvironment marks a request environment rejected on validation:
 	// malformed keys or a size-budget overflow.
 	AgentEnvironment Reason = "AGENT_ENVIRONMENT"
-	// AgentEnvConflict marks a request whose environment requires restarting
-	// the agent child while the current generation still has sessions or
-	// running turns; the caller retries after they end.
-	AgentEnvConflict Reason = "AGENT_ENV_CONFLICT"
 	// AgentRequestError wraps a JSON-RPC error the agent itself returned; the
 	// metadata carries the raw jsonrpc_code.
 	AgentRequestError Reason = "AGENT_REQUEST_ERROR"

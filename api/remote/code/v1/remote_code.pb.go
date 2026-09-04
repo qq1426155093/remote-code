@@ -7089,13 +7089,15 @@ type QueryRequest struct {
 	SessionId *string `protobuf:"bytes,2,opt,name=session_id,json=sessionId,proto3,oneof" json:"session_id,omitempty"`
 	// Workspace-relative session directory; only consulted when session_id is empty.
 	WorkingDirectory *string `protobuf:"bytes,3,opt,name=working_directory,json=workingDirectory,proto3,oneof" json:"working_directory,omitempty"`
-	// Environment overrides for the agent child, allowed on every query whether
-	// it starts or resumes a session. Environment is fixed at process spawn, so
-	// the merged set (caller wins over the controller's [agent].environment)
-	// identifies the child generation: a query whose environment differs from
-	// the running child's fails with AGENT_ENV_CONFLICT while that child still
-	// has work in flight, and restarts the child once idle. Values live only in
-	// the child process and controller memory; records retain key names only.
+	// Environment overrides for the turn, allowed on every query whether it
+	// starts or resumes a session. They are carried to the agent-side process
+	// the session runs on (claude-agent-acp applies them per session via the
+	// ACP `_meta.claudeCode.options.env` extension; other agents ignore them),
+	// never to the shared agent child: the child's own environment stays the
+	// controller's [agent].environment for its whole lifetime, so concurrent
+	// queries may carry different environments without conflict. Values live
+	// only in controller memory and the session request; records retain key
+	// names only.
 	Environment map[string]string `protobuf:"bytes,4,rep,name=environment,proto3" json:"environment,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// Main-thread agent persona the turn runs as, applied through the ACP
 	// session config option the agent child exposes (claude-agent-acp offers

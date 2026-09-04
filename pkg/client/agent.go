@@ -13,12 +13,11 @@ import (
 // AgentQueryOptions selects the conversation one agent turn runs in. An empty
 // SessionID starts a new session at the workspace root, or in
 // WorkingDirectory when set; a non-empty SessionID resumes that agent-side
-// conversation by id. Environment overrides merge over the controller's
-// operator baseline for the child that runs the turn; a value that requires a
-// different child than the running one is refused while that child still has
-// work in flight. Agent names the main-thread persona the turn runs as; empty
-// keeps the child's default, and a name the child does not offer fails the
-// call before any event streams.
+// conversation by id. Environment overrides ride the turn's session to the
+// agent-side process it runs on (per session, never the shared agent child),
+// so concurrent queries may carry different environments. Agent names the
+// main-thread persona the turn runs as; empty keeps the child's default, and
+// a name the child does not offer fails the call before any event streams.
 type AgentQueryOptions struct {
 	SessionID        string
 	WorkingDirectory string

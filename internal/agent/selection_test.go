@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/coder/acp-go-sdk"
 
@@ -245,11 +246,21 @@ func TestSnapshot_AgentsFollowGeneration(t *testing.T) {
 		t.Fatalf("Snapshot().Agents = %v, want [reviewer]", names)
 	}
 
-	// A different launch environment switches to a fresh generation whose
-	// sessions offer no agent picker; the reported personas must follow.
+	// A crashed child restarts as a fresh generation whose sessions offer no
+	// agent picker; the reported personas must follow.
 	offerPicker.Store(false)
+	h.currentProcess(t).kill()
+	for deadline := time.Now().Add(10 * time.Second); ; {
+		if !h.service.Snapshot().Started {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("crashed child was not cleared")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 	second, err := h.service.StartTurn(ctx, TurnRequest{
-		Prompt: "second", Environment: map[string]string{"GEN": "2"},
+		Prompt: "second",
 	})
 	if err != nil {
 		t.Fatalf("StartTurn(second) error = %v", err)

@@ -181,7 +181,7 @@ var defaultCommandRegistry = mustCommandRegistry([]commandSpec{
 	{
 		name: "agent", aliases: []string{"agent-query"}, arguments: "[--compact] [--session ID] [--cwd REMOTE_DIR] [--env KEY=VALUE]... [--agent NAME] PROMPT",
 		listSuffix: "(Ctrl-C cancels the turn)",
-		details:    "Send one prompt to the code agent, tool inputs, outputs, and diffs included; without --session the last session is resumed; --env overrides the agent child's environment for this turn; --agent runs the turn as a custom agent persona; --compact hides the tool payloads; the printed query id replays with 'agent-observe'",
+		details:    "Send one prompt to the code agent, tool inputs, outputs, and diffs included; without --session the last session is resumed; --env passes KEY=VALUE to the turn's session (the agent-side process, per turn) rather than the shared agent child; --agent runs the turn as a custom agent persona; --compact hides the tool payloads; the printed query id replays with 'agent-observe'",
 		handler:    (*REPL).agentQuery,
 		complete:   completeRemotePathWithOption("--cwd", 1, completeDirectories),
 	},

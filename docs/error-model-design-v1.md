@@ -126,7 +126,7 @@ case client.ReasonProcessNotRunning:
 | `AGENT_DISABLED` | `FailedPrecondition` | 配置未启用 Agent 服务 |
 | `AGENT_START_FAILED` | `Unavailable` | Agent 子进程启动或 ACP 初始化失败 |
 | `AGENT_ENVIRONMENT` | `InvalidArgument` | Query 环境覆盖的键名或预算非法（复用进程服务 env 预算） |
-| `AGENT_ENV_CONFLICT` | `FailedPrecondition` | 环境不同的查询遇到仍有在飞工作的子进程 generation；空闲后重试即换代 |
+| `AGENT_ENV_CONFLICT` | `FailedPrecondition` | （退役）按查询环境改走会话 `_meta` 后不再触发；子进程环境静态，异环境查询互不冲突 |
 | `AGENT_SESSION_NOT_FOUND` | `NotFound` | （v1 保留）turn 级会话后不再触发；未知 id 的恢复由 agent 侧错误透传 |
 | `AGENT_SESSION_LOST` | `FailedPrecondition` | （v1 保留）turn 级会话后不再触发；崩溃终止在飞 turn 报 `AGENT_PROCESS_LOST` |
 | `AGENT_SESSION_NOT_RESUMABLE` | `FailedPrecondition` | Query 带 `session_id` 而 agent 未广告 `session/resume` 能力 |

@@ -50,21 +50,18 @@ type transport struct {
 	terminate func(ctx context.Context) error
 }
 
-// dialFunc produces one live transport. The environment is the merged launch
-// environment for the generation being started; implementations must not
-// return a transport whose peer handshake has already been attempted.
-type dialFunc func(ctx context.Context, environment map[string]string) (transport, error)
+// dialFunc produces one live transport. The child runs with the operator
+// baseline from the service config for its whole lifetime; implementations
+// must not return a transport whose peer handshake has already been attempted.
+type dialFunc func(ctx context.Context) (transport, error)
 
 // agentConnection is one generation of the shared agent process together with
-// its negotiated capabilities and launch environment.
+// its negotiated capabilities.
 type agentConnection struct {
 	conn       *acp.ClientSideConnection
 	transport  transport
 	caps       acp.AgentCapabilities
 	generation uint64
-	// environment is the merged map this generation was started with; it is
-	// generation identity for environment switching and lives in memory only.
-	environment map[string]string
 	// exited closes after the process died AND the crash bookkeeping
 	// (clearing the current connection, marking sessions lost) finished, so a
 	// turn that settles on it observes a consistent session table.
@@ -85,11 +82,10 @@ func (c *agentConnection) alive() bool {
 
 // agentProcess owns the single shared agent child process across all sessions.
 // It starts lazily, restarts on demand after a crash, and never retries on its
-// own: callers drive retries by issuing their next query. The launch
-// environment is generation identity: a query whose environment differs from
-// the running generation's may switch to a fresh child, but only when the
-// bridge reports the current one idle (no in-flight sessions, no running
-// queries, no other arrival racing us).
+// own: callers drive retries by issuing their next query. The child's launch
+// environment is the operator baseline from the service config and never
+// changes while the controller runs; per-query overrides ride the sessions
+// instead.
 type agentProcess struct {
 	logger *slog.Logger
 	dial   dialFunc
@@ -98,12 +94,6 @@ type agentProcess struct {
 	// cleared, so the session table can be emptied while no new generation
 	// exists yet.
 	onCrash func()
-	// maySwitch reports whether the bridge allows replacing the current
-	// generation with one launched for environment. It runs with mu held, so
-	// it must never call back into the process (lock order: mu, then the
-	// service's own mutex — service code takes them in exactly that order and
-	// never the reverse).
-	maySwitch func(environment map[string]string) bool
 
 	mu         sync.Mutex
 	current    *agentConnection
@@ -120,50 +110,20 @@ func (p *agentProcess) currentConnection() *agentConnection {
 	return p.current
 }
 
-// environmentsEqual compares two launch environments; nil and empty are the
-// same generation.
-func environmentsEqual(left, right map[string]string) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for key, value := range left {
-		if other, ok := right[key]; !ok || other != value {
-			return false
-		}
-	}
-	return true
-}
-
-// ensure returns a live connection launched for environment, starting (or
-// switching to) the agent process as needed. Concurrent callers single-flight:
-// the first spawns and initializes, the rest wait and reuse (or retry the
-// spawn when the first attempt failed). A request for a different environment
-// than the running generation's is refused with AGENT_ENV_CONFLICT while the
-// bridge still has work on the current one; once idle, the old child is
-// stopped and the new one takes over.
-func (p *agentProcess) ensure(ctx context.Context, environment map[string]string) (*agentConnection, error) {
+// ensure returns a live connection, starting the agent process as needed.
+// Concurrent callers single-flight: the first spawns and initializes, the
+// rest wait and reuse (or retry the spawn when the first attempt failed).
+func (p *agentProcess) ensure(ctx context.Context) (*agentConnection, error) {
 	for {
 		p.mu.Lock()
 		if p.shutdown {
 			p.mu.Unlock()
 			return nil, status.Error(codes.Unavailable, "agent service is shutting down")
 		}
-		var retired *agentConnection
 		if p.current != nil {
-			if environmentsEqual(p.current.environment, environment) {
-				connection := p.current
-				p.mu.Unlock()
-				return connection, nil
-			}
-			if p.maySwitch != nil && !p.maySwitch(environment) {
-				p.mu.Unlock()
-				return nil, rpcerror.Errorf(codes.FailedPrecondition, rpcerror.AgentEnvConflict,
-					"agent child runs a different environment and still has work in flight; retry once it is idle")
-			}
-			// Detach the old generation first: every other caller now sees a
-			// switch in progress instead of a mismatched environment.
-			retired = p.current
-			p.current = nil
+			connection := p.current
+			p.mu.Unlock()
+			return connection, nil
 		}
 		if p.starting != nil {
 			wait := p.starting
@@ -179,10 +139,7 @@ func (p *agentProcess) ensure(ctx context.Context, environment map[string]string
 		p.starting = started
 		p.mu.Unlock()
 
-		// The ladder can block for seconds; keep it out of the lock so
-		// currentConnection and other ensure calls stay responsive.
-		p.stopConnection(ctx, retired)
-		connection, err := p.start(ctx, environment)
+		connection, err := p.start(ctx)
 
 		p.mu.Lock()
 		p.starting = nil
@@ -201,8 +158,8 @@ func (p *agentProcess) ensure(ctx context.Context, environment map[string]string
 // start dials one agent process, runs the ACP initialize handshake with no
 // client capabilities advertised, snapshots the agent capabilities, and starts
 // the crash watch.
-func (p *agentProcess) start(ctx context.Context, environment map[string]string) (*agentConnection, error) {
-	tr, err := p.dial(ctx, environment)
+func (p *agentProcess) start(ctx context.Context) (*agentConnection, error) {
+	tr, err := p.dial(ctx)
 	if err != nil {
 		// Registry refusals (limit reached, invalid request, shutdown) keep
 		// their own code and reason; anything else is a spawn failure.
@@ -235,12 +192,11 @@ func (p *agentProcess) start(ctx context.Context, environment map[string]string)
 	p.mu.Unlock()
 
 	agentConn := &agentConnection{
-		conn:        connection,
-		transport:   tr,
-		caps:        response.AgentCapabilities,
-		generation:  generation,
-		environment: environment,
-		exited:      make(chan struct{}),
+		conn:       connection,
+		transport:  tr,
+		caps:       response.AgentCapabilities,
+		generation: generation,
+		exited:     make(chan struct{}),
 	}
 	go p.watch(agentConn)
 	p.logger.Info("agent process started",
@@ -318,13 +274,14 @@ func (p *agentProcess) discard(tr transport) {
 // dialProcess is the production dialFunc: it starts the agent through the
 // process registry's raw-pipe entry so the child keeps registry semantics
 // (records, stderr logs, signals, LOST marking) while its protocol stdout
-// stays off disk.
-func (s *Service) dialProcess(ctx context.Context, environment map[string]string) (transport, error) {
+// stays off disk. The child runs with the operator baseline environment for
+// its whole lifetime.
+func (s *Service) dialProcess(ctx context.Context) (transport, error) {
 	raw, err := s.processes.StartRawProcess(ctx, process.RawProcessSpec{
 		Name:        agentProcessName,
 		Command:     s.config.Command,
 		Arguments:   s.config.Arguments,
-		Environment: environment,
+		Environment: s.config.Environment,
 	})
 	if err != nil {
 		return transport{}, err

@@ -194,10 +194,11 @@ secret、password、authorization、credential 和环境值等敏感 key 做脱�
 agent 桥接把 gRPC `AgentService.Query` 翻译成与一个共享 `claude-agent-acp` 子进程的 ACP 对话；子进程在
 首次查询时懒启动，通过进程注册表的 raw-pipe 入口运行（保留进程观测与信号语义，协议 stdout 落盘被
 禁止），会话工作目录被限制在 workspace 内。`command` 存在性不做启动期校验：缺失时首次查询返回
-`AGENT_START_FAILED`。凭证建议通过 controller 进程环境继承，`environment` 表只用于非敏感启动变量；
-每次 Query 还可用 `environment` 字段携带覆盖变量（调用方胜出地合并过本表，CLI 为
-`agent --env KEY=VALUE`），环境不同的查询在桥空闲时触发子进程换代、忙时返回
-`AGENT_ENV_CONFLICT`。该表、Query 覆盖以及任何日志都只记录键名、不记录环境值。会话按 turn 存活：
+`AGENT_START_FAILED`。凭证建议通过 controller 进程环境继承，`environment` 表只用于非敏感启动变量，
+且整个子进程生命周期固定不变；每次 Query 还可用 `environment` 字段携带覆盖变量（CLI 为
+`agent --env KEY=VALUE`），覆盖经会话请求的 `_meta.claudeCode.options.env` 按会话下发给
+agent 侧进程，不触碰共享子进程，因此并发查询可各带不同环境、互不冲突。该表、Query 覆盖以及
+任何日志都只记录键名、不记录环境值。会话按 turn 存活：
 落定即自动关闭，`session_id` 恢复的是 agent 侧磁盘转录，因此子进程崩溃或 controller 重启后按 id
 resume 依旧可用。设计细节见
 [Agent 服务设计 v1](agent-service-design-v1.md)。
